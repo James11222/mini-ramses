@@ -1,6 +1,7 @@
 [1]: https://bitbucket.org/rteyssie/ramses/
 [2]: https://bitbucket.org/ableuler/mini-ramses/fork
 [3]: https://bitbucket.org/ableuler/mini-ramses/pull-requests
+[4]: https://bitbucket.org/ableuler/mini-ramses/wiki
 
 ## mini-ramses ##
 
@@ -11,3 +12,5 @@ You *could* download the code by cloning the git repository using
 $ git clone https://bitbucket.org/ableuler/mini-ramses.git
 ```
 However, as you probably want to mess around with the code, we suggest you rather [fork mini-ramses][2]. To get changes back into this repository, you simply create a [pull request][3].
+
+For more information, check out the [mini-ramses wiki][4].
