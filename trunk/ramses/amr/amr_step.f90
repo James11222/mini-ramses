@@ -24,6 +24,7 @@ recursive subroutine amr_step(ilevel,icount)
   !-------------------------------------------
   ! Make new refinements and update boundaries
   !-------------------------------------------
+                               call timer('refine','start')
   if(levelmin.lt.nlevelmax .and..not. static)then
      if(ilevel==levelmin.or.icount>1)then
         do i=ilevel,nlevelmax
@@ -73,6 +74,7 @@ recursive subroutine amr_step(ilevel,icount)
            if(nrestart>0.and.first_step)then
               first_step=.false.
            else
+                               call timer('load balance','start')
               if(MOD(nstep_coarse,nremap)==0)then
                  call load_balance
                  call defrag
@@ -86,6 +88,7 @@ recursive subroutine amr_step(ilevel,icount)
   !-----------------
   ! Particle leakage
   !-----------------
+                               call timer('particles','start')
   if(pic)call make_tree_fine(ilevel)
   
   !------------------------
@@ -93,6 +96,7 @@ recursive subroutine amr_step(ilevel,icount)
   !------------------------
   if(ilevel==levelmin)then
      if(mod(nstep_coarse,foutput)==0.or.aexp>=aout(iout).or.t>=tout(iout))then
+                               call timer('io','start')
         if(.not.ok_defrag)then
            call defrag
         endif
@@ -106,6 +110,7 @@ recursive subroutine amr_step(ilevel,icount)
   if(movie) then
      if(imov.le.imovout)then 
         if(aexp>=amovout(imov).or.t>=tmovout(imov))then
+                               call timer('io','start')
            call output_frame()
         endif
      endif
@@ -119,6 +124,7 @@ recursive subroutine amr_step(ilevel,icount)
   ! Poisson source term
   !--------------------
   if(poisson)then
+                               call timer('poisson','start')
      !save old potential for time-extrapolation at level boundaries
      call save_phi_old(ilevel)
      call rho_fine(ilevel,icount)
@@ -128,6 +134,7 @@ recursive subroutine amr_step(ilevel,icount)
   ! Sort particles between ilevel and ilevel+1
   !-------------------------------------------
   if(pic)then
+                               call timer('particles','start')
      ! Remove particles to finer levels
      call kill_tree_fine(ilevel)
      ! Update boundary conditions for remaining particles
@@ -138,6 +145,7 @@ recursive subroutine amr_step(ilevel,icount)
   ! Gravity update
   !---------------
   if(poisson)then
+                               call timer('poisson','start')
  
      ! Remove gravity source term with half time step and old force
      if(hydro)then
@@ -162,10 +170,12 @@ recursive subroutine amr_step(ilevel,icount)
 
      ! Synchronize remaining particles for gravity
      if(pic)then
+                               call timer('particles','start')
         call synchro_fine(ilevel)
      end if
 
      if(hydro)then
+                               call timer('poisson','start')
 
         ! Add gravity source term with half time step and new force
         call synchro_hydro_fine(ilevel,+0.5*dtnew(ilevel))
@@ -181,12 +191,14 @@ recursive subroutine amr_step(ilevel,icount)
   !----------------------
   ! Compute new time step
   !----------------------
+                               call timer('courant','start')
   call newdt_fine(ilevel)
   if(ilevel>levelmin)then
      dtnew(ilevel)=MIN(dtnew(ilevel-1)/real(nsubcycle(ilevel-1)),dtnew(ilevel))
   end if
 
   ! Set unew equal to uold
+                               call timer('hydro - set unew','start')
   if(hydro)call set_unew(ilevel)
 
   !---------------------------
@@ -214,6 +226,7 @@ recursive subroutine amr_step(ilevel,icount)
   ! Move particles
   !---------------
   if(pic)then
+                               call timer('particles','start')
      call move_fine(ilevel) ! Only remaining particles
   end if
 
@@ -223,9 +236,11 @@ recursive subroutine amr_step(ilevel,icount)
   if(hydro)then
 
      ! Hyperbolic solver
+                               call timer('hydro - godunov','start')
      call godunov_fine(ilevel)
 
      ! Reverse update boundaries
+                               call timer('hydro - rev ghostzones','start')
      do ivar=1,nvar
         call make_virtual_reverse_dp(unew(1,ivar),ilevel)
      end do
@@ -235,13 +250,16 @@ recursive subroutine amr_step(ilevel,icount)
      endif
 
      ! Set uold equal to unew
+                               call timer('hydro - set uold','start')
      call set_uold(ilevel)
 
      ! Add gravity source term with half time step and old force
      ! in order to complete the time step 
+                               call timer('poisson','start')
      if(poisson)call synchro_hydro_fine(ilevel,+0.5*dtnew(ilevel))
 
      ! Restriction operator
+                               call timer('hydro - upload','start')
      call upload_fine(ilevel)
 
   endif
@@ -250,20 +268,24 @@ recursive subroutine amr_step(ilevel,icount)
   ! Update physical and virtual boundaries
   !---------------------------------------
   if(hydro)then
+                               call timer('hydro - ghostzones','start')
      do ivar=1,nvar
         call make_virtual_fine_dp(uold(1,ivar),ilevel)
      end do
+                               call timer('hydro - boundaries','start')
      if(simple_boundary)call make_boundary_hydro(ilevel)
   endif
 
   !-----------------------
   ! Compute refinement map
   !-----------------------
+                               call timer('flag','start')
   if(.not.static) call flag_fine(ilevel,icount)
 
   !----------------------------
   ! Merge finer level particles
   !----------------------------
+                               call timer('particles','start')
   if(pic)call merge_tree_fine(ilevel)
 
   !-------------------------------
@@ -277,7 +299,3 @@ recursive subroutine amr_step(ilevel,icount)
 999 format(' Entering amr_step',i1,' for level',i2)
 
 end subroutine amr_step
-
-
-
-
