@@ -41,7 +41,7 @@ subroutine adaptive_loop
   if(myid==1)write(*,*)'Starting time integration' 
 
   do ! Main time loop
-
+                               call timer('coarse levels','start')
 #ifndef WITHOUTMPI
      tt1=MPI_WTIME()
 #endif
@@ -77,6 +77,7 @@ subroutine adaptive_loop
 
      ! Call base level
      call amr_step(levelmin,1)
+                               call timer('coarse levels','start')
 
      if(levelmin.lt.nlevelmax .and..not. static)then
         do ilevel=levelmin-1,1,-1
