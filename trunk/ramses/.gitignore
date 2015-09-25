@@ -1,0 +1,8 @@
+*.o
+*.mod
+bin/ramses1d
+bin/ramses2d
+bin/ramses3d
+bin/ramses1dmhd
+bin/ramses2dmhd
+bin/ramses3dmhd
