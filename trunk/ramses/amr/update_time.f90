@@ -380,10 +380,16 @@ subroutine writemem(usedmem)
 end subroutine writemem
 
 subroutine getmem(outmem)
-  real::outmem
+  real(kind=4)::outmem
   character(len=300) :: dir, dir2,  cmd, file
   integer::read_status
+  logical:: file_exists
   file='/proc/self/stat'
+  inquire(file=file, exist=file_exists)
+  if (.not. file_exists) then
+     outmem=0.
+     return
+  endif
   open(unit=1,file=file,form='formatted')
   read(1,'(A300)',IOSTAT=read_status)dir
   close(1)
@@ -402,7 +408,7 @@ subroutine getmem(outmem)
      ind=index(dir,' ')
      dir2=dir(1:ind)
      read(dir2,'(I12)')nmem
-     outmem=dble(nmem)
+     outmem=nmem
   end if
 
 end subroutine getmem
