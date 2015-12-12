@@ -291,6 +291,8 @@ contains
   !        IOR(IEOR(key1(1), key2(1)), &
   !        IEOR(key1(0), key2(0)))))) == 0_8
   ! end function same_keys
+
+  !DIR$ ATTRIBUTES FORCEINLINE :: same_keys
   function same_keys(key1, key2)
     logical :: same_keys
     integer, parameter :: thirtytwo=32

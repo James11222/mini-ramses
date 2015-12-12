@@ -7,8 +7,8 @@
 // compile and run any of them on any platform, but your performance with the
 // non-native version will be less than optimal.
 
-#include "murmur3.h"
-#include <stdio.h>
+//#include "murmur3.h"
+#include <stdint.h>
 //-----------------------------------------------------------------------------
 // Platform-specific functions and macros
 
@@ -68,7 +68,7 @@ static FORCE_INLINE uint64_t fmix64 ( uint64_t k )
 
 //-----------------------------------------------------------------------------
 
-void murmurhash3_x64_128_ ( const void * key, const int * len, const int *tablesize,
+FORCE_INLINE void  murmurhash3_x64_128_ ( const void * key, const int * len, const int *tablesize,
 			    const uint32_t * seed, void * out )
 {
   const uint8_t * data = (const uint8_t*)key;
