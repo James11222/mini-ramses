@@ -601,15 +601,27 @@ contains
   !================================================================
   !================================================================
   !================================================================
-  subroutine hilbert3d(ix, iy, iz, hkey2, hkey1, hkey0, cstate, &
-       initial_level, final_level, npoint)
-    use amr_parameters, only: qdp, nvector
+  subroutine hilbert3d(ix, iy, iz, hkey1, &
+#if NHILBERT > 1
+       hkey2, &
+#endif
+#if NHILBERT > 2
+       hkey3, &
+#endif
+       cstate, initial_level, final_level, npoint)
+
+    use amr_parameters, only: qdp, nvector, int_pre
     implicit none
     integer        , intent(in)                          :: initial_level, final_level, npoint
-    integer(kind=8), intent(in),    dimension(1:npoint) :: ix, iy, iz
+    integer(int_pre), intent(in),    dimension(1:npoint) :: ix, iy, iz
     integer(kind=4), intent(inout), dimension(1:npoint) :: cstate
-    integer(kind=8), intent(inout), dimension(1:npoint) :: hkey2, hkey1, hkey0
-    
+    integer(kind=8), intent(inout), dimension(1:npoint) :: hkey1
+#if NHILBERT > 1
+    integer(kind=8), intent(inout), dimension(1:npoint) :: hkey2
+#endif
+#if NHILBERT > 2
+    integer(kind=8), intent(inout), dimension(1:npoint) :: hkey3
+#endif    
     ! Compute nvector 3-integer hilbert keys from the cartesian keys ix, iy, iz
     
     ! Local vars
@@ -619,33 +631,42 @@ contains
     ! if no keys present yet
     if (initial_level==0) then
        cstate(1:npoint)=0
-       hkey0(1:npoint)=0; hkey1(1:npoint)=0; hkey2(1:npoint)=0
+       hkey1(1:npoint)=0
+#if NHILBERT > 1
+       hkey2(1:npoint)=0
+#endif
+#if NHILBERT > 2
+       hkey3(1:npoint)=0
+#endif
     end if
 
     do ibit=final_level-initial_level-1,0,-1
 
+#if NHILBERT > 2       
        if (final_level > 42)then
           do ip=1,npoint
-             hkey2(ip) = ISHFT(hkey2(ip),3)
+             hkey3(ip) = ISHFT(hkey3(ip),3)
+          end do
+          do ip=1,npoint
+             hkey3(ip) = hkey3(ip) + ISHFT(hkey2(ip),-60)
+          end do
+       end if
+#endif
+#if NHILBERT > 1       
+       if (final_level > 21)then
+          do ip=1,npoint
+             hkey2(ip) = ISHFT(hkey2(ip),4)
+             hkey2(ip) = ISHFT(hkey2(ip),-1)
           end do
           do ip=1,npoint
              hkey2(ip) = hkey2(ip) + ISHFT(hkey1(ip),-60)
           end do
        end if
-
-       if (final_level > 21)then
-          do ip=1,npoint
-             hkey1(ip) = ISHFT(hkey1(ip),4)
-             hkey1(ip) = ISHFT(hkey1(ip),-1)
-          end do
-          do ip=1,npoint
-             hkey1(ip) = hkey1(ip) + ISHFT(hkey0(ip),-60)
-          end do
-       end if
+#endif
 
        do ip=1,npoint
-          hkey0(ip) = ISHFT(hkey0(ip),4)
-          hkey0(ip) = ISHFT(hkey0(ip),-1)
+          hkey1(ip) = ISHFT(hkey1(ip),4)
+          hkey1(ip) = ISHFT(hkey1(ip),-1)
        end do
 
        sdigit=0
@@ -664,7 +685,7 @@ contains
        end do
 
        do ip=1,npoint
-          hkey0(ip) = hkey0(ip) + three_digit_diagram(ind(ip))
+          hkey1(ip) = hkey1(ip) + three_digit_diagram(ind(ip))
        end do
 
        do ip=1,npoint
@@ -676,14 +697,27 @@ contains
   !================================================================
   !================================================================
   !================================================================
-  subroutine hilbert3d_reverse(ix, iy, iz, hkey2, hkey1, hkey0, key_level, npoint)
-    use amr_parameters, only: nvector
+  subroutine hilbert3d_reverse(ix, iy, iz, hkey1, &
+#if NHILBERT > 1
+       hkey2, &
+#endif
+#if NHILBERT > 2
+       hkey3, &
+#endif
+       key_level, npoint)
+    use amr_parameters, only: nvector, int_pre
     implicit none
 
     ! Inpu/Output variables:
     integer        , intent(in)                                :: key_level, npoint
-    integer(kind=8), intent(out), dimension(1:nvector)         :: ix, iy, iz
-    integer(kind=8), intent(in),  dimension(1:nvector), target :: hkey0, hkey1, hkey2
+    integer(int_pre), intent(out), dimension(1:nvector)         :: ix, iy, iz
+    integer(kind=8), intent(in),  dimension(1:nvector), target :: hkey1 
+#if NHILBERT > 1
+    integer(kind=8), intent(in),  dimension(1:nvector), target :: hkey2 
+#endif
+#if NHILBERT > 2
+    integer(kind=8), intent(in),  dimension(1:nvector), target :: hkey3
+#endif
 
     ! Descripton:
     ! Compute nvector cartesian keys from the corresponding 3-integer hilbert keys.
@@ -704,9 +738,13 @@ contains
 
        ! use a pointer here to define which of the three integer keys 
        ! must be accessed.
-       if (ikey==0) use_key => hkey0
-       if (ikey==1) use_key => hkey1
-       if (ikey==2) use_key => hkey2
+       if (ikey==0) use_key => hkey1
+#if NHILBERT > 1
+       if (ikey==1) use_key => hkey2
+#endif
+#if NHILBERT > 2
+       if (ikey==2) use_key => hkey3
+#endif
 
        ibit1 = mod(ibit1,63)
 
@@ -756,7 +794,7 @@ contains
   !================================================================
   subroutine hilbert_for_particle(offset, np, initial_level, final_level)
 
-    use amr_parameters, only: nvector, boxlen, dp
+    use amr_parameters, only: nvector, boxlen, dp, int_pre
     use amr_commons,    only: myid
     use pm_commons,     only: part_hkey, current_state, xp
     implicit none
@@ -785,7 +823,7 @@ contains
     integer :: ibit, ip, ind_part
     integer :: sweep_size, sweep_offset, nsweep, isweep 
     integer(kind=4), dimension(1:nvector) :: nstate, sdigit, ind
-    integer(kind=8), dimension(1:nvector) :: ix, iy, iz
+    integer(int_pre), dimension(1:nvector) :: ix, iy, iz
     real(dp) :: ckey_factor
 
     ! Compute particle position to cartesian key factor
@@ -809,9 +847,13 @@ contains
        end do
 #if NDIM == 3
        call hilbert3d(ix, iy, iz, &            
-            part_hkey(1+sweep_offset:sweep_size+sweep_offset, 2), &
             part_hkey(1+sweep_offset:sweep_size+sweep_offset, 1), &
-            part_hkey(1+sweep_offset:sweep_size+sweep_offset, 0), &
+#if NHILBERT > 1
+            part_hkey(1+sweep_offset:sweep_size+sweep_offset, 2), &
+#endif
+#if NHILBERT > 1
+            part_hkey(1+sweep_offset:sweep_size+sweep_offset, 3), &
+#endif
             current_state, initial_level, final_level, sweep_size)
 #endif
 #if NDIM == 2

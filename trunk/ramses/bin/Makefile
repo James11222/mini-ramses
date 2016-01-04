@@ -4,7 +4,13 @@
 # Compilation time parameters
 NVECTOR = 32
 NDIM = 3
+# Precision of floats
 NPRE = 8
+# Precision of integer coordinates (increase when levelmax > 30)
+INTKEY_PRECISION = 8
+# Number of 64-bit integer needed to store a hilbert key
+NHILBERT = 1
+ID_PRECISION = 8
 NVAR = 5
 NENER = 0
 SOLVER = hydro
@@ -16,13 +22,14 @@ GITHASH = $(shell git log --pretty=format:'%H' -n 1)
 GITREPO = $(shell git config --get remote.origin.url)
 BUILDDATE = $(shell date +"%D-%T")
 DEFINES = -DNVECTOR=$(NVECTOR) -DNDIM=$(NDIM) -DNPRE=$(NPRE) -DNENER=$(NENER) -DNVAR=$(NVAR) \
-          -DSOLVER$(SOLVER)
+          -DSOLVER$(SOLVER) -DNHILBERT=$(NHILBERT) -DINTKEY_PRECISION=$(INTKEY_PRECISION) \
+	  -DID_PRECISION=$(ID_PRECISION)
 #############################################################################
 # Fortran compiler options and directives
 
 # --- No MPI, gfortran -------------------------------
-F90 = gfortran -O0 -frecord-marker=4 -fbacktrace -ffree-line-length-none -g
-FFLAGS = -x f95-cpp-input $(DEFINES) -DWITHOUTMPI
+#F90 = gfortran -O0 -frecord-marker=4 -fbacktrace -ffree-line-length-none -g
+#FFLAGS = -x f95-cpp-input $(DEFINES) -DWITHOUTMPI
 
 # --- No MPI, tau ----------------------------------
 #F90 = tau_f90.sh -optKeepFiles -optPreProcess -optCPPOpts=$(DEFINES) -DWITHOUTMPI
@@ -44,8 +51,8 @@ FFLAGS = -x f95-cpp-input $(DEFINES) -DWITHOUTMPI
 #FFLAGS = -cpp $(DEFINES) -DWITHOUTMPI
 
 # --- MPI, gfortran syntax ------------------------------
-#F90 = mpif90 -frecord-marker=4 -O3 -ffree-line-length-none -g -fbacktrace 
-#FFLAGS = -x f95-cpp-input $(DEFINES)
+#F90 = mpif90 -f90=gfortran
+#FFLAGS = -x f95-cpp-input -frecord-marker=4 -O3 -ffree-line-length-none $(DEFINES)
 
 # --- MPI, gfortran DEBUG syntax ------------------------------ 
 #F90 = mpif90 -frecord-marker=4 -ffree-line-length-none -fbacktrace -g -O -fbounds-check -Wuninitialized -Wall
@@ -60,9 +67,9 @@ FFLAGS = -x f95-cpp-input $(DEFINES) -DWITHOUTMPI
 #FFLAGS = -cpp -check uninit -O3 -g -traceback -fpe0 -ftrapuv -check bounds  $(DEFINES) -DNOSYSTEM
 
 # --- MPI, ifort syntax, additional checks -----------
-#F90 = mpif90 -f90=ifort
-#FFLAGS = -warn all -O0 -g -traceback -fpe0 -ftrapuv -check bounds -cpp $(DEFINES) -DNOSYSTEM
-#FFLAGS = -cpp -fast -g  $(DEFINES) -DNOSYSTEM
+F90 = mpif90 -f90=ifort
+#FFLAGS = -warn all -warn nounused  -O0 -g -traceback -fpe0 -ftrapuv -check bounds -cpp $(DEFINES) -DNOSYSTEM
+FFLAGS = -cpp -g -fast  $(DEFINES) -DNOSYSTEM
 #FFLAGS = -cpp  $(DEFINES) -DNOSYSTEM    
 
 # --- MPI, ifort syntax ------------------------------
@@ -73,9 +80,10 @@ FFLAGS = -x f95-cpp-input $(DEFINES) -DWITHOUTMPI
 #F90 = ftn
 #FFLAGS = -O3 -g -traceback -fpe0 -ftrapuv -cpp $(DEFINES) -DNOSYSTEM #-DRT
 
-C = gcc
-CFLAGS = -g -O3
-
+C = icc
+#CFLAGS = -O3
+CFLAGS = -fast -g
+#CFLAGS =  -g -O0
 
 #############################################################################
 MOD = mod

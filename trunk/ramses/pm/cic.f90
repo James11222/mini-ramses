@@ -1,5 +1,5 @@
 subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
-   use amr_parameters,  only: static, dp, twotondim
+   use amr_parameters,  only: static, dp, twotondim, int_pre
    use amr_commons,     only: boxlen, nvector, ndim
    use hilbert,         only: hilbert3d
    implicit none
@@ -23,8 +23,8 @@ subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
    ! - cell_index: indices of the cells touched by the CIC clouds
    ! - vol: Fractional volume of of a particle that falls in a given cell
 
-   integer(kind=8), dimension(1:nvector, 0:2),    save :: cloud_hkey
-   integer(kind=8), dimension(1:nvector, 1:ndim), save :: ix
+!   integer(kind=8), dimension(1:nvector, 0:2),    save :: cloud_hkey
+   integer(int_pre), dimension(1:nvector, 1:ndim), save :: ix
    integer(kind=4), dimension(1:nvector),         save :: dummy_state
    integer(kind=4), dimension(1:nvector),         save :: cell_level
    real(dp),   dimension(1:nvector, 0:1, 1:ndim), save :: cloud_boundary
@@ -34,9 +34,9 @@ subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
    real(dp),        dimension(1:ndim),            save :: delta
    integer,  save :: idim, ind_cloud, ip
    real(dp), save :: part_to_grid
-   integer(kind=8), save :: grid_size
+   integer(int_pre), save :: grid_size
 
-   grid_size = 2_8**cic_level
+   grid_size = 2_int_pre**cic_level
    
    if (level_boundary_case==2) repeat_coarser = .false.
 
@@ -55,7 +55,7 @@ subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
 
       ! upper/rigt/front boundary rel to nearest integer
       do ip=1,np
-         cloud_boundary(ip,1,idim) = cloud_boundary(ip,1,idim) - floor(cloud_boundary(ip,1,idim), kind = 8)
+         cloud_boundary(ip,1,idim) = cloud_boundary(ip,1,idim) - floor(cloud_boundary(ip,1,idim), kind=dp)
       end do
 
       ! lower/left/back boundary rel to nearest integer
@@ -162,7 +162,7 @@ subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
 end subroutine cic
 
  subroutine cic_one(xpart, cell_index, vol, cic_level)
-   use amr_parameters,  only: static, mass_cut_refine, dp, twotondim
+   use amr_parameters,  only: static, mass_cut_refine, dp, twotondim, int_pre
    use amr_commons,     only: boxlen, nvector, ndim
    use hilbert,         only: hilbert3d
    implicit none
@@ -176,9 +176,9 @@ end subroutine cic
    ! which takes a mask array as an argument. However, this might slow the
    ! original routine down. GET RID OF THIS AT SOME POINT
    
-   integer(kind=8), dimension(1:1,0:2),    save :: cloud_hkey
+!   integer(kind=8), dimension(1:1,0:2),    save :: cloud_hkey
 !   integer(kind=8), dimension(1:ndim), save :: id
-   integer(kind=8), dimension(1:1,1:ndim), save :: ix
+   integer(int_pre), dimension(1:1,1:ndim), save :: ix
    real(dp),   dimension(0:1, 1:ndim), save :: cloud_boundary
    real(dp), dimension(1:ndim), save :: xpart_grid, delta
    integer,  dimension(1:ndim), save :: ind
@@ -186,9 +186,9 @@ end subroutine cic
    integer, dimension(1:1), save :: cell_level
    integer,  dimension(1:1),  save ::  dummy_state
    real(dp), save :: part_to_grid
-   integer(kind=8), save :: grid_size
+   integer(int_pre), save :: grid_size
 
-   grid_size = 2**cic_level
+   grid_size = 2_int_pre**cic_level
    ! Convert particle coordinates (0 to boxlen)
    ! into grid-coordinates (0 to 2.**grid_level)
    part_to_grid = 2.0**cic_level / dble(boxlen)
@@ -205,7 +205,7 @@ end subroutine cic
 !      id(idim) = int(cloud_boundary(1,idim), kind=8)
       
       ! upper/rigt/front boundary rel to nearest integer
-      cloud_boundary(1,idim) = cloud_boundary(1,idim) - floor(cloud_boundary(1,idim), kind=8)!id(idim)
+      cloud_boundary(1,idim) = cloud_boundary(1,idim) - floor(cloud_boundary(1,idim), kind=dp)!id(idim)
       
       ! lower/left/back boundary rel to nearest integer
       cloud_boundary(0,idim) = 1.0D0 - cloud_boundary(1,idim)

@@ -21,10 +21,27 @@ module amr_parameters
   
   ! Define integer types (for particle IDs mostly)
   integer,parameter::i4b=4
-#ifndef LONGINT
-  integer,parameter::i8b=4  ! default long int are short int
+
+  ! Integer type necessary to store particle ids and number of particles
+  ! grid ids, etc.
+#ifndef ID_PRECISION
+  integer,parameter:: id_pre = 4  
 #else
-  integer,parameter::i8b=8  ! long int are long int
+  integer,parameter:: id_pre = ID_PRECISION  
+#endif
+
+  ! Number of 64-bit integers needed to store one Hilbert key 
+#ifndef NHILBERT
+  integer, parameter :: nhilbert = 1  
+#else
+  integer, parameter :: nhilbert = NHILBERT
+#endif
+
+  ! Precision necessary to store a cartesian key 
+#ifndef INTKEY_PRECISION
+  integer, parameter :: int_pre = 4  
+#else
+  integer, parameter :: int_pre = INTKEY_PRECISION
 #endif
 
   ! Number of dimensions

@@ -9,6 +9,9 @@ subroutine init_part
   ! Allocate particle-based arrays.
   ! Read particles positions and velocities from grafic files
   !------------------------------------------------------------
+
+  !TODO: REMOVE UNUSED VARIABLES HERE!
+
   integer::dummyint
   integer::npart2,ndim2,ncpu2
   integer::ipart,jpart,jpart_loc,ipart_old,ilevel,idim
@@ -22,10 +25,10 @@ subroutine init_part
   real(kind=8)::bscale
   real(dp),dimension(1:twotondim,1:3)::xc
   integer ,dimension(1:nvector)::ind_grid,ind_cell,cc,ii
-  integer(i8b),dimension(1:ncpu)::npart_cpu,npart_all
+  integer(id_pre),dimension(1:ncpu)::npart_cpu,npart_all
   real(dp),allocatable,dimension(:)::xdp
   integer,allocatable,dimension(:)::isp
-  integer(i8b),allocatable,dimension(:)::isp8
+  integer(id_pre),allocatable,dimension(:)::isp8
   logical,allocatable,dimension(:)::nb
   real(kind=4),allocatable,dimension(:,:)::init_plane,init_plane_x
   real(dp),allocatable,dimension(:,:,:)::init_array,init_array_x
@@ -67,7 +70,6 @@ subroutine init_part
   allocate(mp    (npartmax))
   allocate(levelp(npartmax))
   allocate(idp   (npartmax))
-  allocate(part_ref_mask (npartmax))
   allocate(part_hkey(npartmax,0:2))
   allocate(current_state(npartmax))
   allocate(part_ind_permutation(npartmax))
@@ -259,10 +261,10 @@ subroutine load_gadget
   real, dimension(:, :), allocatable:: pos, vel
   real(dp)::massparticles
   integer(kind=8)::allparticles
-  integer(i8b), dimension(:), allocatable:: ids  
+  integer(id_pre), dimension(:), allocatable:: ids  
   integer::nparticles, arraysize
   integer::i, icpu, ipart, info, np, start
-  integer(i8b),dimension(1:ncpu)::npart_cpu,npart_all
+  integer(id_pre),dimension(1:ncpu)::npart_cpu,npart_all
   character(LEN=256)::filename
   integer ,dimension(1:nvector)::cc
   integer :: clock_start, clock_end, clock_rate

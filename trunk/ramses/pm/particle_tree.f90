@@ -99,25 +99,36 @@ subroutine sort_particles(ilevel, use_histograms)
   np = npart - part_level_offset(ilevel)
 
   ! Compute hilbert keys (probably move outside of this routine)
-  call hilbert_for_particle(offset, npart - offset, 0, ilevel)
+  call hilbert_for_particle(offset, np, 0, ilevel)
   
   ! Compute a permutation that sorts ALL particles starting from offset
-  call lsd_radix_sort_particles(offset, npart - offset, ilevel, ilevel, .true.)
+  call lsd_radix_sort_particles(offset, np, ilevel, ilevel, .true.)
 
   if (use_histograms)then
-     call compute_particle_histogram(offset, npart - offset)          
+     call compute_particle_histogram(offset, np)          
 #ifndef WITHOUTMPI
      call build_communicator(communicator, ndata_remote, &
-                             nbins, ndata_local, local_oft, &
-                             bin_keys(1:nbins, 2), bin_keys(1:nbins, 1), bin_keys(1:nbins, 0), &
-                             ilevel)
+          nbins, ndata_local, local_oft, bin_keys(1:nbins, 1), &
+#if NHILBERT > 1
+          bin_keys(1:nbins, 2), &
 #endif
+#if NHILBERT > 2
+          bin_keys(1:nbins, 3), &
+#endif
+          ilevel)
+#endif
+     
      allocate(refined(1:nbins))     
 #ifndef WITHOUTMPI
-     call communicate_refinements(communicator, ndata_remote, &
-                                  nbins, ndata_local, local_oft, refined, &
-                                  bin_keys(1:nbins, 2), bin_keys(1:nbins, 1), bin_keys(1:nbins, 0), &
-                                  ilevel)
+     call communicate_refinements(communicator, ndata_remote, nbins, ndata_local, &
+          local_oft, refined, bin_keys(1:nbins, 1), &
+#if NHILBERT > 1
+          bin_keys(1:nbins, 2), &
+#endif
+#if NHILBERT > 2
+          bin_keys(1:nbins, 3), &
+#endif
+          ilevel)
 #endif
      call reshuffle_particles(ilevel, np, nbins, refined, use_histograms)
   else
@@ -126,27 +137,36 @@ subroutine sort_particles(ilevel, use_histograms)
      ! in memory. Using the index insidet build_communicator and
      ! communicate_refinements is possible but will let the code deviate more
      ! from the histogrammed case.
-     call apply_particle_permutation(offset, npart - offset, ilevel) 
+     call apply_particle_permutation(offset, np, ilevel) 
 #ifndef WITHOUTMPI
-     call build_communicator(communicator, ndata_remote, &
-                             np, ndata_local, local_oft, &
-                             part_hkey(offset + 1: offset + np, 2), &
-                             part_hkey(offset + 1: offset + np, 1), &
-                             part_hkey(offset + 1: offset + np, 0), ilevel)
+     call build_communicator(communicator, ndata_remote, np, ndata_local, local_oft, &
+          part_hkey(offset + 1: offset + np, 1), &
+#if NHILBERT > 1
+          part_hkey(offset + 1: offset + np, 2), &
 #endif
+#if NHILBERT > 2
+          part_hkey(offset + 1: offset + np, 3), &
+#endif
+          ilevel)
+#endif
+     
      allocate(refined(1:np))
 #ifndef WITHOUTMPI
      call communicate_refinements(communicator, ndata_remote, &
-                                  np, ndata_local, local_oft, refined, &
-                                  part_hkey(offset + 1: offset + np, 2), &
-                                  part_hkey(offset + 1: offset + np, 1), &
-                                  part_hkey(offset + 1: offset + np, 0), ilevel)
+          np, ndata_local, local_oft, refined, &
+          part_hkey(offset + 1: offset + np, 1), &
+#if NHILBERT > 1
+          part_hkey(offset + 1: offset + np, 2), &
+#endif
+#if NHILBERT > 2
+          part_hkey(offset + 1: offset + np, 3), &
+#endif
+          ilevel)
 
 #endif
      call reshuffle_particles(ilevel, np, np, refined, use_histograms)
      print*, myid, 'refined total on level ', ilevel, sum(refined)
   end if
-
   ! Compute NEW number of particles in ilevel
   np = part_level_offset(ilevel + 1) - part_level_offset(ilevel)  
 
@@ -168,8 +188,16 @@ end subroutine sort_particles
 !################################################################
 #ifndef WITHOUTMPI
 subroutine communicate_refinements(communicator, ndata_remote, ndata, ndata_local, ndata_local_oft, &
-                                   refined, keys2, keys1, keys0, ilevel)
+     refined, keys1, &
+#if NHILBERT > 1
+     keys2, &
+#endif
+#if NHILBERT > 2
+     keys3, &
+#endif
+     ilevel)
 
+  use amr_parameters, only: nhilbert
   use amr_commons,   only: ncpu, myid, bound_key_level, son, nvector, nlevelmax
   use particle_communication, only: part_data_to_domain_i8, part_data_to_domain_i4, &
                                     domain_data_to_part_i4
@@ -177,7 +205,13 @@ subroutine communicate_refinements(communicator, ndata_remote, ndata, ndata_loca
   include 'mpif.h'
   integer, intent(in) ::  ilevel, ndata
   integer, intent(in) :: ndata_remote, ndata_local, ndata_local_oft
-  integer(kind=8), dimension(1:ndata), intent(in) :: keys2, keys1, keys0
+  integer(kind=8), dimension(1:ndata), intent(in) :: keys1
+#if NHILBERT > 1
+  integer(kind=8), dimension(1:ndata), intent(in) :: keys2
+#endif
+#if NHILBERT > 2
+  integer(kind=8), dimension(1:ndata), intent(in) :: keys3
+#endif
   integer, dimension(1:ncpu, 1:4), intent(in) :: communicator
   integer, dimension(1:ndata), intent(inout) :: refined
   
@@ -202,18 +236,28 @@ subroutine communicate_refinements(communicator, ndata_remote, ndata, ndata_loca
   integer(kind=8), allocatable, dimension(:,:) :: remote_keys
 
   allocate(remote_refined(1:ndata_remote))
-  allocate(remote_keys(1:ndata_remote, 0:2))
-
-  call part_data_to_domain_i8(communicator, keys0, remote_keys(:,0))
+  allocate(remote_keys(1:ndata_remote, 1:nhilbert))
   call part_data_to_domain_i8(communicator, keys1, remote_keys(:,1))
+#if NHILBERT > 1
   call part_data_to_domain_i8(communicator, keys2, remote_keys(:,2))
+#endif
+#if NHILBERT > 2
+  call part_data_to_domain_i8(communicator, keys3, remote_keys(:,3))
+#endif
+
 
   ! Probe local cells for refinement (abuse refined to store cell index)
   do ioft = ndata_local_oft, ndata_local_oft + ndata_local -1, nvector
      nd = min(ndata_local_oft + ndata_local - ioft, nvector) 
      call get_cell_index_from_hilbertkey(refined(ioft + 1 : ioft + nd), &
-          dummy_int(1 : nd), keys2(ioft + 1: ioft + nd), &
-          keys1(ioft + 1: ioft + nd), keys0(ioft + 1: ioft + nd), nd, ilevel)
+          dummy_int(1 : nd), keys1(ioft + 1: ioft + nd), &
+#if NHILBERT > 1
+          keys2(ioft + 1: ioft + nd), &
+#endif
+#if NHILBERT > 2
+          keys3(ioft + 1: ioft + nd), &
+#endif
+          nd, ilevel)
   end do
 
   ! Mark data corresponding to refined cells
@@ -229,8 +273,14 @@ subroutine communicate_refinements(communicator, ndata_remote, ndata, ndata_loca
   do ioft = 0, ndata_remote - 1 , nvector
      nd = min(ndata_remote - ioft, nvector) 
      call get_cell_index_from_hilbertkey(remote_refined(ioft + 1 : ioft + nd), &
-          dummy_int(1 : nd), remote_keys(ioft + 1: ioft + nd,2), &
-          remote_keys(ioft + 1: ioft + nd,1), remote_keys(ioft + 1: ioft + nd,0), nd, ilevel)
+          dummy_int(1 : nd), remote_keys(ioft + 1: ioft + nd,1), &
+#if NHILBERT > 1
+          remote_keys(ioft + 1: ioft + nd, 2), &
+#endif
+#if NHILBERT > 2
+          remote_keys(ioft + 1: ioft + nd, 3), &
+#endif
+          nd, ilevel)
   end do
 
   ! Mark bins corresponding to refined cells
@@ -262,8 +312,8 @@ end subroutine communicate_refinements
 subroutine reshuffle_particles(ilevel, np, ndata, refined, use_histograms)
   use pm_commons,     only: part_level_offset, part_ind_permutation, part_hkey, &
                             bin_keys, part_ind_permutation2
-  use sort,           only: gt_3keys, apply_particle_permutation
-  use amr_parameters, only: nlevelmax
+  use sort,           only: gt_keys, apply_particle_permutation
+  use amr_parameters, only: nlevelmax, nhilbert
   implicit none
 
   
@@ -290,7 +340,7 @@ subroutine reshuffle_particles(ilevel, np, ndata, refined, use_histograms)
      ibin = 1; unrefined = (refined(ibin) == 0)     
      do ip = offset + 1, offset + np  
         ipart = part_ind_permutation(ip)
-        if (gt_3keys(part_hkey(ipart,0:2), bin_keys(ibin,0:2)))then
+        if (gt_keys(part_hkey(ipart,1:nhilbert), bin_keys(ibin,1:nhilbert)))then
            ibin=ibin+1
         end if
         if (refined(ibin) == 0) then 
@@ -308,7 +358,7 @@ subroutine reshuffle_particles(ilevel, np, ndata, refined, use_histograms)
      ibin = 1; unrefined = (refined(ibin) == 0)
      do ip = offset + 1, offset + np
         ipart = part_ind_permutation(ip)
-        if (gt_3keys(part_hkey(ipart,0:2), bin_keys(ibin,0:2))) then
+        if (gt_keys(part_hkey(ipart,1:nhilbert), bin_keys(ibin,1:nhilbert))) then
            ibin = ibin + 1
         end if
         if (refined(ibin) == 1)then
@@ -403,32 +453,54 @@ end subroutine reshuffle_particles
 !   end do
 ! end subroutine get_cell_index
 
-subroutine get_cell_index_from_hilbertkey(cell_index,cell_levl,hilbert_key2,hilbert_key1,hilbert_key0,np,ilevel)
+subroutine get_cell_index_from_hilbertkey(cell_index,cell_levl,hilbert_key1, &
+#if NHILBERT > 1
+     hilbert_key2, &
+#endif
+#if NHILBERT > 2
+     hilbert_key3, &
+#endif
+     np,ilevel)
+  use amr_parameters, only: int_pre
   use amr_commons, only: nlevelmax, nvector, myid, ncoarse, ngridmax, xg
   use hilbert,     only: hilbert3d_reverse
   implicit none
   integer, intent(in)::np,ilevel
-  integer(kind=8),dimension(1:nvector)::x,y,z
-  integer(kind=8),dimension(1:nvector)::hilbert_key2,hilbert_key1,hilbert_key0
+  integer(int_pre),dimension(1:nvector)::x,y,z
+  integer(kind=8),dimension(1:nvector)::hilbert_key1
+#if NHILBERT > 1
+  integer(kind=8),dimension(1:nvector)::hilbert_key2
+#endif
+#if NHILBERT > 2
+  integer(kind=8),dimension(1:nvector)::hilbert_key3
+#endif
   integer,dimension(1:nvector)::cell_levl, cell_index
   integer,dimension(1:nvector)::cell_levl2, cell_index2
   integer :: i
-  call hilbert3d_reverse(x,y,z,hilbert_key2,hilbert_key1,hilbert_key0,ilevel,np)
+  call hilbert3d_reverse(x,y,z,hilbert_key1, &
+#if NHILBERT > 1
+       hilbert_key2, &
+#endif
+#if NHILBERT > 2
+       hilbert_key3, &
+#endif
+       ilevel,np)
   call get_cell_index_from_cartesian_hash(cell_index,cell_levl,x,y,z,ilevel,np,ilevel)
      
 end subroutine get_cell_index_from_hilbertkey
 
 subroutine get_cell_index_from_cartesian(cell_index,cell_levl,xx,yy,zz,ilevel,n,bit_length)
   use amr_commons
+  use amr_parameters, only: int_pre
   implicit none
 
   integer, intent(in)::n,ilevel,bit_length
   integer,dimension(1:nvector)::cell_index,cell_levl
-  integer(kind=8),dimension(1:nvector)::xx,yy,zz
+  integer(int_pre),dimension(1:nvector)::xx,yy,zz
   !----------------------------------------------------------------------------
   !----------------------------------------------------------------------------
   integer::i,j,ind,iskip,igrid,ind_cell,igrid0
-  integer(kind=8)::ii,jj,kk
+  integer(int_pre)::ii,jj,kk
 
   if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
   else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
@@ -467,15 +539,16 @@ end subroutine get_cell_index_from_cartesian
 subroutine get_cell_index_from_cartesian_hash(cell_index,cell_levl,xx,yy,zz,ilevel,n,bit_length)
   use amr_commons
   use hash, only: hash_get
+  use amr_parameters, only: int_pre
   implicit none
 
   integer, intent(in)::n,ilevel,bit_length
   integer,intent(inout), dimension(1:nvector)::cell_index,cell_levl
-  integer(kind=8),intent(in),dimension(1:nvector)::xx,yy,zz
+  integer(int_pre),intent(in),dimension(1:nvector)::xx,yy,zz
   !----------------------------------------------------------------------------
   !----------------------------------------------------------------------------
   integer :: i
-  integer(kind=8), dimension(0:ndim) :: key
+  integer(int_pre), dimension(0:ndim) :: hash_key
   
   if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
   else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
@@ -492,19 +565,19 @@ subroutine get_cell_index_from_cartesian_hash(cell_index,cell_levl,xx,yy,zz,ilev
 
   ! Probe for cells starting from ilevel, if cell not present, try coarser
   do i = 1, n
-     key(0) = ilevel
-     key(1) = xx(i)
-     key(2) = yy(i)
-     key(3) = zz(i)
-     cell_index(i) = hash_get(cell_dict, key)
+     hash_key(0) = ilevel
+     hash_key(1) = xx(i)
+     hash_key(2) = yy(i)
+     hash_key(3) = zz(i)
+     cell_index(i) = hash_get(cell_dict, hash_key)
 
      do while (cell_index(i) == 0 .and. cell_levl(i) > 1)
         cell_levl(i) = cell_levl(i) - 1
-        key(0) = cell_levl(i)
-        key(1) = ISHFT(key(1), -1)
-        key(2) = ISHFT(key(2), -1)
-        key(3) = ISHFT(key(3), -1)
-        cell_index(i) = hash_get(cell_dict, key)
+        hash_key(0) = cell_levl(i)
+        hash_key(1) = ISHFT(hash_key(1), -1)
+        hash_key(2) = ISHFT(hash_key(2), -1)
+        hash_key(3) = ISHFT(hash_key(3), -1)
+        cell_index(i) = hash_get(cell_dict, hash_key)
      end do
   end do
 
@@ -582,7 +655,7 @@ end subroutine get_cell_index
 subroutine compute_particle_histogram(offset, np)
   use pm_commons
   use amr_commons
-  use sort,        only: gt_3keys
+  use sort,        only: gt_keys
   implicit none
   integer, intent(in) :: offset, np
 
@@ -593,7 +666,7 @@ subroutine compute_particle_histogram(offset, np)
   !----------------------------------------------------------------------------
 
   integer,                         save :: ibin, ipart, ip
-  integer(kind=8), dimension(0:2), save :: current_bin_key
+  integer(kind=8), dimension(1:nhilbert), save :: current_bin_key
 
 
   ! if there is nothing to do...
@@ -602,12 +675,12 @@ subroutine compute_particle_histogram(offset, np)
   
   ! Count the number of bins
   nbins = 1
-  current_bin_key(0:2) = part_hkey(part_ind_permutation(offset + 1),0:2)
+  current_bin_key(1:nhilbert) = part_hkey(part_ind_permutation(offset + 1), 1:nhilbert)
   do ip = offset + 2, offset + np
      ipart = part_ind_permutation(ip)
-     if (gt_3keys(part_hkey(ipart,0:2), current_bin_key(0:2)))then
+     if (gt_keys(part_hkey(ipart,1:nhilbert), current_bin_key(1:nhilbert)))then
         nbins=nbins+1
-        current_bin_key(0:2) = part_hkey(ipart,0:2)
+        current_bin_key(1:nhilbert) = part_hkey(ipart, 1:nhilbert)
      end if
   end do
   
@@ -619,7 +692,7 @@ subroutine compute_particle_histogram(offset, np)
      deallocate(bin_mass)
   end if
   if (.not. allocated(bin_keys))then
-     allocate(bin_keys(nbins,0:2))
+     allocate(bin_keys(nbins,1:nhilbert))
      allocate(bin_count(nbins))
      allocate(bin_start_offset(nbins+1))
      allocate(bin_mass(nbins))
@@ -631,19 +704,19 @@ subroutine compute_particle_histogram(offset, np)
 
   ! First particle in first bin
   ibin=1
-  bin_keys(ibin, 0:2) = part_hkey(part_ind_permutation(offset + 1), 0:2)  
+  bin_keys(ibin, 1:nhilbert) = part_hkey(part_ind_permutation(offset + 1), 1:nhilbert)  
   bin_count(ibin) = 1.d0
   bin_start_offset(ibin) = offset
 
   ! All other particles/bins
-  current_bin_key(0:2) = part_hkey(part_ind_permutation(offset + 1), 0:2)
+  current_bin_key(1:nhilbert) = part_hkey(part_ind_permutation(offset + 1), 1:nhilbert)
   do ip = offset + 2, offset + np
      ipart = part_ind_permutation(ip)
-     if (gt_3keys(part_hkey(ipart,0:2), current_bin_key(0:2)))then
+     if (gt_keys(part_hkey(ipart,1:nhilbert), current_bin_key(1:nhilbert)))then
         ibin = ibin + 1
         bin_start_offset(ibin) = ip - 1 
-        bin_keys(ibin,0:2) = part_hkey(ipart, 0:2)
-        current_bin_key(0:2) = part_hkey(ipart, 0:2)
+        bin_keys(ibin,1:nhilbert) = part_hkey(ipart, 1:nhilbert)
+        current_bin_key(1:nhilbert) = part_hkey(ipart, 1:nhilbert)
      end if
      bin_count(ibin) = bin_count(ibin) + 1.d0
   end do
@@ -732,8 +805,9 @@ end subroutine count_parts
 !#########################################################################
 !#########################################################################
 subroutine check_sorted(offset, np)
+  use amr_parameters, only: nhilbert
   use pm_commons,   only : part_hkey, part_ind_permutation
-  use sort,         only : ge_3keys
+  use sort,         only : ge_keys
   use amr_commons,  only : myid
   implicit none
   integer, intent(in) :: offset, np
@@ -744,23 +818,21 @@ subroutine check_sorted(offset, np)
   !----------------------------------------------------------------------------
   logical,                         save :: ok
   integer,                         save :: ipart, ip
-  integer(kind=8), dimension(0:2), save :: current_key
+  integer(kind=8), dimension(1:nhilbert), save :: current_key
 
   ok =.true.
   
-  !  current_key(0:2) = part_hkey(part_ind_permutation(offset + 1),0:2)
-    current_key(0:2) = part_hkey(offset + 1,0:2)
+  !  current_key(1:nhilbert) = part_hkey(part_ind_permutation(offset + 1),1:nhilbert)
+    current_key(1:nhilbert) = part_hkey(offset + 1,1:nhilbert)
   do ip = offset + 2, offset + np
      !ipart = part_ind_permutation(ip)
      ipart = ip
-     if (.not. ge_3keys(part_hkey(ipart,0:2), current_key(0:2)))then
+     if (.not. ge_keys(part_hkey(ipart, 1:nhilbert), current_key(1:nhilbert)))then
         ok=.false.
         print*, "Detected unsorted particles on process", myid
-        print*, part_hkey(ipart,0),current_key(0)
-        print*, part_hkey(ipart,1),current_key(1)
-        print*, part_hkey(ipart,2),current_key(2)
+        print*, part_hkey(ipart,1:nhilbert),current_key(1:nhilbert)
      end if
-     current_key(0:2) = part_hkey(ipart,0:2)
+     current_key(1:nhilbert) = part_hkey(ipart,1:nhilbert)
   end do
   if (.not. ok)stop
 end subroutine check_sorted

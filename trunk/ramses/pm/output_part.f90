@@ -9,7 +9,7 @@ subroutine backup_part(filename)
   character(LEN=5)::nchar
   real(dp),allocatable,dimension(:)::xdp
   integer,allocatable,dimension(:)::ii
-  integer(i8b),allocatable,dimension(:)::ii8
+  integer(id_pre),allocatable,dimension(:)::ii8
   integer,allocatable,dimension(:)::ll
   logical,allocatable,dimension(:)::nb
   

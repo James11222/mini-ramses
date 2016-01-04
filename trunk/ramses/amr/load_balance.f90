@@ -1378,7 +1378,15 @@ end subroutine defrag
 !#########################################################################
 !#########################################################################
 !#########################################################################
-subroutine cmp_ordering_int(x,hkey2,hkey1,hkey0,nn)
+subroutine cmp_ordering_int(x,hkey1, &
+#if NHILBERT > 1
+     hkey2, &
+#endif
+#if NHILBERT > 2
+     hkey3, &
+#endif
+     nn)
+
   use amr_parameters
   use amr_commons
   use hilbert, only: hilbert3d
@@ -1388,15 +1396,21 @@ subroutine cmp_ordering_int(x,hkey2,hkey1,hkey0,nn)
   include 'mpif.h'
 #endif
   real(dp),dimension(1:nvector,1:ndim)::x
-!  real(qdp),dimension(1:nvector)::order
-  integer(kind=8),dimension(1:nvector)::hkey2,hkey1,hkey0
+  !  real(qdp),dimension(1:nvector)::order
+  integer(kind=8),dimension(1:nvector)::hkey1
+#if NHILBERT > 1
+  integer(kind=8),dimension(1:nvector)::hkey2
+#endif
+#if NHILBERT > 1
+  integer(kind=8),dimension(1:nvector)::hkey3
+#endif
   !--------------------------------------------------------
   ! This routine computes the index key of the input cell
   ! according to its position in space and for the chosen
   ! ordering. Position x are in user units.
   !-----------------------------------------------------
   integer(kind=4),dimension(1:nvector)::cstate
-  integer(kind=8),dimension(1:nvector),save::ix,iy,iz
+  integer(int_pre),dimension(1:nvector),save::ix,iy,iz
   integer::i,ncode,bit_length,nx_loc
   integer::temp,info
   real(kind=8)::scale,bscale,xx,yy,zz,xc,yc,zc
@@ -1433,9 +1447,16 @@ subroutine cmp_ordering_int(x,hkey2,hkey1,hkey0,nn)
      iz(i)=int(x(i,3)*bscale,kind=8)
 #endif
   end do
-
-  call hilbert3d(ix,iy,iz,hkey2,hkey1,hkey0,cstate,0,bit_length,nn)
-
+  
+  call hilbert3d(ix,iy,iz,hkey1, &
+#if NHILBERT > 1
+       hkey2, &
+#endif
+#if NHILBERT > 2
+       hkey3, &
+#endif
+       cstate,0,bit_length,nn)
+  
 end subroutine cmp_ordering_int
 !#########################################################################
 !#########################################################################

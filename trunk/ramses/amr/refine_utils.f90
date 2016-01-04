@@ -33,7 +33,7 @@ subroutine refine_coarse
   logical::boundary_region
   logical::ok_free,ok_all
   integer,dimension(1:nvector),save::ind_cell_tmp
-  integer(i8b)::tmp_long
+  integer(id_pre)::tmp_long
   
   if(verbose)write(*,*)'  Entering refine_coarse'
   
@@ -131,11 +131,12 @@ subroutine refine_coarse
 
   ! Compute grid number statistics at level 1
 #ifndef WITHOUTMPI
-#ifndef LONGINT
+#if ID_PRECISION == 4
   call MPI_ALLREDUCE(numbl(myid,1),numbtot(1,1),1,MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,info)
   call MPI_ALLREDUCE(numbl(myid,1),numbtot(2,1),1,MPI_INTEGER,MPI_MIN,MPI_COMM_WORLD,info)
   call MPI_ALLREDUCE(numbl(myid,1),numbtot(3,1),1,MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,info)
-#else
+#endif
+#if ID_PRECISION == 8
   tmp_long=numbl(myid,1)
   call MPI_ALLREDUCE(tmp_long,numbtot(1,1),1,MPI_INTEGER8,MPI_SUM,MPI_COMM_WORLD,info)
   call MPI_ALLREDUCE(tmp_long,numbtot(2,1),1,MPI_INTEGER8,MPI_MIN,MPI_COMM_WORLD,info)
@@ -353,7 +354,7 @@ subroutine refine_fine(ilevel)
   integer,dimension(1:nvector),save::ind_grid,ind_cell
   integer,dimension(1:nvector),save::ind_grid_tmp,ind_cell_tmp
   logical,dimension(1:nvector),save::ok
-  integer(i8b)::tmp_long
+  integer(id_pre)::tmp_long
   logical::ok_free,ok_all
 
   if(ilevel==nlevelmax)return
@@ -531,11 +532,12 @@ subroutine refine_fine(ilevel)
 
   ! Compute grid number statistics at level ilevel+1
 #ifndef WITHOUTMPI
-#ifndef LONGINT
+#if ID_PRECISION == 4
   call MPI_ALLREDUCE(numbl(myid,ilevel+1),numbtot(1,ilevel+1),1,MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,info)
   call MPI_ALLREDUCE(numbl(myid,ilevel+1),numbtot(2,ilevel+1),1,MPI_INTEGER,MPI_MIN,MPI_COMM_WORLD,info)
   call MPI_ALLREDUCE(numbl(myid,ilevel+1),numbtot(3,ilevel+1),1,MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,info)
-#else
+#endif
+#if ID_PRECISION == 8
   tmp_long=numbl(myid,ilevel+1)
   call MPI_ALLREDUCE(tmp_long,numbtot(1,ilevel+1),1,MPI_INTEGER8,MPI_SUM,MPI_COMM_WORLD,info)
   call MPI_ALLREDUCE(tmp_long,numbtot(2,ilevel+1),1,MPI_INTEGER8,MPI_MIN,MPI_COMM_WORLD,info)
@@ -960,7 +962,7 @@ end subroutine kill_grid
 
 
 subroutine add_grid_to_hash_table(igrid, ilevel)
-  use amr_parameters, only: ndim, ngridmax
+  use amr_parameters, only: ndim, ngridmax, int_pre
   use amr_commons,    only: xg, twotondim, ncoarse, cell_dict
   use hash,           only: hash_set
   use coordinates,    only: grid_to_integer
@@ -969,7 +971,7 @@ subroutine add_grid_to_hash_table(igrid, ilevel)
   integer, intent(in) :: igrid, ilevel
   ! Add all cells belonging to igrid to hash table  
   integer :: ind, idim, icell
-  integer(kind=8), dimension(0:ndim) :: ix
+  integer(int_pre), dimension(0:ndim) :: ix
 
   do ind = 1, twotondim
      ix(0) = ilevel
@@ -988,7 +990,7 @@ subroutine add_grid_to_hash_table(igrid, ilevel)
 end subroutine add_grid_to_hash_table
 
 subroutine remove_grid_from_hash_table(igrid, ilevel)
-  use amr_parameters, only: ndim, ngridmax
+  use amr_parameters, only: ndim, ngridmax, int_pre
   use amr_commons,    only: xg, twotondim, cell_dict, ncoarse
   use hash,           only: hash_free
   use coordinates,    only: grid_to_integer
@@ -996,7 +998,7 @@ subroutine remove_grid_from_hash_table(igrid, ilevel)
   integer, intent(in) :: igrid, ilevel
   ! Remove all cells belonging to igrid to hash table  
   integer :: ind, idim
-  integer(kind=8), dimension(0:ndim) :: ix
+  integer(int_pre), dimension(0:ndim) :: ix
   
   do ind = 1, twotondim
      ix(0) = ilevel

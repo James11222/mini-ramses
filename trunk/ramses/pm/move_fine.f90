@@ -187,9 +187,13 @@ subroutine compute_particle_acceleration(ilevel, read_gas_velocity)
 #ifndef WITHOUTMPI
   call build_communicator(communicator, npart_recv, &
        nparts, nparts_local, local_oft, &
+       part_hkey(offset + 1 : offset + nparts, 1), & 
+#if NHILBERT > 1
        part_hkey(offset + 1 : offset + nparts, 2), &
-       part_hkey(offset + 1 : offset + nparts, 1), &
-       part_hkey(offset + 1 : offset + nparts, 0), & 
+#endif
+#if NHILBERT > 2
+       part_hkey(offset + 1 : offset + nparts, 3), &
+#endif
        ilevel)
 
   allocate(xp_remote(1:npart_recv, 1:3), ap_remote(1:npart_recv, 1:3))

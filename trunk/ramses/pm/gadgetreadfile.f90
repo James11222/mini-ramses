@@ -103,7 +103,7 @@ CONTAINS
     TYPE (gadgetheadertype) :: header
 ! Particle data
     REAL, DIMENSION(3,*) :: pos,vel
-#ifndef LONGINT
+#if ID_PRECISION == 4
     INTEGER*4, DIMENSION(*) :: id
 #else
     INTEGER*8, DIMENSION(*) :: id
@@ -167,7 +167,7 @@ CONTAINS
     TYPE (gadgetheadertype) :: header
 ! Particle data
     REAL, DIMENSION(3,*) :: pos,vel
-#ifndef LONGINT
+#if ID_PRECISION == 4
     INTEGER*4, DIMENSION(*) :: id
 #else
     INTEGER*8, DIMENSION(*) :: id

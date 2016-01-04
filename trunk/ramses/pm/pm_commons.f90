@@ -8,7 +8,6 @@ module pm_commons
   real(dp),allocatable,dimension(:)         ::mp       ! Masses
   real(dp),allocatable,dimension(:,:)       ::ap       ! Accelerations (more convenient communication if allocated fully
                                                                    ! for all particles
-  integer(kind=8),allocatable,dimension(:)  ::part_ref_mask        ! mask for refinement
   integer(kind=8),allocatable,dimension(:,:)::part_hkey
   integer(kind=4),allocatable,dimension(:)  ::current_state
   integer(kind=4),allocatable,dimension(:)  ::sorted_particle_index
@@ -25,7 +24,7 @@ module pm_commons
   integer ,allocatable,dimension(:)  ::nextp    ! Next particle in list
   integer ,allocatable,dimension(:)  ::prevp    ! Previous particle in list
   integer ,allocatable,dimension(:)  ::levelp   ! Current level of particle
-  integer(i8b),allocatable,dimension(:)::idp    ! Identity of particle
+  integer(id_pre),allocatable,dimension(:)::idp    ! Identity of particle
   integer ,allocatable,dimension(:)  :: part_level_offset    
   integer ,allocatable,dimension(:)  :: bin_start_offset
 
