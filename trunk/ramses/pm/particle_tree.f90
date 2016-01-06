@@ -468,7 +468,7 @@ subroutine get_cell_index_from_hilbertkey(cell_index,cell_levl,hilbert_key1, &
   use hilbert,     only: hilbert3d_reverse
   implicit none
   integer, intent(in)::np,ilevel
-  integer(int_pre),dimension(1:nvector)::x,y,z
+  integer(int_pre),dimension(1:nvector, 1:3)::ix
   integer(kind=8),dimension(1:nvector)::hilbert_key1
 #if NHILBERT > 1
   integer(kind=8),dimension(1:nvector)::hilbert_key2
@@ -479,7 +479,7 @@ subroutine get_cell_index_from_hilbertkey(cell_index,cell_levl,hilbert_key1, &
   integer,dimension(1:nvector)::cell_levl, cell_index
   integer,dimension(1:nvector)::cell_levl2, cell_index2
   integer :: i
-  call hilbert3d_reverse(x,y,z,hilbert_key1, &
+  call hilbert3d_reverse(ix(1,1),ix(1,2),ix(1,3),hilbert_key1, &
 #if NHILBERT > 1
        hilbert_key2, &
 #endif
@@ -487,74 +487,73 @@ subroutine get_cell_index_from_hilbertkey(cell_index,cell_levl,hilbert_key1, &
        hilbert_key3, &
 #endif
        ilevel,np)
-  call get_cell_index_from_cartesian_hash(cell_index,cell_levl,x,y,z,ilevel,np,ilevel)
+  call get_cell_index_from_cartesian_hash(cell_index,cell_levl,ix,ilevel,np)
      
 end subroutine get_cell_index_from_hilbertkey
 
-subroutine get_cell_index_from_cartesian(cell_index,cell_levl,xx,yy,zz,ilevel,n,bit_length)
-  use amr_commons
-  use amr_parameters, only: int_pre
-  implicit none
+! subroutine get_cell_index_from_cartesian(cell_index,cell_levl,xx,yy,zz,ilevel,n,bit_length)
+!   use amr_commons
+!   use amr_parameters, only: int_pre
+!   implicit none
 
-  integer, intent(in)::n,ilevel,bit_length
-  integer,dimension(1:nvector)::cell_index,cell_levl
-  integer(int_pre),dimension(1:nvector)::xx,yy,zz
-  !----------------------------------------------------------------------------
-  !----------------------------------------------------------------------------
-  integer::i,j,ind,iskip,igrid,ind_cell,igrid0
-  integer(int_pre)::ii,jj,kk
+!   integer, intent(in)::n,ilevel,bit_length
+!   integer,dimension(1:nvector)::cell_index,cell_levl
+!   integer(int_pre),dimension(1:nvector)::xx,yy,zz
+!   !----------------------------------------------------------------------------
+!   !----------------------------------------------------------------------------
+!   integer::i,j,ind,iskip,igrid,ind_cell,igrid0
+!   integer(int_pre)::ii,jj,kk
 
-  if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
-  else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
-  else
-     write(*,*)"nx=ny=nz != 1,3 is not supported."
-     stop
-  end if
+!   if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
+!   else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
+!   else
+!      write(*,*)"nx=ny=nz != 1,3 is not supported."
+!      stop
+!   end if
 
-  if (bit_length>21)then
-     print*, 'bit length too big for now'
-  end if
+!   if (bit_length>21)then
+!      print*, 'bit length too big for now'
+!   end if
   
-  ind_cell=0
-  igrid0=son(1+icoarse_min+jcoarse_min*nx+kcoarse_min*nx*ny)
-  do i=1,n
-     igrid=igrid0
-     do j=1,ilevel 
-        ii=ISHFT(xx(i),-bit_length+j)
-        jj=ISHFT(yy(i),-bit_length+j)
-        kk=ISHFT(zz(i),-bit_length+j)
-        ii=mod(ii,2)
-        jj=mod(jj,2)
-        kk=mod(kk,2)
-        ind=1+ii+2*jj+4*kk
-        iskip=ncoarse+(ind-1)*ngridmax
-        ind_cell=iskip+igrid
-        igrid=son(ind_cell)
-        if(igrid==0.or.j==ilevel)exit
-     end do
-     cell_index(i)=ind_cell
-     cell_levl(i)=j
-  end do
-end subroutine get_cell_index_from_cartesian
+!   ind_cell=0
+!   igrid0=son(1+icoarse_min+jcoarse_min*nx+kcoarse_min*nx*ny)
+!   do i=1,n
+!      igrid=igrid0
+!      do j=1,ilevel 
+!         ii=ISHFT(xx(i),-bit_length+j)
+!         jj=ISHFT(yy(i),-bit_length+j)
+!         kk=ISHFT(zz(i),-bit_length+j)
+!         ii=mod(ii,2)
+!         jj=mod(jj,2)
+!         kk=mod(kk,2)
+!         ind=1+ii+2*jj+4*kk
+!         iskip=ncoarse+(ind-1)*ngridmax
+!         ind_cell=iskip+igrid
+!         igrid=son(ind_cell)
+!         if(igrid==0.or.j==ilevel)exit
+!      end do
+!      cell_index(i)=ind_cell
+!      cell_levl(i)=j
+!   end do
+! end subroutine get_cell_index_from_cartesian
 
 
-subroutine get_cell_index_from_cartesian_hash(cell_index,cell_levl,xx,yy,zz,ilevel,n,bit_length)
+subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel, n)
   use amr_commons
   use hash, only: hash_get
   use amr_parameters, only: int_pre
   implicit none
 
-  integer, intent(in)::n,ilevel,bit_length
-  integer,intent(inout), dimension(1:nvector)::cell_index,cell_levl
-  integer(int_pre),intent(in),dimension(1:nvector)::xx,yy,zz
+  integer, intent(in) :: n, ilevel
+  integer(int_pre), intent(in), dimension(1:nvector, 1:ndim) :: ix
+  integer, intent(inout), dimension(1:nvector) :: cell_index, cell_levl
+
   !----------------------------------------------------------------------------
   !----------------------------------------------------------------------------
   integer :: i
-  integer(int_pre), dimension(0:ndim) :: hash_key
-  logical, save, dimension(1:nvector) :: same
-!  integer, save :: skipped = 0
-!  integer, save :: tot = 0
-!  integer, save :: unskipped = 0
+  integer(int_pre), dimension(0:ndim, 1:nvector) :: hash_key
+  integer, dimension(1:nvector) :: ind, igrid
+  logical, dimension(1:nvector) :: same
   
   if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
   else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
@@ -563,60 +562,69 @@ subroutine get_cell_index_from_cartesian_hash(cell_index,cell_levl,xx,yy,zz,ilev
      stop
   end if
 
-  if (bit_length>21)then
-     print*, 'bit length too big for now'
-  end if
 
-  cell_levl(1:n) = ilevel
+  ! Construct ind from last digits
+  do i = 1, n
+     ind(i) = IAND(ix(i, 1), 1_int_pre)
+     ind(i) = ind(i) + IAND(ix(i, 2), 1_int_pre) * 2_int_pre
+     ind(i) = ind(i) + IAND(ix(i, 3), 1_int_pre) * 4_int_pre
+  end do
 
-  ! preparatory step
-  same(2:n) = .true.
+  ! Fill hash key arrays
+  do i = 1, n
+     hash_key(0, i) = ilevel
+     hash_key(1, i) = ISHFT(ix(i, 1), -1)
+     hash_key(2, i) = ISHFT(ix(i, 2), -1)
+     hash_key(3, i) = ISHFT(ix(i, 3), -1)
+  end do
+
+  ! Check if two cell indices located in the same grid
   same(1) = .false.
   do i = 2, n
-     same(i) = same(i) .and. xx(i) == xx(i-1)
+     same(i) =               hash_key(1, i) == hash_key(1, i - 1) 
+     same(i) = same(i) .and. hash_key(2, i) == hash_key(2, i - 1) 
+     same(i) = same(i) .and. hash_key(3, i) == hash_key(3, i - 1) 
   end do
-  do i = 2, n
-     same(i) = same(i) .and. yy(i) == yy(i-1)
-  end do
-  do i = 2, n
-     same(i) = same(i) .and. zz(i) == zz(i-1)
-  end do
-     
-  ! Probe for cells starting from ilevel, if cell not present, try coarser
+  
+  ! Probe for grid starting from ilevel, if not present, try coarser
+  cell_levl(1:n) = ilevel
   do i = 1, n
-!     tot = tot + 1
+
+     ! Check if I can skip accessing the hash table
      if (same(i)) then
-        cell_index(i) = cell_index(i - 1)
+        igrid(i) = igrid(i - 1)
         cell_levl(i) = cell_levl(i - 1)
-!        skipped = skipped + 1
         cycle
      end if
-!     unskipped = unskipped + 1
-     hash_key(0) = ilevel
-     hash_key(1) = xx(i)
-     hash_key(2) = yy(i)
-     hash_key(3) = zz(i)
-     cell_index(i) = hash_get(cell_dict, hash_key)
 
-     do while (cell_index(i) == 0 .and. cell_levl(i) > 1)
+     ! Access the hash table only if necessary
+     igrid(i) = hash_get(grid_dict, hash_key(0:ndim, i))
+
+     ! If nothing found, try coarser
+     do while (igrid(i) == 0 .and. cell_levl(i) > 2)
         cell_levl(i) = cell_levl(i) - 1
-        hash_key(0) = cell_levl(i)
-        hash_key(1) = ISHFT(hash_key(1), -1)
-        hash_key(2) = ISHFT(hash_key(2), -1)
-        hash_key(3) = ISHFT(hash_key(3), -1)
-        cell_index(i) = hash_get(cell_dict, hash_key)
+        hash_key(0, i) = cell_levl(i)
+        hash_key(1, i) = ISHFT(hash_key(1, i), -1)
+        hash_key(2, i) = ISHFT(hash_key(2, i), -1)
+        hash_key(3, i) = ISHFT(hash_key(3, i), -1)
+        igrid(i) = hash_get(grid_dict, hash_key(0:ndim, i))
      end do
   end do
 
-!  if (mod(skipped,1000)==0) print*,tot,skipped, unskipped
-  
-  ! Do check if all went well
+  ! Check if all went well
   ! do i = 1, n
-  !    if (cell_index(i) == 0) then
-  !       write(*,*)"Problem in get_cell_index_from_cartesian"
+  !    if (igrid(i) == 0) then
+  !       write(*,*)"Problem in get_cell_index_from_cartesian_hash"
   !       stop
   !    end if
   ! end do
+  
+  do i = 1, n
+     cell_index(i) = ncoarse + igrid(i) + ind(i) * ngridmax 
+  end do
+  
+  !  if (mod(skipped,1000)==0) print*,tot,skipped, unskipped
+
 end subroutine get_cell_index_from_cartesian_hash
 
 !#########################################################################

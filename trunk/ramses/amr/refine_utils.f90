@@ -961,56 +961,88 @@ subroutine kill_grid(ind_cell,ilevel,nn,ibound,boundary_region)
 end subroutine kill_grid
 
 
+! subroutine add_grid_to_hash_table(igrid, ilevel)
+!   use amr_parameters, only: ndim, ngridmax, int_pre
+!   use amr_commons,    only: xg, twotondim, ncoarse, cell_dict
+!   use hash,           only: hash_set
+!   use coordinates,    only: grid_to_integer
+!   implicit none
+
+!   integer, intent(in) :: igrid, ilevel
+!   ! Add all cells belonging to igrid to hash table  
+!   integer :: ind, idim, icell
+!   integer(int_pre), dimension(0:ndim) :: ix
+
+!   do ind = 1, twotondim
+!      ix(0) = ilevel
+!      ix(1:ndim) = grid_to_integer(xg(igrid, 1:ndim), ilevel - 1)
+!      ix(1) = ISHFT(ix(1), 1) + mod(ind - 1, 2)
+! #if NDIM>1
+!      ix(2) = ISHFT(ix(2), 1) + mod(ind - 1, 4) / 2
+! #endif
+! #if NDIM>2     
+!      ix(3) = ISHFT(ix(3), 1) + (ind - 1) / 4
+! #endif
+!      icell = igrid + ncoarse + ngridmax * (ind - 1)
+!      call hash_set(cell_dict, ix, icell)
+!   end do
+
+! end subroutine add_grid_to_hash_table
+
+! subroutine remove_grid_from_hash_table(igrid, ilevel)
+!   use amr_parameters, only: ndim, ngridmax, int_pre
+!   use amr_commons,    only: xg, twotondim, cell_dict, ncoarse
+!   use hash,           only: hash_free
+!   use coordinates,    only: grid_to_integer
+!   implicit none
+!   integer, intent(in) :: igrid, ilevel
+!   ! Remove all cells belonging to igrid to hash table  
+!   integer :: ind, idim
+!   integer(int_pre), dimension(0:ndim) :: ix
+  
+!   do ind = 1, twotondim
+!      ix(0) = ilevel
+!      ix(1:ndim) = grid_to_integer(xg(igrid, 1:ndim), ilevel - 1)
+!      ix(1) = ISHFT(ix(1), 1) + mod(ind - 1, 2)
+! #if NDIM>1
+!      ix(2) = ISHFT(ix(2), 1) + mod(ind - 1, 4) / 2
+! #endif
+! #if NDIM>2 
+!      ix(3) = ISHFT(ix(3), 1) + (ind - 1) / 4
+! #endif
+!      call hash_free(cell_dict, ix)
+!   end do
+! end subroutine remove_grid_from_hash_table
+  
 subroutine add_grid_to_hash_table(igrid, ilevel)
   use amr_parameters, only: ndim, ngridmax, int_pre
-  use amr_commons,    only: xg, twotondim, ncoarse, cell_dict
+  use amr_commons,    only: xg, grid_dict
   use hash,           only: hash_set
   use coordinates,    only: grid_to_integer
   implicit none
 
   integer, intent(in) :: igrid, ilevel
-  ! Add all cells belonging to igrid to hash table  
-  integer :: ind, idim, icell
   integer(int_pre), dimension(0:ndim) :: ix
-
-  do ind = 1, twotondim
-     ix(0) = ilevel
-     ix(1:ndim) = grid_to_integer(xg(igrid, 1:ndim), ilevel - 1)
-     ix(1) = ISHFT(ix(1), 1) + mod(ind - 1, 2)
-#if NDIM>1
-     ix(2) = ISHFT(ix(2), 1) + mod(ind - 1, 4) / 2
-#endif
-#if NDIM>2     
-     ix(3) = ISHFT(ix(3), 1) + (ind - 1) / 4
-#endif
-     icell = igrid + ncoarse + ngridmax * (ind - 1)
-     call hash_set(cell_dict, ix, icell)
-  end do
-
+  
+  ix(0) = ilevel
+  ix(1:ndim) = grid_to_integer(xg(igrid, 1:ndim), ilevel - 1)
+  call hash_set(grid_dict, ix, igrid)
+  
 end subroutine add_grid_to_hash_table
 
 subroutine remove_grid_from_hash_table(igrid, ilevel)
   use amr_parameters, only: ndim, ngridmax, int_pre
-  use amr_commons,    only: xg, twotondim, cell_dict, ncoarse
+  use amr_commons,    only: xg, grid_dict
   use hash,           only: hash_free
   use coordinates,    only: grid_to_integer
   implicit none
+  
   integer, intent(in) :: igrid, ilevel
-  ! Remove all cells belonging to igrid to hash table  
-  integer :: ind, idim
   integer(int_pre), dimension(0:ndim) :: ix
   
-  do ind = 1, twotondim
-     ix(0) = ilevel
-     ix(1:ndim) = grid_to_integer(xg(igrid, 1:ndim), ilevel - 1)
-     ix(1) = ISHFT(ix(1), 1) + mod(ind - 1, 2)
-#if NDIM>1
-     ix(2) = ISHFT(ix(2), 1) + mod(ind - 1, 4) / 2
-#endif
-#if NDIM>2 
-     ix(3) = ISHFT(ix(3), 1) + (ind - 1) / 4
-#endif
-     call hash_free(cell_dict, ix)
-  end do
+  ix(0) = ilevel
+  ix(1:ndim) = grid_to_integer(xg(igrid, 1:ndim), ilevel - 1)
+  call hash_free(grid_dict, ix)
+  
 end subroutine remove_grid_from_hash_table
   

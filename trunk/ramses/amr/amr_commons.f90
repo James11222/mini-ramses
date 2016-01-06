@@ -86,7 +86,8 @@ module amr_commons
   real(qdp)                         ::order_all_min,order_all_max
 
   ! Cell hash table
-  type(hash_table) ::  cell_dict
+!  type(hash_table) ::  cell_dict
+  type(hash_table) ::  grid_dict
 
   ! Communication structure
   type communicator

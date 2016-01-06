@@ -1367,8 +1367,8 @@ subroutine defrag
 
   ngrid_current=ngrid2
 
-  call reset_entire_hash(cell_dict)
-  call build_cell_dict
+  call reset_entire_hash(grid_dict)
+  call build_grid_dict
 end subroutine defrag
 !#########################################################################
 !#########################################################################

@@ -52,7 +52,8 @@ subroutine init_amr
   flag1=0; flag2=0; son=0
 
   ! Allocate hash table
-  call init_empty_hash(cell_dict, floor(ncell * 1.5))
+  !  call init_empty_hash(cell_dict, floor(ncell * 1.5))
+  call init_empty_hash(grid_dict, floor(ngridmax * 1.5))
   
   ! Allocate MPI cell-based arrays
   allocate(cpu_map    (1:ncell)) ! Cpu map
@@ -468,7 +469,7 @@ subroutine init_amr
 
 end subroutine init_amr
 
-subroutine build_cell_dict
+subroutine build_grid_dict
   use amr_commons   , only: headl, numbl, next, ncpu
   use amr_parameters, only: nlevelmax
   implicit none
@@ -491,4 +492,4 @@ subroutine build_cell_dict
         end do
      end do
   end do
-end subroutine build_cell_dict
+end subroutine build_grid_dict

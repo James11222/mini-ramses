@@ -124,15 +124,8 @@ subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
       end do
       
       
-      ! call hilbert3d(ix(1:np,1), ix(1:np,2), ix(1:np,3), &
-      !      cloud_hkey(1:np, 2), cloud_hkey(1:np, 1), cloud_hkey(1:np, 0), &
-      !      dummy_state(1:np), 0, cic_level, np)
-
-      ! call get_cell_index_from_hilbertkey(cell_index(1:np, ind_cloud + 1), cell_level(1:np), &
-      !      cloud_hkey(1:np, 2), cloud_hkey(1:np, 1), cloud_hkey(1:np, 0), np, cic_level)
-
       call get_cell_index_from_cartesian_hash(cell_index(1:np, ind_cloud + 1), cell_level(1:np), &
-            ix(1:np, 1), ix(1:np, 2), ix(1:np, 3), cic_level, np, cic_level)  
+            ix, cic_level, np)  
       
       ! Exclude cloud fraction which lies in coarser level
       if (level_boundary_case == 1)then
@@ -178,7 +171,7 @@ end subroutine cic
    
 !   integer(kind=8), dimension(1:1,0:2),    save :: cloud_hkey
 !   integer(kind=8), dimension(1:ndim), save :: id
-   integer(int_pre), dimension(1:1,1:ndim), save :: ix
+   integer(int_pre), dimension(1:nvector, 1:ndim), save :: ix
    real(dp),   dimension(0:1, 1:ndim), save :: cloud_boundary
    real(dp), dimension(1:ndim), save :: xpart_grid, delta
    integer,  dimension(1:ndim), save :: ind
@@ -252,15 +245,8 @@ end subroutine cic
          ix(1,idim) = modulo(floor(xpart_grid(idim) + delta(idim), kind = 8), grid_size)
       end do
 
-      ! call hilbert3d(ix(1,1), ix(1,2), ix(1,3), &
-      !      cloud_hkey(1:1,2), cloud_hkey(1:1,1), cloud_hkey(1:1,0), &
-      !      dummy_state, 0, cic_level, 1)
-
-      ! call get_cell_index_from_hilbertkey(cell_index(1,ind_cloud + 1), cell_level(1), &
-      !     cloud_hkey(1,2), cloud_hkey(1,1), cloud_hkey(1,0), 1, cic_level)
-
       call get_cell_index_from_cartesian_hash(cell_index(1, ind_cloud + 1), cell_level(1), &
-           ix(1, 1), ix(1, 2), ix(1, 3), cic_level, 1, cic_level)  
+           ix, cic_level, 1)  
       
    end do ! end loop over cloud/cell intersections
 
