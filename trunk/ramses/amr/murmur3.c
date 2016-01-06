@@ -69,7 +69,7 @@ static FORCE_INLINE uint64_t fmix64 ( uint64_t k )
 //-----------------------------------------------------------------------------
 
 //FORCE_INLINE void  murmurhash3_x64_128_ ( const void * key, const int * len, const int *tablesize,
-FORCE_INLINE void  murmurhash3_x64_128_ ( const void * key, const int * len,
+FORCE_INLINE void murmurhash3_x64_128_ ( const void * key, const int * len,
 			    const uint32_t * seed, void * out )
 {
   const uint8_t * data = (const uint8_t*)key;

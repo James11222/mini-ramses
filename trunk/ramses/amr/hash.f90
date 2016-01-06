@@ -4,18 +4,25 @@
 
 module hash
   use amr_parameters, only: ndim, nlevelmax, int_pre
+
+  type bucket
+     sequence
+!     integer(int_pre), dimension(0:ndim) :: key
+     integer(kind=8) :: full_hash
+     integer :: value
+     integer :: next_ibucket
+  end type bucket
+
   type hash_table
-     integer        , allocatable, dimension(:)   :: value
-     integer        , allocatable, dimension(:)   :: next_bucket
-     integer        , allocatable, dimension(:)   :: next_free
-     integer(int_pre), allocatable, dimension(:,:) :: key
-     integer(kind=8), allocatable, dimension(:) :: full_hash
+     type(bucket), allocatable, dimension(:)  :: data
      integer         :: size, head_free, nfree_chain, nfree
-     integer         :: c1, c2, c3
      integer(kind=8) :: prime     
      integer(kind=8) :: tablesize
+     integer, allocatable, dimension(:) :: next_free
   end type hash_table
 
+
+  
 #if INTKEY_PRECISION == 8
   integer, parameter :: key_length = 32
 #endif
@@ -26,14 +33,22 @@ module hash
 contains
 
   ! ============================================================================= 
-  function hash_func(htable, key)
+pure function hash_func(htable, key)
     type(hash_table),                    intent(in) :: htable
     integer(int_pre) , dimension(0:ndim), intent(in) :: key
     integer(kind=8)                                 :: hash_func
 !    integer(kind=4), dimension(1:2),save            :: hash
     integer(kind=4), parameter :: seed=42
 
-
+    interface
+       pure subroutine murmurhash3_x64_128(key, key_length, seed, hash_func)
+         use amr_parameters, only: int_pre, ndim
+         integer(int_pre) , dimension(0:ndim), intent(in) :: key
+         integer(kind=8), intent(inout)                      :: hash_func
+         integer, intent(in) :: seed, key_length
+       end subroutine murmurhash3_x64_128
+    end interface
+    
 
     ! compute the "bucket" as a function of the nkey-integer key.
     !    hash_func = MOD(MOD(key(0),htable%prime) + htable%c1 * MOD(key(1),htable%prime)&
@@ -57,10 +72,10 @@ contains
     ! based on the required size of the hash table.
 
     integer                  :: ncode, bit_length, i
-    integer, dimension(0:30) :: prime=(/2,3,7,13,23,53,97,193,389,769,1543,&
-         & 3079,6151,12289,24593,49157,98317,196613,393241,786433,1572869, &
-         & 3145739,6291469,12582917,25165843,50331653,100663319,201326611, &
-         & 402653189,805306457,1610612741/)
+!    integer, dimension(0:30) :: prime=(/2,3,7,13,23,53,97,193,389,769,1543,&
+!         & 3079,6151,12289,24593,49157,98317,196613,393241,786433,1572869, &
+!         & 3145739,6291469,12582917,25165843,50331653,100663319,201326611, &
+!         & 402653189,805306457,1610612741/)
 
     ! Compute prime number
     ! ncode=req_size
@@ -80,40 +95,12 @@ contains
     htable%size = htable%prime / 4 + htable%prime
     htable%nfree = htable%prime
     htable%tablesize = htable%prime - 1
-    allocate(htable%value      (1:htable%size))
-    allocate(htable%key (0:ndim,1:htable%size))
-    htable%key = 0
-    allocate(htable%full_hash (1:htable%size))
-    htable%full_hash = 0
-    allocate(htable%next_bucket(1:htable%size))
-    htable%next_bucket = -1
+    allocate(htable%data(1:htable%size))
 
-    ! Build linked list of free slots in the chaning part of the array
+    ! allocate linked list of free slots in the chaning part of the array
     allocate(htable%next_free (htable%prime + 1 : htable%size))
-    do i = htable%prime + 1, htable%size - 1
-       htable%next_free(i) = i + 1
-    end do
-    htable%next_free(htable%size) = 0
-    htable%head_free = htable%prime + 1
-    htable%nfree_chain = htable%size - htable%prime
 
-    ! build constants
-    htable%c1 = 1
-    do i = 1, nlevelmax
-       htable%c1 = mod(2 * htable%c1, htable%prime)
-    end do
-
-    htable%c2 = htable%c1
-    do i = 1, nlevelmax
-       htable%c2 = mod(2 * htable%c2, htable%prime)
-    end do
-
-    htable%c3 = htable%c2
-    do i = 1, nlevelmax
-       htable%c3 = mod(2 * htable%c3, htable%prime)
-    end do
-    
-
+    call reset_entire_hash(htable)
   end subroutine init_empty_hash
   ! =============================================================================
 
@@ -127,77 +114,92 @@ contains
     integer :: i
     
     ! Reinitialize arrays
-    htable%nfree = htable%prime
-    htable%next_bucket = -1
-    htable%key = 0
-    htable%full_hash = 0
+    do i = 1, htable%size
+       call reset_bucket(htable%data(i))
+    end do
     do i = htable%prime + 1, htable%size - 1
        htable%next_free(i) = i + 1
     end do
     htable%next_free(htable%size) = 0
+
+    htable%nfree = htable%prime
     htable%head_free = htable%prime + 1
     htable%nfree_chain = htable%size - htable%prime
   end subroutine reset_entire_hash
+
+  subroutine reset_bucket(buck)
+    implicit none
+    type(bucket), intent(inout) :: buck
+    
+    ! Subroutine to reset the content of a bucket
+
+    buck%next_ibucket = -1
+!    buck%key = 0
+    buck%full_hash = 0
+
+  end subroutine reset_bucket
   ! =============================================================================
 
   ! =============================================================================
   subroutine hash_set(htable, key, val)
     implicit none
-    type(hash_table),                    intent(inout) :: htable
+    type(hash_table),                     intent(inout) :: htable
     integer(int_pre) , dimension(0:ndim), intent(in)    :: key
-    integer,                             intent(in)    :: val    
+    integer,                              intent(in)    :: val    
     
     ! Add a key/value pair to the hash table. If there is already a key/value
     ! pair stored for this key, return an error message.
 
-    integer(kind=8) :: bucket, full_hash    
+    integer(kind=8) :: ibucket, full_hash    
 
     if (val == 0)then
        write(*,*) "trying to insert 0 (0 is used to indicate absence of a value) "
        stop
     end if
     
-    ! Compute bucket
+    ! Compute ibucket
     full_hash = hash_func(htable, key)
-    bucket = IAND(full_hash, htable%tablesize) + 1
+    ibucket = IAND(full_hash, htable%tablesize) + 1
     
-    if (htable%next_bucket(bucket) < 0) then          
+    if (htable%data(ibucket)%next_ibucket < 0) then          
 
        ! Bucket is empty, simply insert value       
-       htable%next_bucket(bucket) = 0
-       htable%value      (bucket) = val
-       htable%key (0:ndim,bucket) = key(0:ndim)
-       htable%full_hash (bucket) = full_hash
-       htable%nfree = htable%nfree - 1
+       htable%data(ibucket)%next_ibucket = 0
+       htable%data(ibucket)%value       = val
+!       htable%data(ibucket)%key(0:ndim) = key(0:ndim)
+       htable%data(ibucket)%full_hash   = full_hash
 
+       htable%nfree = htable%nfree - 1
+       
     else if (htable%nfree_chain>0)then
 
        ! Bucket is not empty, walk through linked list
-       do while (htable%next_bucket(bucket) .ne. 0)
+       do while (htable%data(ibucket)%next_ibucket .ne. 0)
 
           ! Check if key already exists
           !          if (same_keys(htable%key(0:ndim,bucket),key(0:ndim)))then
-          if (htable%full_hash(bucket)==full_hash)then
+          if (htable%data(ibucket)%full_hash == full_hash)then
              write(*,*) "trying to insert already existing key: ",key
              stop
           end if
-          bucket = htable%next_bucket(bucket)
+          ibucket = htable%data(ibucket)%next_ibucket
        end do
 
        ! Check if key is already there
 !       if (same_keys(htable%key(0:ndim,bucket),key(0:ndim)))then
-       if (htable%full_hash(bucket)==full_hash)then
+       if (htable%data(ibucket)%full_hash == full_hash)then
           write(*,*) "trying to insert already existing key: ",key
           stop
        end if
        
        ! Have reached end of chain, val not present yet -> add
-       htable%next_bucket(bucket) = htable%head_free
-       bucket = htable%head_free
-       htable%next_bucket(bucket) = 0
-       htable%value      (bucket) = val
-       htable%key  (0:ndim,bucket) = key(0:ndim)
-       htable%full_hash(bucket) = full_hash
+       htable%data(ibucket)%next_ibucket = htable%head_free
+       ibucket = htable%head_free
+
+       htable%data(ibucket)%next_ibucket = 0
+       htable%data(ibucket)%value = val
+!       htable%data(ibucket)%key(0:ndim) = key(0:ndim)
+       htable%data(ibucket)%full_hash = full_hash
 
        ! remove bucket from head of free linked list
        htable%head_free   = htable%next_free(htable%head_free)
@@ -211,31 +213,31 @@ contains
   ! =============================================================================
 
   ! =============================================================================
-  function hash_get(htable, key)
+pure function hash_get(htable, key)
     implicit none
     type(hash_table),                    intent(in) :: htable
     integer(int_pre) , dimension(0:ndim), intent(in) :: key
     integer                                         :: hash_get
-
+    
     ! Function (not subroutine, could also be changed...? ) which retrieves the 
     ! hash table value for a given key. If no entry exists, return 0
-    integer(kind=8) :: bucket, full_hash    
+    integer(kind=8) :: ibucket, full_hash    
     
     full_hash = hash_func(htable, key)
-    bucket = IAND(full_hash, htable%tablesize) + 1
-
+    ibucket = IAND(full_hash, htable%tablesize) + 1
+    
 !    if (same_keys(htable%key(0:ndim,bucket), key(0:ndim)))the
-    if (htable%full_hash(bucket)==full_hash)then
-       hash_get = htable%value(bucket)
+    if (htable%data(ibucket)%full_hash == full_hash)then
+       hash_get = htable%data(ibucket)%value
        return
     end if
     
     ! Walk linked list until key is found or to the end is reached
-    do while( htable%next_bucket(bucket) > 0)
-       bucket = htable%next_bucket(bucket)
-!       if (same_keys(htable%key(0:ndim,bucket), key(0:ndim)))then
-       if (htable%full_hash(bucket)==full_hash)then
-          hash_get = htable%value(bucket)
+    do while( htable%data(ibucket)%next_ibucket > 0)
+       ibucket = htable%data(ibucket)%next_ibucket
+       !       if (same_keys(htable%key(0:ndim,bucket), key(0:ndim)))then
+       if (htable%data(ibucket)%full_hash == full_hash)then
+          hash_get = htable%data(ibucket)%value
           return
        end if
     end do
@@ -249,42 +251,41 @@ contains
   ! =============================================================================  
   subroutine hash_free(htable, key)
     implicit none
-    type(hash_table),                    intent(inout) :: htable
+    type(hash_table),                     intent(inout) :: htable
     integer(int_pre) , dimension(0:ndim), intent(in)    :: key
-    
     ! Remove the hash table entry for a given key 
 
-    integer(kind=8) :: bucket, previous_bucket, full_hash
+    integer(kind=8) :: ibucket, previous_ibucket, full_hash
 
     full_hash = hash_func(htable, key)
-    bucket = IAND(full_hash, htable%tablesize) + 1
-
+    ibucket = IAND(full_hash, htable%tablesize) + 1
     
-    if (htable%next_bucket(bucket) == 0) then     ! No collision case
-       htable%next_bucket(bucket)  = -1
+    if (htable%data(ibucket)%next_ibucket == 0) then     ! No collision case
+       htable%data(ibucket)%next_ibucket = -1
+!       htable%data(ibucket)%key(0:ndim) = 0
+       htable%data(ibucket)%full_hash = 0
+       
        htable%nfree = htable%nfree + 1
-       htable%key(0:ndim, bucket) = 0
-       htable%full_hash( bucket) = 0
     else                                          ! Collision case
        !       do while (.not. same_keys(htable%key(0:ndim,bucket), key(0:ndim)))
-       do while (htable%full_hash(bucket) .ne. full_hash)
-          previous_bucket=bucket
-          bucket=htable%next_bucket(bucket)
+       do while (htable%data(ibucket)%full_hash .ne. full_hash)
+          previous_ibucket=ibucket
+          ibucket=htable%data(ibucket)%next_ibucket
        end do
-       if (bucket <= htable%prime) then           
+       if (ibucket <= htable%prime) then           
           ! It's the first element we need to erase: Move first element from chaning 
           ! space into bucket and do as if the value to remove had been in the chaning space
-          htable%value(       bucket) = htable%value(       htable%next_bucket(bucket))
-          htable%key  (0:ndim,bucket) = htable%key  (0:ndim,htable%next_bucket(bucket))
-          htable%full_hash  (bucket) = htable%full_hash  (htable%next_bucket(bucket))
-          previous_bucket = bucket
-          bucket = htable%next_bucket(bucket)
+          htable%data(ibucket)%value = htable%data(htable%data(ibucket)%next_ibucket)%value
+!          htable%data(ibucket)%key = htable%data(htable%data(ibucket)%next_ibucket)%key
+          htable%data(ibucket)%full_hash = htable%data(htable%data(ibucket)%next_ibucket)%full_hash
+          previous_ibucket = ibucket
+          ibucket = htable%data(ibucket)%next_ibucket
        end if
        ! fill the hole and reconnect linked list
-       htable%next_bucket(previous_bucket) = htable%next_bucket(bucket)
-       htable%next_free(bucket) = htable%head_free
-       htable%head_free = bucket
-       htable%nfree_chain = htable%nfree_chain+1
+       htable%data(previous_ibucket)%next_ibucket = htable%data(ibucket)%next_ibucket
+       htable%next_free(ibucket) = htable%head_free
+       htable%head_free = ibucket
+       htable%nfree_chain = htable%nfree_chain + 1
     end if
   end subroutine hash_free
   ! =============================================================================
@@ -296,6 +297,8 @@ contains
 
     write(*,*)"Total values stored in hash table: "&
          ,htable%size-htable%nfree-htable%nfree_chain
+    write(*,*)"Size of hash table (without chaning space): "&
+         ,htable%prime
     write(*,*)"Total collisions in hash table: "&
          ,htable%size-htable%prime-htable%nfree_chain
     write(*,*)"Collision fraction: "&

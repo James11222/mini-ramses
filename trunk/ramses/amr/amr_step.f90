@@ -3,6 +3,7 @@ recursive subroutine amr_step(ilevel,icount)
   use pm_commons
   use hydro_commons
   use poisson_commons
+  use hash, only:hash_stats
   implicit none
 #ifndef WITHOUTMPI
   include 'mpif.h'
@@ -87,7 +88,9 @@ recursive subroutine amr_step(ilevel,icount)
   end if
 
   call cmp_particle_boundary_key
-    
+
+  !call hash_stats(cell_dict)
+  
   !------------------------
   ! Output results to files
   !------------------------

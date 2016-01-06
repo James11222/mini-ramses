@@ -170,9 +170,11 @@ subroutine sort_particles(ilevel, use_histograms)
   ! Compute NEW number of particles in ilevel
   np = part_level_offset(ilevel + 1) - part_level_offset(ilevel)  
 
-  ! Re-sort remaining (ilevel particles)
+  ! Re-sort remaining (ilevel particles) (maybe oversort to gain for the cic step!)
+!  call hilbert_for_particle(offset, np, 0, ilevel + 1)
   call lsd_radix_sort_particles(offset, np, ilevel, ilevel, .true.)
   call apply_particle_permutation(offset, np, ilevel)
+!  call hilbert_for_particle(offset, np, 0, ilevel)
   deallocate(refined)
 
 !  if (ilevel == nlevelmax)then
@@ -549,6 +551,10 @@ subroutine get_cell_index_from_cartesian_hash(cell_index,cell_levl,xx,yy,zz,ilev
   !----------------------------------------------------------------------------
   integer :: i
   integer(int_pre), dimension(0:ndim) :: hash_key
+  logical, save, dimension(1:nvector) :: same
+!  integer, save :: skipped = 0
+!  integer, save :: tot = 0
+!  integer, save :: unskipped = 0
   
   if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
   else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
@@ -563,8 +569,29 @@ subroutine get_cell_index_from_cartesian_hash(cell_index,cell_levl,xx,yy,zz,ilev
 
   cell_levl(1:n) = ilevel
 
+  ! preparatory step
+  same(2:n) = .true.
+  same(1) = .false.
+  do i = 2, n
+     same(i) = same(i) .and. xx(i) == xx(i-1)
+  end do
+  do i = 2, n
+     same(i) = same(i) .and. yy(i) == yy(i-1)
+  end do
+  do i = 2, n
+     same(i) = same(i) .and. zz(i) == zz(i-1)
+  end do
+     
   ! Probe for cells starting from ilevel, if cell not present, try coarser
   do i = 1, n
+!     tot = tot + 1
+     if (same(i)) then
+        cell_index(i) = cell_index(i - 1)
+        cell_levl(i) = cell_levl(i - 1)
+!        skipped = skipped + 1
+        cycle
+     end if
+!     unskipped = unskipped + 1
      hash_key(0) = ilevel
      hash_key(1) = xx(i)
      hash_key(2) = yy(i)
@@ -581,13 +608,15 @@ subroutine get_cell_index_from_cartesian_hash(cell_index,cell_levl,xx,yy,zz,ilev
      end do
   end do
 
+!  if (mod(skipped,1000)==0) print*,tot,skipped, unskipped
+  
   ! Do check if all went well
-  do i = 1, n
-     if (cell_index(i) == 0) then
-        write(*,*)"Problem in get_cell_index_from_cartesian"
-        stop
-     end if
-  end do
+  ! do i = 1, n
+  !    if (cell_index(i) == 0) then
+  !       write(*,*)"Problem in get_cell_index_from_cartesian"
+  !       stop
+  !    end if
+  ! end do
 end subroutine get_cell_index_from_cartesian_hash
 
 !#########################################################################
