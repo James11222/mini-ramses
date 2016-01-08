@@ -7,7 +7,7 @@ subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
    integer,  intent(in)                                      :: np, cic_level, level_boundary_case
    integer(kind=4), intent(inout), dimension(1:nvector, 1:8) :: cell_index
    real(dp),        intent(inout), dimension(1:nvector, 1:8) :: vol
-   real(dp), intent(in), dimension(1:nvector, 1:ndim)             :: xpart
+   real(dp), intent(in), dimension(1:nvector, 1:ndim)        :: xpart
 
    ! Subroutine to do the Cloud-in-Cell interpolation for nvector particle positions at level cic_level.
 
@@ -34,9 +34,10 @@ subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
    real(dp),        dimension(1:ndim),            save :: delta
    integer,  save :: idim, ind_cloud, ip
    real(dp), save :: part_to_grid
-   integer(int_pre), save :: grid_size
+   integer(int_pre), save :: grid_size, grid_size_one
 
    grid_size = 2_int_pre**cic_level
+   grid_size_one = grid_size - 1
    
    if (level_boundary_case==2) repeat_coarser = .false.
 
@@ -106,7 +107,7 @@ subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
       
       ! Get cell indices where the cloud corners fall into
       ! (cartesian key -> hilbert key -> cell index)
-      ! TODO: WHAT IF PARTICLE SITS CLOSE TO PERIODIC BOX BOUNDARY WITH AMR  -> should be ok
+      ! TODO: Non-periodic boundaries...
       do idim = 1, ndim
          do ip = 1, np
             ix(ip,idim) = floor(xpart_grid(ip,idim) + delta(idim), kind = 8)
@@ -114,12 +115,7 @@ subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
       end do
       do idim = 1, ndim
          do ip = 1, np
-            if (ix(ip, idim) >= grid_size)then
-               ix(ip, idim) = ix(ip, idim) - grid_size
-            end if
-            if (ix(ip, idim) < 0) then
-               ix(ip, idim) = ix(ip, idim) + grid_size
-            end if
+            ix(ip, idim) = IAND(ix(ip, idim) + grid_size, grid_size_one)
          end do
       end do
       

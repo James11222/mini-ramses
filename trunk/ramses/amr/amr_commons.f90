@@ -116,5 +116,12 @@ module amr_commons
   real(dp)::units_density=1.0  ! [g/cm^3]
   real(dp)::units_time=1.0     ! [seconds]
   real(dp)::units_length=1.0   ! [cm]
+
+
+  integer(int_pre), dimension(0:7, 1:3), parameter :: ind_table = reshape((/&
+       0,1,0,1,0,1,0,1, &
+       0,0,1,1,0,0,1,1, &
+       0,0,0,0,1,1,1,1 /), (/8,3/) )
+
 end module amr_commons
 

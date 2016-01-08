@@ -551,9 +551,11 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
   !----------------------------------------------------------------------------
   !----------------------------------------------------------------------------
   integer :: i
-  integer(int_pre), dimension(0:ndim, 1:nvector) :: hash_key
+  integer(int_pre), dimension(0:ndim) :: hash_key
   integer, dimension(1:nvector) :: ind, igrid
-  logical, dimension(1:nvector) :: same
+  logical, dimension(1:nvector) :: same, same2
+  integer, dimension(1:nvector) :: sort_ind
+  integer, save :: tot = 0, skipped = 0
   
   if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
   else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
@@ -562,52 +564,62 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
      stop
   end if
 
-
+  tot = tot + n
+  
   ! Construct ind from last digits
   do i = 1, n
-     ind(i) = IAND(ix(i, 1), 1_int_pre)
-     ind(i) = ind(i) + IAND(ix(i, 2), 1_int_pre) * 2_int_pre
-     ind(i) = ind(i) + IAND(ix(i, 3), 1_int_pre) * 4_int_pre
+     ind(i) = IAND(ix(i, 1), 1_int_pre)     + &
+              IAND(ix(i, 2), 1_int_pre) * 2 + &
+              IAND(ix(i, 3), 1_int_pre) * 4 
   end do
 
-  ! Fill hash key arrays
   do i = 1, n
-     hash_key(0, i) = ilevel
-     hash_key(1, i) = ISHFT(ix(i, 1), -1)
-     hash_key(2, i) = ISHFT(ix(i, 2), -1)
-     hash_key(3, i) = ISHFT(ix(i, 3), -1)
+     sort_ind(i) = i
   end do
 
-  ! Check if two cell indices located in the same grid
-  same(1) = .false.
-  do i = 2, n
-     same(i) =               hash_key(1, i) == hash_key(1, i - 1) 
-     same(i) = same(i) .and. hash_key(2, i) == hash_key(2, i - 1) 
-     same(i) = same(i) .and. hash_key(3, i) == hash_key(3, i - 1) 
-  end do
   
+  ! Check if two cell belong to the same grid -> hash table can be avoided
+  ! TODO: what if one of the values is negative? bitwise exclusive or can be negative and thus smaller than 2... 
+  same(1) = .false.
+  do i = 2, n   
+     same(i) = IEOR(ix(i, 1), ix(i - 1, 1)) < 2
+  end do
+  do i = 2, n
+     same(i) = same(i) .and. IEOR(ix(i, 2), ix(i - 1, 2)) < 2
+  end do
+  do i = 2, n
+     same(i) = same(i) .and. IEOR(ix(i, 3), ix(i - 1, 3)) < 2
+  end do
+
   ! Probe for grid starting from ilevel, if not present, try coarser
   cell_levl(1:n) = ilevel
   do i = 1, n
-
+     
      ! Check if I can skip accessing the hash table
+     ! Access the hash table only if necessary
      if (same(i)) then
         igrid(i) = igrid(i - 1)
         cell_levl(i) = cell_levl(i - 1)
+        skipped = skipped + 1
         cycle
      end if
+     
+     ! Initial hash key
+     hash_key(0) = ilevel
+     hash_key(1) = ISHFT(ix(i, 1), -1)
+     hash_key(2) = ISHFT(ix(i, 2), -1)
+     hash_key(3) = ISHFT(ix(i, 3), -1)
 
-     ! Access the hash table only if necessary
-     igrid(i) = hash_get(grid_dict, hash_key(0:ndim, i))
-
+     igrid(i) = hash_get(grid_dict, hash_key(0:ndim))
+     
      ! If nothing found, try coarser
      do while (igrid(i) == 0 .and. cell_levl(i) > 2)
         cell_levl(i) = cell_levl(i) - 1
-        hash_key(0, i) = cell_levl(i)
-        hash_key(1, i) = ISHFT(hash_key(1, i), -1)
-        hash_key(2, i) = ISHFT(hash_key(2, i), -1)
-        hash_key(3, i) = ISHFT(hash_key(3, i), -1)
-        igrid(i) = hash_get(grid_dict, hash_key(0:ndim, i))
+        hash_key(0) = cell_levl(i)
+        hash_key(1) = ISHFT(hash_key(1), -1)
+        hash_key(2) = ISHFT(hash_key(2), -1)
+        hash_key(3) = ISHFT(hash_key(3), -1)
+        igrid(i) = hash_get(grid_dict, hash_key(0:ndim))
      end do
   end do
 
@@ -623,7 +635,7 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
      cell_index(i) = ncoarse + igrid(i) + ind(i) * ngridmax 
   end do
   
-  !  if (mod(skipped,1000)==0) print*,tot,skipped, unskipped
+  if (mod(skipped,32768)==0) print*, tot, 1.0 * skipped / tot
 
 end subroutine get_cell_index_from_cartesian_hash
 
