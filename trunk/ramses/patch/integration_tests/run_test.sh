@@ -1,7 +1,5 @@
 #! /bin/bash
 
-export OMPI_FC=ifort
-
 cp  ../../amr/update_time.f90 ./
 cp  ../../bin/Makefile ./
 
