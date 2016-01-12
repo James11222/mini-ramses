@@ -1,4 +1,4 @@
-! Hash table for the use inside ramses. Prime murmur3 hash, double-linked-list 
+! Hash table for the use inside ramses. murmur3 hash, double-linked-list 
 ! for chaining, assumes a NDIM+1 -integer hilbert-key as key.
 ! TODO: test this 
 
@@ -7,8 +7,11 @@ module hash
 
   type bucket
      sequence
-!     integer(int_pre), dimension(0:ndim) :: key
+#ifndef UNSAFE_HASH
+     integer(int_pre), dimension(0:ndim) :: key
+#else
      integer(kind=8) :: full_hash
+#endif 
      integer :: value
      integer :: next_ibucket
   end type bucket
@@ -16,7 +19,7 @@ module hash
   type hash_table
      type(bucket), allocatable, dimension(:)  :: data
      integer         :: size, head_free, nfree_chain, nfree
-     integer(kind=8) :: prime     
+     integer(kind=8) :: prime
      integer(kind=8) :: tablesize
      integer, allocatable, dimension(:) :: next_free
   end type hash_table
@@ -39,25 +42,27 @@ pure function hash_func(htable, key)
     integer(kind=8)                                 :: hash_func
 !    integer(kind=4), dimension(1:2),save            :: hash
     integer(kind=4), parameter :: seed=42
-
-    interface
-       pure subroutine murmurhash3_x64_128(key, key_length, seed, hash_func)
-         use amr_parameters, only: int_pre, ndim
-         integer(int_pre) , dimension(0:ndim), intent(in) :: key
-         integer(kind=8), intent(inout)                      :: hash_func
-         integer, intent(in) :: seed, key_length
-       end subroutine murmurhash3_x64_128
-    end interface
+    integer, parameter :: c1=97, c2=-1640531527, c3=-1003313
+    
+!    interface
+!        pure subroutine murmurhash3_x64_128(key, key_length, seed, hash_func)
+!          use amr_parameters, only: int_pre, ndim
+!          integer(int_pre) , dimension(0:ndim), intent(in) :: key
+!          integer(kind=8), intent(inout)                      :: hash_func
+!          integer, intent(in) :: seed, key_length
+!        end subroutine murmurhash3_x64_128
+!     end interface
+! 
+!    call murmurhash3_x64_128(key, key_length, seed, hash_func)
     
 
     ! compute the "bucket" as a function of the nkey-integer key.
     !    hash_func = MOD(MOD(key(0),htable%prime) + htable%c1 * MOD(key(1),htable%prime)&
     !         + htable%c2 * MOD(key(2),htable%prime) + htable%c3 * key_level, htable%prime) + 1
 
-    !    call murmurhash3_x64_128(key, key_length, tablesize, seed, hash)
-    call murmurhash3_x64_128(key, key_length, seed, hash_func)
-    ! TODO: maybe remove this by allocating the buckets starting from )...
- !   hash_func = hash(1) + 1
+        hash_func = key(0) * 5 + c1 * key(1) + c2 * key(2) + c3 * key(3)
+
+    
   end function hash_func
   ! =============================================================================
 
@@ -134,8 +139,13 @@ pure function hash_func(htable, key)
     ! Subroutine to reset the content of a bucket
 
     buck%next_ibucket = -1
-!    buck%key = 0
+#ifndef UNSAFE_HASH
+    buck%key = 0
+#else
     buck%full_hash = 0
+#endif
+
+    
 
   end subroutine reset_bucket
   ! =============================================================================
@@ -166,9 +176,13 @@ pure function hash_func(htable, key)
        ! Bucket is empty, simply insert value       
        htable%data(ibucket)%next_ibucket = 0
        htable%data(ibucket)%value       = val
-!       htable%data(ibucket)%key(0:ndim) = key(0:ndim)
-       htable%data(ibucket)%full_hash   = full_hash
 
+#ifndef UNSAFE_HASH
+       htable%data(ibucket)%key(0:ndim) = key(0:ndim)
+#else
+       htable%data(ibucket)%full_hash   = full_hash
+#endif
+       
        htable%nfree = htable%nfree - 1
        
     else if (htable%nfree_chain>0)then
@@ -177,8 +191,11 @@ pure function hash_func(htable, key)
        do while (htable%data(ibucket)%next_ibucket .ne. 0)
 
           ! Check if key already exists
-          !          if (same_keys(htable%key(0:ndim,bucket),key(0:ndim)))then
+#ifndef UNSAFE_HASH
+          if (same_keys(htable%data(ibucket)%key(0:ndim),key(0:ndim)))then
+#else
           if (htable%data(ibucket)%full_hash == full_hash)then
+#endif
              write(*,*) "trying to insert already existing key: ",key
              stop
           end if
@@ -186,8 +203,11 @@ pure function hash_func(htable, key)
        end do
 
        ! Check if key is already there
-!       if (same_keys(htable%key(0:ndim,bucket),key(0:ndim)))then
+#ifndef UNSAFE_HASH
+       if (same_keys(htable%data(ibucket)%key(0:ndim),key(0:ndim)))then
+#else
        if (htable%data(ibucket)%full_hash == full_hash)then
+#endif
           write(*,*) "trying to insert already existing key: ",key
           stop
        end if
@@ -198,15 +218,17 @@ pure function hash_func(htable, key)
 
        htable%data(ibucket)%next_ibucket = 0
        htable%data(ibucket)%value = val
-!       htable%data(ibucket)%key(0:ndim) = key(0:ndim)
+#ifndef UNSAFE_HASH
+       htable%data(ibucket)%key(0:ndim) = key(0:ndim)
+#else
        htable%data(ibucket)%full_hash = full_hash
-
+#endif
        ! remove bucket from head of free linked list
        htable%head_free   = htable%next_free(htable%head_free)
        htable%nfree_chain = htable%nfree_chain - 1
 
     else
-       write(*,*)"hash chaining space full on process "
+       write(*,*)"hash chaining space full "
        stop
     end if
   end subroutine hash_set
@@ -225,9 +247,12 @@ pure function hash_get(htable, key)
     
     full_hash = hash_func(htable, key)
     ibucket = IAND(full_hash, htable%tablesize) + 1
-    
-!    if (same_keys(htable%key(0:ndim,bucket), key(0:ndim)))the
+
+#ifndef UNSAFE_HASH
+    if (same_keys(htable%data(ibucket)%key(0:ndim), key(0:ndim)))then
+#else
     if (htable%data(ibucket)%full_hash == full_hash)then
+#endif
        hash_get = htable%data(ibucket)%value
        return
     end if
@@ -235,8 +260,11 @@ pure function hash_get(htable, key)
     ! Walk linked list until key is found or to the end is reached
     do while( htable%data(ibucket)%next_ibucket > 0)
        ibucket = htable%data(ibucket)%next_ibucket
-       !       if (same_keys(htable%key(0:ndim,bucket), key(0:ndim)))then
+#ifndef UNSAFE_HASH
+       if (same_keys(htable%data(ibucket)%key(0:ndim), key(0:ndim)))then
+#else
        if (htable%data(ibucket)%full_hash == full_hash)then
+#endif
           hash_get = htable%data(ibucket)%value
           return
        end if
@@ -262,13 +290,19 @@ pure function hash_get(htable, key)
     
     if (htable%data(ibucket)%next_ibucket == 0) then     ! No collision case
        htable%data(ibucket)%next_ibucket = -1
-!       htable%data(ibucket)%key(0:ndim) = 0
+#ifndef UNSAFE_HASH
+       htable%data(ibucket)%key(0:ndim) = 0
+#else
        htable%data(ibucket)%full_hash = 0
-       
+#endif       
        htable%nfree = htable%nfree + 1
-    else                                          ! Collision case
-       !       do while (.not. same_keys(htable%key(0:ndim,bucket), key(0:ndim)))
+    else
+       ! Collision case
+#ifndef UNSAFE_HASH
+       do while (.not. same_keys(htable%data(ibucket)%key(0:ndim), key(0:ndim)))
+#else
        do while (htable%data(ibucket)%full_hash .ne. full_hash)
+#endif
           previous_ibucket=ibucket
           ibucket=htable%data(ibucket)%next_ibucket
        end do
@@ -276,8 +310,11 @@ pure function hash_get(htable, key)
           ! It's the first element we need to erase: Move first element from chaning 
           ! space into bucket and do as if the value to remove had been in the chaning space
           htable%data(ibucket)%value = htable%data(htable%data(ibucket)%next_ibucket)%value
-!          htable%data(ibucket)%key = htable%data(htable%data(ibucket)%next_ibucket)%key
+#ifndef UNSAFE_HASH
+          htable%data(ibucket)%key = htable%data(htable%data(ibucket)%next_ibucket)%key
+#else
           htable%data(ibucket)%full_hash = htable%data(htable%data(ibucket)%next_ibucket)%full_hash
+#endif
           previous_ibucket = ibucket
           ibucket = htable%data(ibucket)%next_ibucket
        end if
@@ -299,19 +336,24 @@ pure function hash_get(htable, key)
          ,htable%size-htable%nfree-htable%nfree_chain
     write(*,*)"Size of hash table (without chaning space): "&
          ,htable%prime
+    write(*,*)"Load factor: "&
+         ,(htable%prime-htable%nfree)*1./(htable%prime+tiny(0.D0))
     write(*,*)"Total collisions in hash table: "&
          ,htable%size-htable%prime-htable%nfree_chain
     write(*,*)"Collision fraction: "&
          ,(htable%size-htable%prime-htable%nfree_chain)&
          *1./(htable%size-htable%nfree-htable%nfree_chain+tiny(0.D0))
+    write(*,*)"Perfect collision fraction (assuming perfect randomness): "&
+         ,(htable%size - htable%nfree - htable%nfree_chain - &
+         htable%prime * (1.d0 - ((htable%prime-1.d0)/(htable%prime)) &
+         **(htable%size-htable%nfree-htable%nfree_chain))) & 
+         *1./(htable%size-htable%nfree-htable%nfree_chain+tiny(0.D0))
     write(*,*)"Fraction of collision space used: "&
          ,(htable%size-htable%prime-htable%nfree_chain)&
          *1./ (htable%size-htable%prime+tiny(0.D0))
-    write(*,*)"Fraction of proper space used: "&
-         ,(htable%prime-htable%nfree)*1./(htable%prime+tiny(0.D0))
   end subroutine hash_stats
   ! =============================================================================
-  ! !DIR$ ATTRIBUTES FORCEINLINE :: same_keys
+
   ! function same_keys(key1, key2)
   !   logical :: same_keys
   !   integer(int_pre), dimension(0:ndim), intent(in) :: key1, key2     
@@ -321,10 +363,19 @@ pure function hash_get(htable, key)
   !        IEOR(key1(0), key2(0)))))) == 0_int_pre
   ! end function same_keys
   
-  !DIR$ ATTRIBUTES FORCEINLINE :: same_keys
-  function same_keys(key1, key2)
+
+pure function same_keys(key1, key2)
     logical :: same_keys
     integer(int_pre), dimension(0:ndim), intent(in) :: key1, key2     
+    
+    interface
+       pure function memcmp(key1, key2, key_length)
+         use amr_parameters, only: int_pre, ndim
+         integer(int_pre), dimension(0:ndim), intent(in) :: key1, key2     
+         integer, intent(in) :: key_length
+         logical :: memcmp
+       end function memcmp
+    end interface
     same_keys =  memcmp(key1, key2, key_length) == 0_4
   end function same_keys
 

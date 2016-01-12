@@ -553,9 +553,10 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
   integer :: i
   integer(int_pre), dimension(0:ndim) :: hash_key
   integer, dimension(1:nvector) :: ind, igrid
-  logical, dimension(1:nvector) :: same, same2
-  integer, dimension(1:nvector) :: sort_ind
-  integer, save :: tot = 0, skipped = 0
+!  logical, dimension(1:nvector) :: same, same2
+!  integer, dimension(1:nvector) :: sort_ind
+!  integer, save :: tot = 0, skipped = 0
+!  integer:: dummy
   
   if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
   else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
@@ -564,7 +565,7 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
      stop
   end if
 
-  tot = tot + n
+!  tot = tot + n
   
   ! Construct ind from last digits
   do i = 1, n
@@ -573,23 +574,31 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
               IAND(ix(i, 3), 1_int_pre) * 4 
   end do
 
-  do i = 1, n
-     sort_ind(i) = i
-  end do
+  ! do i = 1, n
+  !    sort_ind(i) = i
+  ! end do
 
+
+  ! do i = 2, n
+  !    j = i
+  !    do while (j > 1 .and. ix(sort_ind(j),1))
+  !       if (j
+  !    end do
+  ! end do
+  
   
   ! Check if two cell belong to the same grid -> hash table can be avoided
   ! TODO: what if one of the values is negative? bitwise exclusive or can be negative and thus smaller than 2... 
-  same(1) = .false.
-  do i = 2, n   
-     same(i) = IEOR(ix(i, 1), ix(i - 1, 1)) < 2
-  end do
-  do i = 2, n
-     same(i) = same(i) .and. IEOR(ix(i, 2), ix(i - 1, 2)) < 2
-  end do
-  do i = 2, n
-     same(i) = same(i) .and. IEOR(ix(i, 3), ix(i - 1, 3)) < 2
-  end do
+  ! same(1) = .false.
+  ! do i = 2, n   
+  !    same(i) = IEOR(ix(i, 1), ix(i - 1, 1)) < 2
+  ! end do
+  ! do i = 2, n
+  !    same(i) = same(i) .and. IEOR(ix(i, 2), ix(i - 1, 2)) < 2
+  ! end do
+  ! do i = 2, n
+  !    same(i) = same(i) .and. IEOR(ix(i, 3), ix(i - 1, 3)) < 2
+  ! end do
 
   ! Probe for grid starting from ilevel, if not present, try coarser
   cell_levl(1:n) = ilevel
@@ -597,12 +606,12 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
      
      ! Check if I can skip accessing the hash table
      ! Access the hash table only if necessary
-     if (same(i)) then
-        igrid(i) = igrid(i - 1)
-        cell_levl(i) = cell_levl(i - 1)
-        skipped = skipped + 1
-        cycle
-     end if
+     ! if (same(i)) then
+     !    igrid(i) = igrid(i - 1)
+     !    cell_levl(i) = cell_levl(i - 1)
+     !    skipped = skipped + 1
+     !    cycle
+     ! end if
      
      ! Initial hash key
      hash_key(0) = ilevel
@@ -635,7 +644,7 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
      cell_index(i) = ncoarse + igrid(i) + ind(i) * ngridmax 
   end do
   
-  if (mod(skipped,32768)==0) print*, tot, 1.0 * skipped / tot
+!  if (mod(skipped,32768)==0) print*, tot, 1.0 * skipped / tot
 
 end subroutine get_cell_index_from_cartesian_hash
 

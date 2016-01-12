@@ -89,8 +89,9 @@ recursive subroutine amr_step(ilevel,icount)
 
   call cmp_particle_boundary_key
 
-  !call hash_stats(cell_dict)
-  
+  if (ilevel==levelmin)then
+     call hash_stats(grid_dict)
+  endif
   !------------------------
   ! Output results to files
   !------------------------

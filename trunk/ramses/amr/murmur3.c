@@ -138,13 +138,13 @@ FORCE_INLINE void murmurhash3_x64_128_ ( const void * key, const int * len,
   h1 ^= *len; h2 ^= *len;
 
   h1 += h2;
-  h2 += h1;
+  /* h2 += h1; */
 
-  h1 = fmix64(h1);
-  h2 = fmix64(h2);
+  /* h1 = fmix64(h1); */
+  /* h2 = fmix64(h2); */
 
-  h1 += h2;
-  h2 += h1;
+  /* h1 += h2; */
+  /* h2 += h1; */
 
   //  ((uint64_t*)out)[0] = h1 & *tablesize;
   ((uint64_t*)out)[0] = h1;

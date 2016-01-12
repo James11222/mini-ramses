@@ -1,3 +1,193 @@
+! subroutine get3cubefather(ind_cell_father,nbors_father_cells,&
+!      &                    nbors_father_grids,ncell,ilevel)
+!   use amr_commons 
+!   implicit none
+!   integer::ncell,ilevel
+!   integer,dimension(1:nvector)::ind_cell_father
+!   integer,dimension(1:nvector,1:threetondim)::nbors_father_cells
+!   integer,dimension(1:nvector,1:twotondim)::nbors_father_grids
+!   !------------------------------------------------------------------
+!   ! This subroutine determines the 3^ndim neighboring father cells 
+!   ! of the input father cell. According to the refinement rule, 
+!   ! they should be present anytime.
+!   !------------------------------------------------------------------
+!   integer::i,j,nxny,i1,j1,k1,ind,iok
+!   integer::i1min,i1max,j1min,j1max,k1min,k1max,ind_father
+!   integer,dimension(1:nvector),save::ix,iy,iz,iix,iiy,iiz
+!   integer,dimension(1:nvector),save::pos,ind_grid_father,ind_grid_ok
+!   integer,dimension(1:nvector,1:threetondim),save::nbors_father_ok
+!   integer,dimension(1:nvector,1:twotondim),save::nbors_grids_ok
+!   logical::oups
+
+!   nxny=nx*ny
+
+!   if(ilevel==1)then  ! Easy...
+
+!      oups=.false.
+!      do i=1,ncell
+!         if(ind_cell_father(i)>ncoarse)oups=.true.
+!      end do
+!      if(oups)then
+!         write(*,*)'get3cubefather'
+!         write(*,*)'oupsssss !'
+!         call clean_stop
+!      endif
+
+!      do i=1,ncell
+!         iz(i)=(ind_cell_father(i)-1)/nxny
+!      end do
+!      do i=1,ncell
+!         iy(i)=(ind_cell_father(i)-1-iz(i)*nxny)/nx
+!      end do
+!      do i=1,ncell
+!         ix(i)=(ind_cell_father(i)-1-iy(i)*nx-iz(i)*nxny)
+!      end do
+
+!      i1min=0; i1max=0
+!      if(ndim > 0)i1max=2
+!      j1min=0; j1max=0
+!      if(ndim > 1)j1max=2
+!      k1min=0; k1max=0
+!      if(ndim > 2)k1max=2
+
+!      ! Loop over 3^ndim neighboring father cells
+!      do k1=k1min,k1max
+!         iiz=iz
+!         if(ndim > 2)then
+!            do i=1,ncell
+!               iiz(i)=iz(i)+k1-1
+!               if(iiz(i) < 0   )iiz(i)=nz-1
+!               if(iiz(i) > nz-1)iiz(i)=0
+!            end do
+!         end if
+!         do j1=j1min,j1max
+!            iiy=iy
+!            if(ndim > 1)then
+!               do i=1,ncell
+!                  iiy(i)=iy(i)+j1-1
+!                  if(iiy(i) < 0   )iiy(i)=ny-1
+!                  if(iiy(i) > ny-1)iiy(i)=0
+!               end do
+!            end if
+!            do i1=i1min,i1max
+!               iix=ix
+!               if(ndim > 0)then
+!                  do i=1,ncell
+!                     iix(i)=ix(i)+i1-1
+!                     if(iix(i) < 0   )iix(i)=nx-1
+!                     if(iix(i) > nx-1)iix(i)=0
+!                  end do
+!               end if
+!               ind_father=1+i1+3*j1+9*k1
+!               do i=1,ncell
+!                  nbors_father_cells(i,ind_father)=1 &
+!                       & +iix(i) &
+!                       & +iiy(i)*nx &
+!                       & +iiz(i)*nxny
+!               end do
+!            end do
+!         end do
+!      end do
+
+!      i1min=0; i1max=0
+!      if(ndim > 0)i1max=1
+!      j1min=0; j1max=0
+!      if(ndim > 1)j1max=1
+!      k1min=0; k1max=0
+!      if(ndim > 2)k1max=1
+
+!      ! Loop over 2^ndim neighboring father grids
+!      do k1=k1min,k1max
+!         iiz=iz
+!         if(ndim > 2)then
+!            do i=1,ncell
+!               iiz(i)=iz(i)+2*k1-1
+!               if(iiz(i) < 0   )iiz(i)=nz-1
+!               if(iiz(i) > nz-1)iiz(i)=0
+!            end do
+!         end if
+!         do j1=j1min,j1max
+!            iiy=iy
+!            if(ndim > 1)then
+!               do i=1,ncell
+!                  iiy(i)=iy(i)+2*j1-1
+!                  if(iiy(i) < 0   )iiy(i)=ny-1
+!                  if(iiy(i) > ny-1)iiy(i)=0
+!               end do
+!            end if
+!            do i1=i1min,i1max
+!               iix=ix
+!               if(ndim > 0)then
+!                  do i=1,ncell
+!                     iix(i)=ix(i)+2*i1-1
+!                     if(iix(i) < 0   )iix(i)=nx-1
+!                     if(iix(i) > nx-1)iix(i)=0
+!                  end do
+!               end if
+!               ind_father=1+i1+2*j1+4*k1
+!               do i=1,ncell
+!                  nbors_father_grids(i,ind_father)=1 &
+!                       & +(iix(i)/2) &
+!                       & +(iiy(i)/2)*(nx/2) &
+!                       & +(iiz(i)/2)*(nxny/4)
+!               end do
+!            end do
+!         end do
+!      end do
+
+!   else    ! else, more complicated...
+     
+!      ! Get father cell position in the grid
+!      do i=1,ncell
+!         pos(i)=(ind_cell_father(i)-ncoarse-1)/ngridmax+1
+!      end do
+!      ! Get father grid
+!      do i=1,ncell
+!         ind_grid_father(i)=ind_cell_father(i)-ncoarse-(pos(i)-1)*ngridmax
+!      end do
+
+!      ! Loop over position
+!      do ind=1,twotondim
+
+!         ! Select father cells that sit at position ind
+!         iok=0
+!         do i=1,ncell
+!            if(pos(i)==ind)then
+!               iok=iok+1
+!               ind_grid_ok(iok)=ind_grid_father(i)
+!            end if
+!         end do
+
+!         if(iok>0)&
+!         & call get3cubepos(ind_grid_ok,ind,nbors_father_ok,nbors_grids_ok,iok)
+
+!         ! Store neighboring father cells for selected cells
+!         do j=1,threetondim
+!            iok=0
+!            do i=1,ncell
+!               if(pos(i)==ind)then
+!                  iok=iok+1
+!                  nbors_father_cells(i,j)=nbors_father_ok(iok,j)
+!               end if
+!            end do
+!         end do
+
+!         ! Store neighboring father grids for selected cells
+!         do j=1,twotondim
+!            iok=0
+!            do i=1,ncell
+!               if(pos(i)==ind)then
+!                  iok=iok+1
+!                  nbors_father_grids(i,j)=nbors_grids_ok(iok,j)
+!               end if
+!            end do
+!         end do
+
+!      end do
+
+!   end if
+
+! end subroutine get3cubefather
 !##############################################################
 !##############################################################
 !##############################################################
