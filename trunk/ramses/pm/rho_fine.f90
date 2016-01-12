@@ -822,10 +822,10 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   ! out:          - none  
   ! side effect:  - updates rho field on levels ilevel <= part_level   
 
-  real(dp), dimension(1:nvector, 1:ndim) :: xpart
+!  real(dp), dimension(1:nvector, 1:ndim) :: xpart
   real(dp), dimension(1:nvector)         :: mpart
   integer,  dimension(1:ncpu, 1:4)       :: communicator
-  integer :: ip, offset, nparts, ibin, ipart, grid_level, npart_direct
+  integer :: ip, np, ioft, offset, nparts, ibin, ipart, grid_level, npart_direct
   integer :: recv_tot, local_data, local_data_oft
 
   integer(kind=8), allocatable, dimension(:,:) :: part_hkey_direct
@@ -886,55 +886,34 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   call part_data_to_domain_dp(communicator, mp_direct, mp_remote)
 #endif
   ! Project local direct particles
-  ip = 0
-  do ipart = local_data_oft + 1, local_data_oft + local_data 
-     ip = ip + 1
-     xpart(ip, 1:ndim) = xp_direct(ipart, 1:ndim)
-     mpart(ip)         = mp_direct(ipart)
-     if (ip == nvector) then
-        do grid_level = part_level, min_grid_level, -1
-           call cic_amr(xp_direct, npart_direct, mpart, ipart - ip, ip, grid_level)
-        end do
-        ip = 0
-     end if
-  end do
-  if (ip > 0) then
+  do ioft = local_data_oft, local_data_oft + local_data - 1, nvector
+     np = min(nvector, local_data_oft + local_data - ioft)
      do grid_level = part_level, min_grid_level, -1
-        call cic_amr(xp_direct, npart_direct, mpart, ipart - ip, ip, grid_level)
+        call cic_amr(xp_direct, mp_direct, npart_direct, ioft, np, grid_level)
      end do
-  end if
-
+  end do
+  
 #ifndef WITHOUTMPI
   ! Project remote direct particles
-  ip = 0
-  do ipart = 1, recv_tot
-     ip = ip + 1
-     xpart(ip, 1:ndim) = xp_remote(ipart, 1:ndim)
-     mpart(ip)         = mp_remote(ipart)
-     if (ip == nvector) then
-        do grid_level = part_level, min_grid_level, -1
-           call cic_amr(xp_remote, recv_tot, mpart, ipart - ip, ip, grid_level)
-        end do
-        ip = 0
-     end if
-  end do
-  if (ip > 0) then
+  do ioft = 0, recv_tot - 1, nvector
+     np = min(nvector, recv_tot - ioft)
      do grid_level = part_level, min_grid_level, -1
-        call cic_amr(xp_remote, recv_tot, mpart, ipart - ip, ip, grid_level)
+        call cic_amr(xp_remote, mp_remote, recv_tot, ioft, np, grid_level)
      end do
-  end if
+  end do
   deallocate(xp_remote, mp_remote)
 #endif
+
 contains
-  subroutine cic_amr(xpart, xpart_size, mpart, offset, np, grid_level)
+  subroutine cic_amr(xpart, mpart, array_size, offset, np, grid_level)
     use amr_parameters,  only: static, mass_cut_refine, nvector, ndim
     use amr_commons,     only: boxlen, icoarse_max, icoarse_min
     use poisson_commons, only: rho, phi
     use hilbert,         only: hilbert3d
     implicit none
-    integer,  intent(in)                               :: offset, np, grid_level, xpart_size
-    real(dp), intent(in), dimension(1:nvector)         :: mpart
-    real(dp), intent(in), dimension(1:xpart_size, 1:ndim) :: xpart
+    integer,  intent(in):: offset, np, grid_level, array_size
+    real(dp), intent(in), dimension(1:array_size)         :: mpart
+    real(dp), intent(in), dimension(1:array_size, 1:ndim) :: xpart
 
     ! This routine deposits nvector particles (local or remote) onto the grid (local)
     ! at level grid_level.
@@ -959,7 +938,7 @@ contains
     dx_loc = 0.5D0**grid_level * boxlen / dble(nx_loc)
     one_over_vol_loc = 1.d0 / dx_loc**ndim    
 
-    call cic(xpart, xpart_size, cell_index, vol, offset, np, grid_level, 1)
+    call cic(xpart, array_size, cell_index, vol, offset, np, grid_level, 1)
     
     ! Loop cloud/cell intersections
     do ind_cloud = 1, 8
@@ -971,7 +950,7 @@ contains
        ! Add to mass density rho
        do ip = 1, np
           rho(cell_index(ip, ind_cloud)) = rho(cell_index(ip, ind_cloud)) + &
-               mpart(ip) * vol(ip, ind_cloud) * one_over_vol_loc
+               mpart(offset + ip) * vol(ip, ind_cloud) * one_over_vol_loc
        end do
     end do
     

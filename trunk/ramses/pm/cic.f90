@@ -1,13 +1,13 @@
-subroutine cic(xpart, xpart_size, cell_index, vol, offset, np, cic_level, level_boundary_case)
+subroutine cic(xpart, array_size, cell_index, vol, offset, np, cic_level, level_boundary_case)
    use amr_parameters,  only: static, dp, twotondim, int_pre
    use amr_commons,     only: boxlen, nvector, ndim
    use hilbert,         only: hilbert3d
    implicit none
 
-   integer,  intent(in)                                      :: offset, np, xpart_size, cic_level, level_boundary_case
+   integer,  intent(in)                                      :: offset, np, array_size, cic_level, level_boundary_case
    integer(kind=4), intent(inout), dimension(1:nvector, 1:8) :: cell_index
    real(dp),        intent(inout), dimension(1:nvector, 1:8) :: vol
-   real(dp), intent(in), dimension(1:xpart_size, 1:ndim)     :: xpart
+   real(dp), intent(in), dimension(1:array_size, 1:ndim)     :: xpart
 
    ! Subroutine to do the Cloud-in-Cell interpolation for nvector particle positions at level cic_level.
 
