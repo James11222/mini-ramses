@@ -373,7 +373,7 @@ pure function same_keys(key1, key2)
          use amr_parameters, only: int_pre, ndim
          integer(int_pre), dimension(0:ndim), intent(in) :: key1, key2     
          integer, intent(in) :: key_length
-         logical :: memcmp
+         integer :: memcmp
        end function memcmp
     end interface
     same_keys =  memcmp(key1, key2, key_length) == 0_4
