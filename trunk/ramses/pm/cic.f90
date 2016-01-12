@@ -1,13 +1,13 @@
-subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
+subroutine cic(xpart, xpart_size, cell_index, vol, offset, np, cic_level, level_boundary_case)
    use amr_parameters,  only: static, dp, twotondim, int_pre
    use amr_commons,     only: boxlen, nvector, ndim
    use hilbert,         only: hilbert3d
    implicit none
 
-   integer,  intent(in)                                      :: np, cic_level, level_boundary_case
+   integer,  intent(in)                                      :: offset, np, xpart_size, cic_level, level_boundary_case
    integer(kind=4), intent(inout), dimension(1:nvector, 1:8) :: cell_index
    real(dp),        intent(inout), dimension(1:nvector, 1:8) :: vol
-   real(dp), intent(in), dimension(1:nvector, 1:ndim)        :: xpart
+   real(dp), intent(in), dimension(1:xpart_size, 1:ndim)     :: xpart
 
    ! Subroutine to do the Cloud-in-Cell interpolation for nvector particle positions at level cic_level.
 
@@ -23,7 +23,6 @@ subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
    ! - cell_index: indices of the cells touched by the CIC clouds
    ! - vol: Fractional volume of of a particle that falls in a given cell
 
-!   integer(kind=8), dimension(1:nvector, 0:2),    save :: cloud_hkey
    integer(int_pre), dimension(1:nvector, 1:ndim), save :: ix
    integer(kind=4), dimension(1:nvector),         save :: dummy_state
    integer(kind=4), dimension(1:nvector),         save :: cell_level
@@ -44,7 +43,7 @@ subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
    ! Convert particle coordinates (0 to boxlen)
    ! into grid-coordinates (0 to 2.**grid_level)
    part_to_grid = 2.0**cic_level / boxlen
-   xpart_grid(1:np, 1:ndim) = xpart(1:np, 1:ndim) * part_to_grid
+   xpart_grid(1:np, 1:ndim) = xpart(offset + 1:offset + np, 1:ndim) * part_to_grid
 
    ! Compute distances of cloud boundary from nearest "integer coordinate"
    do idim = 1, ndim       
@@ -143,7 +142,7 @@ subroutine cic(xpart, cell_index, vol, np, cic_level, level_boundary_case)
    if (level_boundary_case == 2)then
       do ip = 1, np        
          if (repeat_coarser(ip)) then
-            call cic_one(xpart(ip,1:ndim), cell_index(ip, 1:twotondim), vol(ip, 1:twotondim), cic_level - 1)
+            call cic_one(xpart(offset + ip,1:ndim), cell_index(ip, 1:twotondim), vol(ip, 1:twotondim), cic_level - 1)
          end if
       end do
    end if

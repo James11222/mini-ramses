@@ -893,14 +893,14 @@ subroutine rho_direct_particles(part_level, min_grid_level)
      mpart(ip)         = mp_direct(ipart)
      if (ip == nvector) then
         do grid_level = part_level, min_grid_level, -1
-           call cic_amr(xpart, mpart, ip, grid_level)
+           call cic_amr(xp_direct, npart_direct, mpart, ipart - ip, ip, grid_level)
         end do
         ip = 0
      end if
   end do
   if (ip > 0) then
      do grid_level = part_level, min_grid_level, -1
-        call cic_amr(xpart, mpart, ip, grid_level)
+        call cic_amr(xp_direct, npart_direct, mpart, ipart - ip, ip, grid_level)
      end do
   end if
 
@@ -913,28 +913,28 @@ subroutine rho_direct_particles(part_level, min_grid_level)
      mpart(ip)         = mp_remote(ipart)
      if (ip == nvector) then
         do grid_level = part_level, min_grid_level, -1
-           call cic_amr(xpart, mpart, ip, grid_level)
+           call cic_amr(xp_remote, recv_tot, mpart, ipart - ip, ip, grid_level)
         end do
         ip = 0
      end if
   end do
   if (ip > 0) then
      do grid_level = part_level, min_grid_level, -1
-        call cic_amr(xpart, mpart, ip, grid_level)
+        call cic_amr(xp_remote, recv_tot, mpart, ipart - ip, ip, grid_level)
      end do
   end if
   deallocate(xp_remote, mp_remote)
 #endif
 contains
-  subroutine cic_amr(xpart, mpart, np, grid_level)
+  subroutine cic_amr(xpart, xpart_size, mpart, offset, np, grid_level)
     use amr_parameters,  only: static, mass_cut_refine, nvector, ndim
     use amr_commons,     only: boxlen, icoarse_max, icoarse_min
     use poisson_commons, only: rho, phi
     use hilbert,         only: hilbert3d
     implicit none
-    integer,  intent(in)                               :: np, grid_level
+    integer,  intent(in)                               :: offset, np, grid_level, xpart_size
     real(dp), intent(in), dimension(1:nvector)         :: mpart
-    real(dp), intent(in), dimension(1:nvector, 1:ndim) :: xpart
+    real(dp), intent(in), dimension(1:xpart_size, 1:ndim) :: xpart
 
     ! This routine deposits nvector particles (local or remote) onto the grid (local)
     ! at level grid_level.
@@ -959,7 +959,7 @@ contains
     dx_loc = 0.5D0**grid_level * boxlen / dble(nx_loc)
     one_over_vol_loc = 1.d0 / dx_loc**ndim    
 
-    call cic(xpart, cell_index, vol, np, grid_level, 1)
+    call cic(xpart, xpart_size, cell_index, vol, offset, np, grid_level, 1)
     
     ! Loop cloud/cell intersections
     do ind_cloud = 1, 8

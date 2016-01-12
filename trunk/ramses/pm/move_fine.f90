@@ -144,6 +144,7 @@ subroutine compute_particle_acceleration(ilevel, read_gas_velocity)
   use hydro_commons,   only: uold
   use poisson_commons, only: f
   use amr_commons,     only: dtnew, ncpu, myid, t, son
+  use pm_parameters,   only: npartmax
 #ifndef WITHOUTMPI
   use particle_communication, only: build_communicator, part_data_to_domain_dp, domain_data_to_part_dp
 #endif
@@ -164,7 +165,6 @@ subroutine compute_particle_acceleration(ilevel, read_gas_velocity)
   integer,  dimension(1:ncpu, 1:4)       :: communicator
   integer,  dimension(1:nvector, 1:twotondim), save :: cell_index
   real(dp), dimension(1:nvector, 1:twotondim), save :: vol
-  real(dp), dimension(1:nvector, 1:ndim), save :: xpart
   
   integer :: offset, nparts, ioft, np, ip, ind, idim, ipart, local_oft, npart_recv, nparts_local
 
@@ -196,22 +196,17 @@ subroutine compute_particle_acceleration(ilevel, read_gas_velocity)
 #endif
        ilevel)
 
-  allocate(xp_remote(1:npart_recv, 1:3), ap_remote(1:npart_recv, 1:3))
+  allocate(xp_remote(1:npart_recv, 1:ndim), ap_remote(1:npart_recv, 1:ndim))
   call part_data_to_domain_dp(communicator, xp(offset + 1 : offset + nparts, 1), xp_remote(:, 1))
-  call part_data_to_domain_dp(communicator, xp(offset + 1 : offset + nparts, 2), xp_remote(:, 2))
-  call part_data_to_domain_dp(communicator, xp(offset + 1 : offset + nparts, 3), xp_remote(:, 3))
+  if (ndim > 1) call part_data_to_domain_dp(communicator, xp(offset + 1 : offset + nparts, 2), xp_remote(:, 2))
+  if (ndim > 2) call part_data_to_domain_dp(communicator, xp(offset + 1 : offset + nparts, 3), xp_remote(:, 3))
 
   
  ! Deal with remote particles
   do ioft = 0, npart_recv - 1, nvector
      np = min(nvector, npart_recv - ioft)
 
-     ! TODO:avoid this copy by changing cic such that 3 arrays (xcoords, ycoords, zcoords) are passed in instead of 1 2d array
-     do idim = 1, ndim
-        xpart(1:np, idim) = xp_remote(ioft + 1: ioft + np, idim)
-     end do
-
-     call cic(xpart, cell_index, vol, np, ilevel, 2)
+     call cic(xp_remote, npart_recv, cell_index, vol, ioft, np, ilevel, 2)
 
      ap_remote(ioft + 1: ioft + np, 1: ndim) = 0.0D0
      if(read_gas_velocity)then
@@ -234,19 +229,17 @@ subroutine compute_particle_acceleration(ilevel, read_gas_velocity)
         end do
      endif
   end do
-  call domain_data_to_part_dp(communicator, ap_remote(:,3), ap(offset + 1 : offset + nparts, 3))
-  call domain_data_to_part_dp(communicator, ap_remote(:,2), ap(offset + 1 : offset + nparts, 2))
   call domain_data_to_part_dp(communicator, ap_remote(:,1), ap(offset + 1 : offset + nparts, 1))
+  if (ndim > 1) call domain_data_to_part_dp(communicator, ap_remote(:,2), ap(offset + 1 : offset + nparts, 2))
+  if (ndim > 2) call domain_data_to_part_dp(communicator, ap_remote(:,3), ap(offset + 1 : offset + nparts, 3))
   deallocate(xp_remote, ap_remote)
 
 #endif
   ! Deal with local particles
   do ioft = offset + local_oft, offset + local_oft + nparts_local - 1, nvector
      np = min(nvector, offset + local_oft + nparts_local - ioft)
-     do idim = 1, ndim
-        xpart(1:np, idim) = xp(ioft + 1: ioft + np, idim)
-     end do
-     call cic(xpart, cell_index, vol, np, ilevel, 2)
+
+     call cic(xp, npartmax, cell_index, vol, ioft, np, ilevel, 2)
      
      ! TODO: get rid of big ap array!!!!!!!!
      ap(ioft + 1: ioft + np, 1: ndim) = 0.0D0
