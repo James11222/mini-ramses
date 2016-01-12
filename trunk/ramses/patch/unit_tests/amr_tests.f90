@@ -4,7 +4,7 @@ subroutine amr_tests(all_ok)
   logical::amr_ok=.true.
 
   call hilbert_tests3d(amr_ok)
-  call hilbert_tests2d(amr_ok)
+!  call hilbert_tests2d(amr_ok)
   call hash_tests(amr_ok)
 !  call other_test2(amr_ok)
 
@@ -33,12 +33,26 @@ subroutine hilbert_tests3d(all_ok)
   integer::bit_length,i
   logical::ok,all_ok
   real,dimension(1:nvector)::xfloat,yfloat,zfloat
-  integer(kind=8),dimension(1:nvector)::xint,yint,zint
-  integer(kind=8),dimension(1:nvector)::hkey2,hkey1,hkey0
+  integer(int_pre),dimension(1:nvector)::xint,yint,zint
+  integer(kind=8),dimension(1:nvector)::hkey1
+#if NHILBERT > 1
+  integer(kind=8),dimension(1:nvector)::hkey2
+#endif
+#if NHILBERT > 2
+  integer(kind=8),dimension(1:nvector)::hkey3
+#endif
   integer(kind=4),dimension(1:nvector)::cstate
-  integer(kind=8),dimension(1:nvector)::xint_store,yint_store,zint_store
+  integer(int_pre),dimension(1:nvector)::xint_store,yint_store,zint_store
 
+#if NHILBERT == 1
+  do bit_length=1,21
+#endif
+#if NHILBERT == 2
+  do bit_length=1,42
+#endif
+#if NHILBERT == 3
   do bit_length=1,63
+#endif
      ok=.true.
 
      call random_number(xfloat)
@@ -54,10 +68,24 @@ subroutine hilbert_tests3d(all_ok)
      xint_store(1:nvector)=xint(1:nvector)
      yint_store(1:nvector)=yint(1:nvector)
      zint_store(1:nvector)=zint(1:nvector)
-
-     call hilbert3d(xint,yint,zint,hkey2,hkey1,hkey0,cstate,0,bit_length,nvector)
-     call hilbert3d_reverse(xint,yint,zint,hkey2,hkey1,hkey0,bit_length,nvector)
-
+     call hilbert3d(xint,yint,zint,hkey1, &
+#if NHILBERT > 1
+          hkey2, &
+#endif
+#if NHILBERT > 2
+          hkey3, &
+#endif
+          cstate,0,bit_length,nvector)
+     
+     call hilbert3d_reverse(xint,yint,zint,hkey1, &
+#if NHILBERT > 1
+          hkey2, &
+#endif
+#if NHILBERT > 2
+          hkey3, &
+#endif
+          bit_length,nvector)
+     
      do i=1,nvector
         if( xint_store(i) .ne. xint(i) )ok=.false.
         if( yint_store(i) .ne. yint(i) )ok=.false.
@@ -74,53 +102,53 @@ subroutine hilbert_tests3d(all_ok)
 end subroutine hilbert_tests3d
 ! =====================================================================================
 ! =====================================================================================
-subroutine hilbert_tests2d(all_ok)
-  use amr_commons
-  use amr_parameters
-  use hilbert,       only: hilbert2d_reverse, hilbert2d
-  implicit none
+! subroutine hilbert_tests2d(all_ok)
+!   use amr_commons
+!   use amr_parameters
+!   use hilbert,       only: hilbert2d_reverse, hilbert2d
+!   implicit none
 
-  ! A simple test which transforms integer coordinates into a 2 integer hilbert key
-  ! and the hilbert key back into integer coordinate. Results must be equal to input.
+!   ! A simple test which transforms integer coordinates into a 2 integer hilbert key
+!   ! and the hilbert key back into integer coordinate. Results must be equal to input.
 
-  integer::bit_length,i
-  logical::ok,all_ok
-  real,dimension(1:nvector)::xfloat,yfloat
-  integer(kind=8),dimension(1:nvector)::xint,yint
-  integer(kind=8),dimension(1:nvector)::hkey1,hkey0
-  integer(kind=4),dimension(1:nvector)::cstate
-  integer(kind=8),dimension(1:nvector)::xint_store,yint_store
+!   integer::bit_length,i
+!   logical::ok,all_ok
+!   real,dimension(1:nvector)::xfloat,yfloat
+!   integer(kind=8),dimension(1:nvector)::xint,yint
+!   integer(kind=8),dimension(1:nvector)::hkey1,hkey0
+!   integer(kind=4),dimension(1:nvector)::cstate
+!   integer(kind=8),dimension(1:nvector)::xint_store,yint_store
 
-  do bit_length=1,62
-     ok=.true.
+!   do bit_length=1,62
+!      ok=.true.
 
-     call random_number(xfloat)
-     call random_number(yfloat)
+!      call random_number(xfloat)
+!      call random_number(yfloat)
      
-     do i=1,nvector
-        xint(i)=int(xfloat(i)*2.0**bit_length,kind=8)
-        yint(i)=int(yfloat(i)*2.0**bit_length,kind=8)
-     end do
+!      do i=1,nvector
+!         xint(i)=int(xfloat(i)*2.0**bit_length,kind=8)
+!         yint(i)=int(yfloat(i)*2.0**bit_length,kind=8)
+!      end do
 
-     xint_store(1:nvector)=xint(1:nvector)
-     yint_store(1:nvector)=yint(1:nvector)
+!      xint_store(1:nvector)=xint(1:nvector)
+!      yint_store(1:nvector)=yint(1:nvector)
 
-     call hilbert2d(xint,yint,hkey1,hkey0,cstate,0,bit_length,nvector)
-     call hilbert2d_reverse(xint,yint,hkey1,hkey0,bit_length,nvector)
+!      call hilbert2d(xint,yint,hkey1,hkey0,cstate,0,bit_length,nvector)
+!      call hilbert2d_reverse(xint,yint,hkey1,hkey0,bit_length,nvector)
 
-     do i=1,nvector
-        if( xint_store(i) .ne. xint(i) )ok=.false.
-        if( yint_store(i) .ne. yint(i) )ok=.false.
-     end do
+!      do i=1,nvector
+!         if( xint_store(i) .ne. xint(i) )ok=.false.
+!         if( yint_store(i) .ne. yint(i) )ok=.false.
+!      end do
 
-     if (.not. ok)then
-        write(*,*)'hilbert 2d test FAILED for bit_length ',bit_length
-        all_ok=.false.
-     end if
+!      if (.not. ok)then
+!         write(*,*)'hilbert 2d test FAILED for bit_length ',bit_length
+!         all_ok=.false.
+!      end if
 
-  end do
+!   end do
 
-end subroutine hilbert_tests2d
+! end subroutine hilbert_tests2d
 ! =====================================================================================
 ! =====================================================================================
 subroutine hash_tests(all_ok)
@@ -134,7 +162,7 @@ subroutine hash_tests(all_ok)
   real,dimension(1:3000)::val_float
   real,dimension(0:ndim,1:3000)::key_float
   integer,dimension(1:3000)::val
-  integer(kind=8),dimension(0:ndim,1:3000)::key
+  integer(int_pre),dimension(0:ndim,1:3000)::key
 
   ok=.true.
  
@@ -148,7 +176,7 @@ subroutine hash_tests(all_ok)
 
   call init_empty_hash(htable,3000)
 
-!  call hash_stats(htable)
+  call hash_stats(htable)
 
   nfree_store=htable%nfree
   nfree_chain_store=htable%nfree_chain
@@ -157,7 +185,7 @@ subroutine hash_tests(all_ok)
      call hash_set(htable,key(0:ndim,i),val(i))     
   end do
 
-!  call hash_stats(htable)
+  call hash_stats(htable)
 
 
   do i=2000,1,-1
@@ -169,13 +197,13 @@ subroutine hash_tests(all_ok)
      call hash_free(htable,key(0:ndim ,i) )
   end do
 
-!  call hash_stats(htable)
+  call hash_stats(htable)
 
   do i=2001,3000
      call hash_set(htable,key(0:ndim ,i) ,val(i))
   end do
   
-!  call hash_stats(htable)
+  call hash_stats(htable)
 
   do i=1,1000
      ok=ok .and. (val(i)==hash_get(htable,key(0:ndim ,i) ))
@@ -186,14 +214,14 @@ subroutine hash_tests(all_ok)
      call hash_free(htable,key(0:ndim ,i) )
   end do
 
-!  call hash_stats(htable)
+  call hash_stats(htable)
 
   do i=1000,1,-1
      ok=ok .and. (val(i)==hash_get(htable,key(0:ndim ,i) ))
      call hash_free(htable,key(0:ndim ,i) )
   end do
   
-!  call hash_stats(htable)
+  call hash_stats(htable)
   
   ok=ok .and. (nfree_store==htable%nfree)
   ok=ok .and. (nfree_chain_store==htable%nfree_chain)

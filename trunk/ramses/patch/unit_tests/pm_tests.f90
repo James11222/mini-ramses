@@ -52,7 +52,7 @@ contains
     use amr_parameters
     use pm_commons
     use hilbert,       only: hilbert_for_particle
-    use sort,          only: lsd_radix_sort_particles, gt_3keys, gt_2keys, apply_particle_permutation
+    use sort,          only: lsd_radix_sort_particles, gt_keys, apply_particle_permutation
     implicit none
     
     ! A simple test which transforms integer coordinates into a 3 integer hilbert key
@@ -64,13 +64,15 @@ contains
     real(dp),dimension(1:size, 1:ndim)::xfloat
 
 
-#if NDIM > 1
-#if NDIM == 2
-    do ilevel=1,62
+#if NHILBERT == 1
+    do ilevel=1, 21
 #endif
-#if NDIM == 3
-    do ilevel=1,63
-#endif 
+#if NHILBERT == 2
+    do ilevel=1, 42
+#endif
+#if NHILBERT == 3
+    do ilevel=1, 63
+#endif
 
        call random_number(xfloat)
        xp(1:size,1:ndim)=xfloat(1:size,1:ndim)
@@ -80,24 +82,22 @@ contains
        call apply_particle_permutation(0,size,ilevel)
        
        do i=1,size-1
-#if NDIM == 2
-          if (gt_2keys(part_hkey(i,0:1),part_hkey(i+1,0:1)))then
-#endif
-#if NDIM == 3
-          if (gt_3keys(part_hkey(i,0:2),part_hkey(i+1,0:2)))then
-#endif
+          if (gt_keys(part_hkey(i,1:nhilbert),part_hkey(i+1,1:nhilbert)))then
              write(*,*)'particle sort test FAILED for level', ilevel, ilevel
              all_ok=.false.
           end if
        end do
     end do
 
-#if NDIM == 2
-    do ilevel=1,62
+#if NHILBERT == 1
+    do ilevel=1, 21
 #endif
-#if NDIM == 3
-    do ilevel=1,63
-#endif 
+#if NHILBERT == 2
+    do ilevel=1, 42
+#endif
+#if NHILBERT == 3
+    do ilevel=1, 63
+#endif
 
        call random_number(xfloat)
        xp(1:size,1:ndim)=xfloat(1:size,1:ndim)
@@ -107,19 +107,14 @@ contains
        call apply_particle_permutation(offs,size-offs,ilevel)
        
        do i=offs+1,size-1
-#if NDIM == 2
-          if (gt_2keys(part_hkey(i,0:1),part_hkey(i+1,0:1)))then
-#endif
-#if NDIM == 3
-          if (gt_3keys(part_hkey(i,0:2),part_hkey(i+1,0:2)))then
-#endif
+          if (gt_keys(part_hkey(i,1:nhilbert),part_hkey(i+1,1:nhilbert)))then
              write(*,*)'particle sort test FAILED for level', ilevel, ilevel
              all_ok=.false.
           end if
        end do
     end do
     
-#endif
+
     
   end subroutine sort_particle_tests
 end subroutine pm_tests
