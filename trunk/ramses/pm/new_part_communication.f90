@@ -108,8 +108,8 @@ contains
     include 'mpif.h'
 
     integer, dimension(1:ncpu, 1:4), intent(in) :: communicator
-    integer, dimension(1:), intent(in) :: send_data
-    integer, dimension(1:), intent(inout) :: recv_data
+    integer, dimension(:), intent(in) :: send_data
+    integer, dimension(:), intent(inout) :: recv_data
 
     integer  :: info, request
     integer  :: status(MPI_STATUS_SIZE)
