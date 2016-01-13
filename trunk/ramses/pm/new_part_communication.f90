@@ -1,7 +1,17 @@
 module particle_communication
+#ifndef WITHOUTMPI
+  
+  ! Operator overloading for the communication routines
+  interface part_data_to_domain
+     module procedure part_data_to_domain_i4, part_data_to_domain_i8, part_data_to_domain_dp
+  end interface part_data_to_domain
+  
+  interface domain_data_to_part
+     module procedure domain_data_to_part_i4, domain_data_to_part_dp
+  end interface domain_data_to_part
   
 contains
-#ifndef WITHOUTMPI
+
 
   subroutine build_communicator(communicator, recv_tot, ndata, local_data, local_data_oft, hkey1, &
 #if NHILBERT > 1
@@ -101,20 +111,22 @@ contains
 
   end subroutine build_communicator
   !################################################################
+
+  
   !################################################################
   subroutine part_data_to_domain_i4(communicator, send_data, recv_data)
     use amr_commons,   only: ncpu
     implicit none
     include 'mpif.h'
-
+    
     integer, dimension(1:ncpu, 1:4), intent(in) :: communicator
     integer, dimension(:), intent(in) :: send_data
     integer, dimension(:), intent(inout) :: recv_data
-
+    
     integer  :: info, request
     integer  :: status(MPI_STATUS_SIZE)
-
-
+    
+    
     call MPI_IALLTOALLV(send_data, communicator(:,1), communicator(:,2), MPI_INTEGER, &
          &              recv_data, communicator(:,3), communicator(:,4), MPI_INTEGER, &
          &              MPI_COMM_WORLD, request, info)

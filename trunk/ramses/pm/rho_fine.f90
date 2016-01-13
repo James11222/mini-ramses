@@ -670,7 +670,7 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   use pm_commons,     only: part_level_offset, bin_start_offset, bin_count, &
                             xp, mp, idp, nbins, part_hkey
 #ifndef WITHOUTMPI
-  use particle_communication, only: build_communicator, part_data_to_domain_dp
+  use particle_communication, only: build_communicator, part_data_to_domain
 #endif
   implicit none
   integer, intent(in) :: part_level, min_grid_level
@@ -742,10 +742,10 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   allocate(xp_remote(1:recv_tot, 1:ndim))
   allocate(mp_remote(1:recv_tot))
 
-  call part_data_to_domain_dp(communicator, xp_direct(:, 1), xp_remote(:, 1))
-  call part_data_to_domain_dp(communicator, xp_direct(:, 2), xp_remote(:, 2))
-  call part_data_to_domain_dp(communicator, xp_direct(:, 3), xp_remote(:, 3))
-  call part_data_to_domain_dp(communicator, mp_direct, mp_remote)
+  call part_data_to_domain(communicator, xp_direct(:, 1), xp_remote(:, 1))
+  call part_data_to_domain(communicator, xp_direct(:, 2), xp_remote(:, 2))
+  call part_data_to_domain(communicator, xp_direct(:, 3), xp_remote(:, 3))
+  call part_data_to_domain(communicator, mp_direct, mp_remote)
 #endif
   ! Project local direct particles
   do ioft = local_data_oft, local_data_oft + local_data - 1, nvector
@@ -1040,8 +1040,7 @@ contains
     use pm_commons,      only: bin_keys, bin_mass, nbins
     use poisson_commons, only: rho, phi
 #ifndef WITHOUTMPI
-    use particle_communication, only: build_communicator, part_data_to_domain_dp, &
-         part_data_to_domain_i8
+    use particle_communication, only: build_communicator, part_data_to_domain
 #endif
     implicit none
     integer, intent(in) :: cell_level
@@ -1078,15 +1077,15 @@ contains
       bin_keys_remote = 0
       bin_count_remote = 0.d0
 
-      call part_data_to_domain_i8(communicator, bin_keys(:, 1), bin_keys_remote(:, 1))
+      call part_data_to_domain(communicator, bin_keys(:, 1), bin_keys_remote(:, 1))
 #if NHILBERT > 1
-      call part_data_to_domain_i8(communicator, bin_keys(:, 2), bin_keys_remote(:, 2))
+      call part_data_to_domain(communicator, bin_keys(:, 2), bin_keys_remote(:, 2))
 #endif
 #if NHILBERT > 2
-      call part_data_to_domain_i8(communicator, bin_keys(:, 3), bin_keys_remote(:, 3))
+      call part_data_to_domain(communicator, bin_keys(:, 3), bin_keys_remote(:, 3))
 #endif
-      call part_data_to_domain_dp(communicator, bin_mass, bin_mass_remote)
-      call part_data_to_domain_dp(communicator, bin_count, bin_count_remote)
+      call part_data_to_domain(communicator, bin_mass, bin_mass_remote)
+      call part_data_to_domain(communicator, bin_count, bin_count_remote)
 #endif      
       ! go through bins in sweeps and add mass to corresponding cell
       do ioft = local_bins_oft, local_bins_oft + local_bins - 1, nvector

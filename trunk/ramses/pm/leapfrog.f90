@@ -119,7 +119,7 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
   use amr_commons,     only: dtnew, ncpu, myid, t, son
   use pm_parameters,   only: npartmax
 #ifndef WITHOUTMPI
-  use particle_communication, only: build_communicator, part_data_to_domain_dp, domain_data_to_part_dp
+  use particle_communication, only: build_communicator, part_data_to_domain, domain_data_to_part
 #endif
   use hilbert,     only: hilbert_for_particle 
   implicit none
@@ -160,9 +160,9 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
        ilevel)
 
   allocate(xp_remote(1:npart_recv, 1:ndim), ap_remote(1:npart_recv, 1:ndim))
-  call part_data_to_domain_dp(communicator, xp(offset + 1 : offset + nparts, 1), xp_remote(:, 1))
-  if (ndim > 1) call part_data_to_domain_dp(communicator, xp(offset + 1 : offset + nparts, 2), xp_remote(:, 2))
-  if (ndim > 2) call part_data_to_domain_dp(communicator, xp(offset + 1 : offset + nparts, 3), xp_remote(:, 3))
+  call part_data_to_domain(communicator, xp(offset + 1 : offset + nparts, 1), xp_remote(:, 1))
+  if (ndim > 1) call part_data_to_domain(communicator, xp(offset + 1 : offset + nparts, 2), xp_remote(:, 2))
+  if (ndim > 2) call part_data_to_domain(communicator, xp(offset + 1 : offset + nparts, 3), xp_remote(:, 3))
 
   
   ! Deal with remote particles
@@ -192,9 +192,9 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
         end do
      endif
   end do
-  call domain_data_to_part_dp(communicator, ap_remote(:,1), ap(offset + 1 : offset + nparts, 1))
-  if (ndim > 1) call domain_data_to_part_dp(communicator, ap_remote(:,2), ap(offset + 1 : offset + nparts, 2))
-  if (ndim > 2) call domain_data_to_part_dp(communicator, ap_remote(:,3), ap(offset + 1 : offset + nparts, 3))
+  call domain_data_to_part(communicator, ap_remote(:,1), ap(offset + 1 : offset + nparts, 1))
+  if (ndim > 1) call domain_data_to_part(communicator, ap_remote(:,2), ap(offset + 1 : offset + nparts, 2))
+  if (ndim > 2) call domain_data_to_part(communicator, ap_remote(:,3), ap(offset + 1 : offset + nparts, 3))
   deallocate(xp_remote, ap_remote)
 
 #endif

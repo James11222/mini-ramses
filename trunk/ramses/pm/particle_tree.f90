@@ -128,8 +128,7 @@ subroutine communicate_refinements(communicator, ndata_remote, ndata, ndata_loca
 
   use amr_parameters, only: nhilbert
   use amr_commons,   only: ncpu, myid, bound_key_level, son, nvector, nlevelmax
-  use particle_communication, only: part_data_to_domain_i8, part_data_to_domain_i4, &
-                                    domain_data_to_part_i4
+  use particle_communication, only: part_data_to_domain, domain_data_to_part
   implicit none
   include 'mpif.h'
   integer, intent(in) ::  ilevel, ndata
@@ -166,12 +165,12 @@ subroutine communicate_refinements(communicator, ndata_remote, ndata, ndata_loca
 
   allocate(remote_refined(1:ndata_remote))
   allocate(remote_keys(1:ndata_remote, 1:nhilbert))
-  call part_data_to_domain_i8(communicator, keys1, remote_keys(:,1))
+  call part_data_to_domain(communicator, keys1, remote_keys(:,1))
 #if NHILBERT > 1
-  call part_data_to_domain_i8(communicator, keys2, remote_keys(:,2))
+  call part_data_to_domain(communicator, keys2, remote_keys(:,2))
 #endif
 #if NHILBERT > 2
-  call part_data_to_domain_i8(communicator, keys3, remote_keys(:,3))
+  call part_data_to_domain(communicator, keys3, remote_keys(:,3))
 #endif
 
 
@@ -222,7 +221,7 @@ subroutine communicate_refinements(communicator, ndata_remote, ndata, ndata_loca
   end do
 
   ! Send refinement information back
-  call domain_data_to_part_i4(communicator, remote_refined, refined)
+  call domain_data_to_part(communicator, remote_refined, refined)
 
   deallocate(remote_refined)
   deallocate(remote_keys)
