@@ -6,8 +6,7 @@ module pm_commons
   real(dp),allocatable,dimension(:,:)       ::xp       ! Positions
   real(dp),allocatable,dimension(:,:)       ::vp       ! Velocities
   real(dp),allocatable,dimension(:)         ::mp       ! Masses
-  real(dp),allocatable,dimension(:,:)       ::ap       ! Accelerations (more convenient communication if allocated fully
-                                                                   ! for all particles
+
   integer(kind=8),allocatable,dimension(:,:)::part_hkey
   integer(kind=4),allocatable,dimension(:)  ::current_state
   integer(kind=4),allocatable,dimension(:)  ::sorted_particle_index

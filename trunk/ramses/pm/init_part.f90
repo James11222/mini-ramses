@@ -66,7 +66,6 @@ subroutine init_part
   ! Allocate particle variables
   allocate(xp    (npartmax,ndim))
   allocate(vp    (npartmax,ndim))
-  allocate(ap    (npartmax,ndim))
   allocate(mp    (npartmax))
   allocate(levelp(npartmax))
   allocate(idp   (npartmax))

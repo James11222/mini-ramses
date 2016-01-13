@@ -3,7 +3,7 @@
 !#########################################################################
 !#########################################################################
 subroutine kick_drift(ilevel) ! FORMERLY KNOWN AS MOVE_FINE
-  use pm_commons,      only: part_level_offset, xp, vp, ap, idp, nx, ny, nz, boxlen, npart, npartmax
+  use pm_commons,      only: part_level_offset, xp, vp, idp, nx, ny, nz, boxlen, npart, npartmax
   use amr_parameters,  only: dp, ndim, tracer, hydro, static, verbose
   use amr_commons,     only: ncpu, dtnew, myid
   implicit none
@@ -14,6 +14,7 @@ subroutine kick_drift(ilevel) ! FORMERLY KNOWN AS MOVE_FINE
   integer, intent(in) :: ilevel
   integer :: offset, nparts, idim, ipart, i, j, info
   logical,dimension(1:ndim)::period
+  real(dp), allocatable, dimension(:,:) :: ap
   
   ! TODO: make this nicer!
   period(1)=(nx==1)
@@ -28,8 +29,10 @@ subroutine kick_drift(ilevel) ! FORMERLY KNOWN AS MOVE_FINE
   
   offset = part_level_offset(ilevel)
   nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
+
+  allocate(ap(offset + 1: offset + nparts, 1:ndim))
   
-  call compute_particle_acceleration(ilevel, tracer .and. hydro)
+  call compute_particle_acceleration(ap, offset, nparts, ilevel, tracer .and. hydro)
 
      ! do i=1,npartmax
      !    do j=1,npart
@@ -74,13 +77,14 @@ subroutine kick_drift(ilevel) ! FORMERLY KNOWN AS MOVE_FINE
         end if
      end do
   end do
+  deallocate(ap)
 end subroutine kick_drift
 !#########################################################################
 !#########################################################################
 !#########################################################################
 !#########################################################################
 subroutine second_kick(ilevel) !FORMERLY KNOWN AS SYNCHRO FINE
-  use pm_commons,      only: part_level_offset, xp, vp, ap, levelp, idp
+  use pm_commons,      only: part_level_offset, xp, vp, levelp, idp
   use amr_parameters,  only: dp, nvector, ndim, tracer, hydro, static, twotondim, poisson, verbose
   use hydro_commons,   only: uold
   use poisson_commons, only: f
@@ -94,7 +98,7 @@ subroutine second_kick(ilevel) !FORMERLY KNOWN AS SYNCHRO FINE
 
 
   integer, intent(in) :: ilevel
-
+  real(dp), allocatable, dimension(:,:) :: ap
 
 
   real(dp), dimension(1:nvector),              save :: dteff
@@ -105,7 +109,8 @@ subroutine second_kick(ilevel) !FORMERLY KNOWN AS SYNCHRO FINE
   offset = part_level_offset(ilevel)
   nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
 
-  call compute_particle_acceleration(ilevel, tracer .and. hydro)
+  allocate(ap(offset + 1: offset + nparts, 1:ndim))
+  call compute_particle_acceleration(ap, offset, nparts, ilevel, tracer .and. hydro)
 
   ! Compute individual time steps
   do ioft = offset, offset + nparts - 1, nvector
@@ -131,14 +136,14 @@ subroutine second_kick(ilevel) !FORMERLY KNOWN AS SYNCHRO FINE
         end do
      end do
   end do
-
+deallocate(ap)
 end subroutine second_kick
 !#########################################################################
 !#########################################################################
 !#########################################################################
 !#########################################################################
-subroutine compute_particle_acceleration(ilevel, read_gas_velocity)
-  use pm_commons,      only: part_level_offset, xp, ap, idp, &
+subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_velocity)
+  use pm_commons,      only: part_level_offset, xp, idp, &
                              part_hkey, npart
   use amr_parameters,  only: dp, nvector, ndim, twotondim, poisson, verbose
   use hydro_commons,   only: uold
@@ -157,22 +162,20 @@ subroutine compute_particle_acceleration(ilevel, read_gas_velocity)
 
 
 
-  integer, intent(in) :: ilevel
+  integer, intent(in) :: ilevel, offset, nparts
   logical, intent(in) :: read_gas_velocity
+  real(dp), intent(inout), dimension(offset + 1 : offset + nparts, 1:ndim) :: ap
   
   real(dp), allocatable, dimension(:,:) :: xp_remote, ap_remote
   integer,  dimension(1:ncpu, 1:4)       :: communicator
   integer,  dimension(1:nvector, 1:twotondim), save :: cell_index
   real(dp), dimension(1:nvector, 1:twotondim), save :: vol
   
-  integer :: offset, nparts, ioft, np, ip, ind, idim, ipart, local_oft, npart_recv, nparts_local
+  integer :: ioft, np, ip, ind, idim, ipart, local_oft, npart_recv, nparts_local
 
   ! TODO: consistent naming (np, nparts, npart) throughout routines
   ! TODO: try to avoid usage of big ap(1:npartmax) array. For example, sudivide ilevel and call routine
   ! several times and not just once for all parts from offset + 1 to offset_nparts
-
-  offset = part_level_offset(ilevel)
-  nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
 
   if(verbose)write(*,'("Entering compute_particle_acceleration, level " I2)')ilevel 
 
@@ -255,7 +258,7 @@ subroutine compute_particle_acceleration(ilevel, read_gas_velocity)
         end do
      endif
   end do
-
+  
 #ifdef OUTPUT_PARTICLE_POTENTIAL
   ! Just a reminder that this option is not built in yet
   print*,"stopping because of OUTPUT_PARTICLE_POTENTIAL"
