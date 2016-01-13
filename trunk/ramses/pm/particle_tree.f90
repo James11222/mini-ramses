@@ -1,76 +1,3 @@
-!################################################################
-!################################################################
-!################################################################
-!################################################################
-! subroutine memory_sort_level(ind_com,np,ilevel,icpu)
-!   use pm_commons
-!   use amr_commons
-
-!   ! sort all the particles in memory according to their level
-
-!   implicit none
-!   integer::np,icpu,ilevel
-!   integer,dimension(1:nvector)::ind_com
-  
-!   integer::i,idim,igrid
-!   integer,dimension(1:nvector),save::ind_list,ind_part
-!   logical,dimension(1:nvector),save::ok=.true.
-!   integer::current_property
-
-!   ! Compute parent grid index
-!   do i=1,np
-!      igrid=emission(icpu,ilevel)%fp(ind_com(i),1)
-!      ind_list(i)=emission(icpu,ilevel)%igrid(igrid)
-!   end do
-
-!   ! Add particle to parent linked list
-!   call remove_free(ind_part,np)
-!   call add_list(ind_part,ind_list,ok,np)
-
-!   ! Scatter particle level and identity
-!   do i=1,np
-!      levelp(ind_part(i))=emission(icpu,ilevel)%fp(ind_com(i),2)
-!      idp   (ind_part(i))=emission(icpu,ilevel)%fp(ind_com(i),3)
-!   end do
-
-!   ! Scatter particle position and velocity
-!   do idim=1,ndim
-!   do i=1,np
-!      xp(ind_part(i),idim)=emission(icpu,ilevel)%up(ind_com(i),idim     )
-!      vp(ind_part(i),idim)=emission(icpu,ilevel)%up(ind_com(i),idim+ndim)
-!   end do
-!   end do
-
-!   current_property = twondim+1
-
-!   ! Scatter particle mass
-!   do i=1,np
-!      mp(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property)
-!   end do
-!   current_property = current_property+1
-
-! #ifdef OUTPUT_PARTICLE_POTENTIAL
-!   ! Scatter particle phi
-!   do i=1,np
-!      ptcl_phi(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property)
-!   end do
-!   current_property = current_property+1
-! #endif
-
-! end subroutine memory_sort_level
-! !################################################################
-! !################################################################
-! !################################################################
-! !################################################################
-
-! subroutine get_particle_levels
-
-! end subroutine get_particle_levels
-! !################################################################
-! !################################################################
-! !################################################################
-! !################################################################
-
 subroutine sort_particles(ilevel, use_histograms)
   use pm_commons,  only: npart, part_level_offset, &
                          nbins, bin_keys, part_hkey, &
@@ -306,11 +233,6 @@ end subroutine communicate_refinements
 !################################################################
 !################################################################
 !################################################################
-
-!################################################################
-!################################################################
-!################################################################
-!################################################################
 subroutine reshuffle_particles(ilevel, np, ndata, refined, use_histograms)
   use pm_commons,     only: part_level_offset, part_ind_permutation, part_hkey, &
                             bin_keys, part_ind_permutation2
@@ -393,68 +315,6 @@ end subroutine reshuffle_particles
 !################################################################
 !################################################################
 !################################################################
-! subroutine part_to_cell_i8(part_array,sortind)
-!   use pm_parameters, only: npartmax
-!   implicit none
-! #ifndef WITHOUTMPI
-!   include 'mpif.h'
-! #endif
-  
-!   integer(kind=8),dimension(1:npartmax)::part_array, sortind
-  
-!   ! Communication routine that sends a particle-based quantity
-!   ! to the MPI domain that owns the respective cell
-  
-  
-  
-  
-
-! #ifndef WITHOUTMPI
-!   do j=1,part_recv_tot
-!      ipart=part_recv_buf(j)-ipart_start(myid)
-!      int_part_recv_buf(j)=xx(ipart)
-!   end do
-!   call MPI_ALLTOALLV(int8_part_recv_buf,part_recv_cnt,part_recv_oft,MPI_INTEGER, &
-!        &             int8_part_send_buf,part_send_cnt,part_send_oft,MPI_INTEGER,MPI_COMM_WORLD,info)
-  
-  
-!   deallocate(int8_part_send_buf,int8_part_recv_buf)
-! #endif
-  
-! end subroutine part_to_cell_i8
-
-
-! !################################################################
-! !################################################################
-! !################################################################
-! !################################################################
-!subroutine part_to_cell_dp
-  
-
-!  implicit none
-  
-
-!end subroutine part_to_cell_dp
-! !################################################################
-! !################################################################
-! !################################################################
-! !################################################################
-
-! !################################################################
-! !################################################################
-! !################################################################
-! !################################################################
-!subroutine get_cell_index_from_hilbert(cell_index,hkey0,hkey1,hkey2,np,ilevel)
-!   use amr_commons
-!   ! assuming the last 3 digits are in cartesian order
-!   do i=1,np
-!      grid_index=hash_get(hkey0(i))
-!      ind=mod(hkey0(i),8)
-!      iskip=ncoarse+(ind-1)*ngridmax
-!      cell_index(i)=iskip+ind_grid
-!   end do
-! end subroutine get_cell_index
-
 subroutine get_cell_index_from_hilbertkey(cell_index,cell_levl,hilbert_key1, &
 #if NHILBERT > 1
      hilbert_key2, &
@@ -464,7 +324,7 @@ subroutine get_cell_index_from_hilbertkey(cell_index,cell_levl,hilbert_key1, &
 #endif
      np,ilevel)
   use amr_parameters, only: int_pre
-  use amr_commons, only: nlevelmax, nvector, myid, ncoarse, ngridmax, xg
+  use amr_commons, only: nvector
   use hilbert,     only: hilbert3d_reverse
   implicit none
   integer, intent(in)::np,ilevel
@@ -477,8 +337,6 @@ subroutine get_cell_index_from_hilbertkey(cell_index,cell_levl,hilbert_key1, &
   integer(kind=8),dimension(1:nvector)::hilbert_key3
 #endif
   integer,dimension(1:nvector)::cell_levl, cell_index
-  integer,dimension(1:nvector)::cell_levl2, cell_index2
-  integer :: i
   call hilbert3d_reverse(ix(1,1),ix(1,2),ix(1,3),hilbert_key1, &
 #if NHILBERT > 1
        hilbert_key2, &
@@ -487,57 +345,12 @@ subroutine get_cell_index_from_hilbertkey(cell_index,cell_levl,hilbert_key1, &
        hilbert_key3, &
 #endif
        ilevel,np)
-  call get_cell_index_from_cartesian_hash(cell_index,cell_levl,ix,ilevel,np)
-     
+  call get_cell_index_from_cartesian_hash(cell_index,cell_levl,ix,ilevel,np)     
 end subroutine get_cell_index_from_hilbertkey
-
-! subroutine get_cell_index_from_cartesian(cell_index,cell_levl,xx,yy,zz,ilevel,n,bit_length)
-!   use amr_commons
-!   use amr_parameters, only: int_pre
-!   implicit none
-
-!   integer, intent(in)::n,ilevel,bit_length
-!   integer,dimension(1:nvector)::cell_index,cell_levl
-!   integer(int_pre),dimension(1:nvector)::xx,yy,zz
-!   !----------------------------------------------------------------------------
-!   !----------------------------------------------------------------------------
-!   integer::i,j,ind,iskip,igrid,ind_cell,igrid0
-!   integer(int_pre)::ii,jj,kk
-
-!   if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
-!   else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
-!   else
-!      write(*,*)"nx=ny=nz != 1,3 is not supported."
-!      stop
-!   end if
-
-!   if (bit_length>21)then
-!      print*, 'bit length too big for now'
-!   end if
-  
-!   ind_cell=0
-!   igrid0=son(1+icoarse_min+jcoarse_min*nx+kcoarse_min*nx*ny)
-!   do i=1,n
-!      igrid=igrid0
-!      do j=1,ilevel 
-!         ii=ISHFT(xx(i),-bit_length+j)
-!         jj=ISHFT(yy(i),-bit_length+j)
-!         kk=ISHFT(zz(i),-bit_length+j)
-!         ii=mod(ii,2)
-!         jj=mod(jj,2)
-!         kk=mod(kk,2)
-!         ind=1+ii+2*jj+4*kk
-!         iskip=ncoarse+(ind-1)*ngridmax
-!         ind_cell=iskip+igrid
-!         igrid=son(ind_cell)
-!         if(igrid==0.or.j==ilevel)exit
-!      end do
-!      cell_index(i)=ind_cell
-!      cell_levl(i)=j
-!   end do
-! end subroutine get_cell_index_from_cartesian
-
-
+!#########################################################################
+!#########################################################################
+!#########################################################################
+!#########################################################################
 subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel, n)
   use amr_commons
   use hash, only: hash_get
@@ -647,65 +460,6 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
 !  if (mod(skipped,32768)==0) print*, tot, 1.0 * skipped / tot
 
 end subroutine get_cell_index_from_cartesian_hash
-
-!#########################################################################
-!#########################################################################
-!#########################################################################
-!#########################################################################
-subroutine get_cell_index(cell_index,cell_levl,xpart,ilevel,n)
-  use amr_commons
-  implicit none
-
-  integer::n,ilevel
-  integer,dimension(1:nvector)::cell_index,cell_levl
-  real(dp),dimension(1:nvector,1:3)::xpart
-
-  !----------------------------------------------------------------------------
-  ! This routine returns the index and level of the cell, (at maximum level
-  ! ilevel), in which the input the position specified by xpart lies
-  !----------------------------------------------------------------------------
-
-  real(dp)::xx,yy,zz
-  integer::i,j,ii,jj,kk,ind,iskip,igrid,ind_cell,igrid0
-
-  if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
-  else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
-  else
-     write(*,*)"nx=ny=nz != 1,3 is not supported."
-     call clean_stop
-  end if
-
-  ind_cell=0
-  igrid0=son(1+icoarse_min+jcoarse_min*nx+kcoarse_min*nx*ny)
-  do i=1,n
-     xx = xpart(i,1)/boxlen + (nx-1)/2.0
-     yy = xpart(i,2)/boxlen + (ny-1)/2.0
-     zz = xpart(i,3)/boxlen + (nz-1)/2.0
-
-     if(xx<0.)xx=xx+dble(nx)
-     if(xx>dble(nx))xx=xx-dble(nx)
-     if(yy<0.)yy=yy+dble(ny)
-     if(yy>dble(ny))yy=yy-dble(ny)
-     if(zz<0.)zz=zz+dble(nz)
-     if(zz>dble(nz))zz=zz-dble(nz)
-
-     igrid=igrid0
-     do j=1,ilevel 
-        ii=1; jj=1; kk=1
-        if(xx<xg(igrid,1))ii=0
-        if(yy<xg(igrid,2))jj=0
-        if(zz<xg(igrid,3))kk=0
-        ind=1+ii+2*jj+4*kk
-        iskip=ncoarse+(ind-1)*ngridmax
-        ind_cell=iskip+igrid
-        igrid=son(ind_cell)
-        if(igrid==0.or.j==ilevel)exit
-     end do
-     cell_index(i)=ind_cell
-     cell_levl(i)=j
-  end do
-end subroutine get_cell_index
-
 !#########################################################################
 !#########################################################################
 !#########################################################################
@@ -786,78 +540,120 @@ end subroutine compute_particle_histogram
 
 
 
-subroutine count_parts
-  use pm_commons
+
+
+
+
+
+
+
+! ---------------------------------------- UNUSED ROUTINES ---------------------------------------
+! These are functioning but currently unused routines which might be valuable for debugging etc...
+! -------------------------------------------------------------------------------------------------   
+subroutine get_cell_index(cell_index,cell_levl,xpart,ilevel,n)
   use amr_commons
   implicit none
-#ifndef WITHOUTMPI
-  include 'mpif.h'
-#endif
 
-  ! ugly routine to count all particles in the simulation level by level
-  ! used for debugging
-  integer::ilevel
-  integer::igrid,jgrid,i,ngrid,ncache
-  integer::ig,ip,npart1,npart2,npart2_tot,icpu,info
-  integer,dimension(1:nvector)::ind_grid
-  integer,dimension(1:nlevelmax)::npts
+  integer::n,ilevel
+  integer,dimension(1:nvector)::cell_index,cell_levl
+  real(dp),dimension(1:nvector,1:3)::xpart
 
-  npts=0  
-  do ilevel=1,nlevelmax
-     npart2=0
-     ! Loop over cpus
-     do icpu=1,ncpu
-        igrid=headl(icpu,ilevel)
-        ig=0
-        ip=0
-        ! Loop over grids
-        do jgrid=1,numbl(icpu,ilevel)
-           npart1=numbp(igrid)  ! Number of particles in the grid
-           npart2=npart2+npart1
-           igrid=next(igrid)   ! Go to next grid                                                              
-        
-        end do
+  !----------------------------------------------------------------------------
+  ! This routine returns the index and level of the cell, (at maximum level
+  ! ilevel), in which the input the position specified by xpart lies
+  !----------------------------------------------------------------------------
+
+  real(dp)::xx,yy,zz
+  integer::i,j,ii,jj,kk,ind,iskip,igrid,ind_cell,igrid0
+
+  if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
+  else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
+  else
+     write(*,*)"nx=ny=nz != 1,3 is not supported."
+     call clean_stop
+  end if
+
+  ind_cell=0
+  igrid0=son(1+icoarse_min+jcoarse_min*nx+kcoarse_min*nx*ny)
+  do i=1,n
+     xx = xpart(i,1)/boxlen + (nx-1)/2.0
+     yy = xpart(i,2)/boxlen + (ny-1)/2.0
+     zz = xpart(i,3)/boxlen + (nz-1)/2.0
+
+     if(xx<0.)xx=xx+dble(nx)
+     if(xx>dble(nx))xx=xx-dble(nx)
+     if(yy<0.)yy=yy+dble(ny)
+     if(yy>dble(ny))yy=yy-dble(ny)
+     if(zz<0.)zz=zz+dble(nz)
+     if(zz>dble(nz))zz=zz-dble(nz)
+
+     igrid=igrid0
+     do j=1,ilevel 
+        ii=1; jj=1; kk=1
+        if(xx<xg(igrid,1))ii=0
+        if(yy<xg(igrid,2))jj=0
+        if(zz<xg(igrid,3))kk=0
+        ind=1+ii+2*jj+4*kk
+        iskip=ncoarse+(ind-1)*ngridmax
+        ind_cell=iskip+igrid
+        igrid=son(ind_cell)
+        if(igrid==0.or.j==ilevel)exit
      end do
-#ifndef WITHOUTMPI
-     call MPI_ALLREDUCE(npart2,npart2_tot,1,MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,info)
-#else
-     npart2_tot=npart2
-#endif          
-     npts(ilevel)=npart2_tot
+     cell_index(i)=ind_cell
+     cell_levl(i)=j
   end do
-  if (myid==1)print*,'total'
-  if (myid==1)print*,npts(1:nlevelmax)
-  
-  
+end subroutine get_cell_index
+!#########################################################################
+!#########################################################################
+!#########################################################################
+!#########################################################################
+subroutine get_cell_index_from_cartesian(cell_index,cell_levl,xx,yy,zz,ilevel,n,bit_length)
+  use amr_commons
+  use amr_parameters, only: int_pre
+  implicit none
 
-   npts=0  
-   do ilevel=1,nlevelmax
-      npart2=0        
-      
-      ncache=active(ilevel)%ngrid
-      do igrid=1,ncache,nvector
-         ngrid=MIN(nvector,ncache-igrid+1)
-         do i=1,ngrid
-            ind_grid(i)=active(ilevel)%igrid(igrid+i-1)
-         end do
-         do i=1,ngrid
-            npart2=npart2+numbp(ind_grid(i))
-         end do
-        
-      end do
+  integer, intent(in)::n,ilevel,bit_length
+  integer,dimension(1:nvector)::cell_index,cell_levl
+  integer(int_pre),dimension(1:nvector)::xx,yy,zz
+  !----------------------------------------------------------------------------
+  ! Routine to obtain the cell index from the cartesina key.
+  ! Not used at the moment, keep for debug purpose
+  !----------------------------------------------------------------------------
+  integer::i,j,ind,iskip,igrid,ind_cell,igrid0
+  integer(int_pre)::ii,jj,kk
 
-#ifndef WITHOUTMPI
-      call MPI_ALLREDUCE(npart2,npart2_tot,1,MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,info)
-#else
-      npart2_tot=npart2
-#endif          
-      npts(ilevel)=npart2_tot
-   end do
-   if (myid==1)print*,'active'
-   if (myid==1)print*,npts(1:nlevelmax)
-   
-   
-end subroutine count_parts
+  if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
+  else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
+  else
+     write(*,*)"nx=ny=nz != 1,3 is not supported."
+     stop
+  end if
+
+  if (bit_length>21)then
+     print*, 'bit length too big for now'
+  end if
+  
+  ind_cell=0
+  igrid0=son(1+icoarse_min+jcoarse_min*nx+kcoarse_min*nx*ny)
+  do i=1,n
+     igrid=igrid0
+     do j=1,ilevel 
+        ii=ISHFT(xx(i),-bit_length+j)
+        jj=ISHFT(yy(i),-bit_length+j)
+        kk=ISHFT(zz(i),-bit_length+j)
+        ii=mod(ii,2)
+        jj=mod(jj,2)
+        kk=mod(kk,2)
+        ind=1+ii+2*jj+4*kk
+        iskip=ncoarse+(ind-1)*ngridmax
+        ind_cell=iskip+igrid
+        igrid=son(ind_cell)
+        if(igrid==0.or.j==ilevel)exit
+     end do
+     cell_index(i)=ind_cell
+     cell_levl(i)=j
+  end do
+end subroutine get_cell_index_from_cartesian
 !#########################################################################
 !#########################################################################
 !#########################################################################
@@ -895,68 +691,3 @@ subroutine check_sorted(offset, np)
   if (.not. ok)stop
 end subroutine check_sorted
 
-
-
-
-subroutine write_ascii_parts
-  use pm_commons
-  use amr_commons
-  implicit none
-#ifndef WITHOUTMPI
-  include 'mpif.h'
-#endif
-
-  ! ugly routine to count all particles in the simulation level by level
-  ! used for debugging
-  integer::ilevel, ilun
-  integer::igrid,jgrid,i,ngrid,ncache, ipart, jpart, next_part
-  integer::ig,ip,npart1,npart2,npart2_tot,icpu,info
-  integer,dimension(1:nvector)::ind_grid
-  integer,dimension(1:nlevelmax)::npts
-  character(len=80)::filename
-  character(LEN=5)::nchar
-  
-  ilun=myid+100
-  
-  call title(ilun,nchar)
-  filename='OLDParts'//nchar
- 
-  open(unit=ilun,file=filename,form='formatted')
-  
-  do ilevel=levelmin,levelmin
-     ! Loop over cpus
-     do icpu=1,ncpu
-        igrid=headl(icpu,ilevel)
-        ! Loop over grids
-        do jgrid=1,numbl(icpu,ilevel)
-           npart1=numbp(igrid)  ! Number of particles in the grid
-           if(npart1>0)then
-              ipart=headp(igrid)
-              ! Loop over particles
-              do jpart=1,npart1
-                 ! Save next particle   <--- Very important !!!
-                 next_part=nextp(ipart)
-                 write(ilun,"(6(F20.15),2(I10))")xp(ipart,1:3),vp(ipart,1:3),idp(ipart), levelp(ipart) 
-                 ipart=next_part  ! Go to next particle
-              end do
-           endif
-           igrid=next(igrid)   ! Go to next grid                                                              
-        end do
-     end do
-  end do
-  close(ilun)
-
-  filename='NEWParts'//nchar
-  open(unit=ilun,file=filename,form='formatted')
-  do ipart=1,npart
-     write(ilun,"(6(F20.15),2(I10))")xp(ipart,1:3),vp(ipart,1:3), &
-          idp(ipart), levelp(ipart)
-  end do
-
-  close(ilun)
-end subroutine write_ascii_parts
-! ################################################################################
-!#########################################################################
-!#########################################################################
-!#########################################################################
-!#########################################################################
