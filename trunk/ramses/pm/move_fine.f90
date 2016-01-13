@@ -157,7 +157,6 @@ subroutine compute_particle_acceleration(ilevel, read_gas_velocity)
 
 
 
-
   integer, intent(in) :: ilevel
   logical, intent(in) :: read_gas_velocity
   
@@ -168,21 +167,14 @@ subroutine compute_particle_acceleration(ilevel, read_gas_velocity)
   
   integer :: offset, nparts, ioft, np, ip, ind, idim, ipart, local_oft, npart_recv, nparts_local
 
-  ! TODO: better naming (np, nparts, npart)
+  ! TODO: consistent naming (np, nparts, npart) throughout routines
+  ! TODO: try to avoid usage of big ap(1:npartmax) array. For example, sudivide ilevel and call routine
+  ! several times and not just once for all parts from offset + 1 to offset_nparts
+
   offset = part_level_offset(ilevel)
   nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
 
   if(verbose)write(*,'("Entering compute_particle_acceleration, level " I2)')ilevel 
-
- ! do ipart = offset+1, offset+nparts
- !    if (idp(ipart)==1)then
- !       print*,'found 1', myid, ipart, xp(ipart,1), part_hkey(ipart,0), ilevel, offset, nparts
- !       print*,'found 1 coords', myid, ipart, xp(ipart,1:3)
- !    end if
- ! end do
-  !call compute_particle_histogram(offset, nparts)
-!  call hilbert_for_particle(offset, nparts, 0, ilevel) 
-!  call check_sorted(offset,nparts)
 
 #ifndef WITHOUTMPI
   call build_communicator(communicator, npart_recv, &
@@ -202,10 +194,10 @@ subroutine compute_particle_acceleration(ilevel, read_gas_velocity)
   if (ndim > 2) call part_data_to_domain_dp(communicator, xp(offset + 1 : offset + nparts, 3), xp_remote(:, 3))
 
   
- ! Deal with remote particles
+  ! Deal with remote particles
   do ioft = 0, npart_recv - 1, nvector
      np = min(nvector, npart_recv - ioft)
-
+     
      call cic(xp_remote, npart_recv, cell_index, vol, ioft, np, ilevel, 2)
 
      ap_remote(ioft + 1: ioft + np, 1: ndim) = 0.0D0
@@ -235,13 +227,13 @@ subroutine compute_particle_acceleration(ilevel, read_gas_velocity)
   deallocate(xp_remote, ap_remote)
 
 #endif
+  
   ! Deal with local particles
   do ioft = offset + local_oft, offset + local_oft + nparts_local - 1, nvector
      np = min(nvector, offset + local_oft + nparts_local - ioft)
 
      call cic(xp, npartmax, cell_index, vol, ioft, np, ilevel, 2)
      
-     ! TODO: get rid of big ap array!!!!!!!!
      ap(ioft + 1: ioft + np, 1: ndim) = 0.0D0
      if(read_gas_velocity)then
         do idim = 1, ndim

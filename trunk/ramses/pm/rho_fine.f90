@@ -822,8 +822,6 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   ! out:          - none  
   ! side effect:  - updates rho field on levels ilevel <= part_level   
 
-!  real(dp), dimension(1:nvector, 1:ndim) :: xpart
-  real(dp), dimension(1:nvector)         :: mpart
   integer,  dimension(1:ncpu, 1:4)       :: communicator
   integer :: ip, np, ioft, offset, nparts, ibin, ipart, grid_level, npart_direct
   integer :: recv_tot, local_data, local_data_oft
