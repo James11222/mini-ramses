@@ -109,7 +109,7 @@ AMROBJ = read_params.o init_amr.o init_time.o init_refine.o adaptive_loop.o amr_
          output_amr.o flag_utils.o physical_boundaries.o virtual_boundaries.o refine_utils.o nbors_utils.o \
          load_balance.o title.o units.o movie.o murmur3.o mem_compare.o
 # Particle-Mesh objects
-PMOBJ = init_part.o output_part.o rho_fine.o synchro_fine.o move_fine.o newdt_fine.o particle_tree.o \
+PMOBJ = init_part.o output_part.o rho_fine.o leapfrog.o newdt_fine.o particle_tree.o \
         add_list.o remove_list.o cic.o
 # Poisson solver objects
 POISSONOBJ = init_poisson.o phi_fine_cg.o interpol_phi.o force_fine.o multigrid_coarse.o multigrid_fine_commons.o \
