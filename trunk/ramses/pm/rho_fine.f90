@@ -1186,8 +1186,8 @@ subroutine rho_histogram_particles(part_level, min_grid_level)
 contains
   
   subroutine rho_particle_histogram_onelevel(offset, nparts, n_masked, grid_level)
-    use amr_parameters,  only: ndim, nvector
-    use amr_commons,     only: myid
+    use amr_parameters,  only: ndim, nvector, twotondim
+    use amr_commons,     only: myid, ind_table2
     use pm_commons,      only: xp, part_ind_permutation, part_ind_permutation2, nbins, bin_start_offset, &
                                bin_count, bin_mass, idp
     use hilbert,         only: hilbert_for_particle
@@ -1223,11 +1223,9 @@ contains
     vol_loc = dx_loc**ndim
 
   ! Loop over CIC cloud / cell intersections
-    do ind_cloud = 0, 7
-       ind(1) = ind_cloud/4
-       ind(2) = mod(ind_cloud,4)/2
-       ind(3) = mod(mod(ind_cloud,4),2)
-       
+    do ind_cloud = 0, twotondim - 1
+       ind(1:ndim) = ind_table2(1:ndim, ind_cloud)
+        
        ! Compute cloud corner offset from cloud center
        delta(1:ndim) = ind(1:ndim) - 0.5D0       
 
@@ -1257,7 +1255,6 @@ contains
        ! Reset bin count as it is computed using cic later
        bin_count = 0.d0; bin_mass = 0.d0;
        
-!       print*, 'going in loop', offset, n_masked, nbins, grid_level, part_level, ind_cloud 
        
        ! Loop masked, sorted parts in sweeps and dump the mass for the
        ! given cloud/cell intersection
@@ -1272,12 +1269,12 @@ contains
           bin_nr(ip_sweep)       = ibin
           
           if (ip_sweep == nvector) then
-             call cic_histogram(xpart, mpart, bin_nr, ip_sweep,  grid_level, ind_cloud)
+             call cic_histogram(xpart, mpart, bin_nr, ip_sweep, grid_level, ind)
              ip_sweep = 0
           end if
        end do
        if (ip_sweep > 0) then
-          call cic_histogram(xpart, mpart, bin_nr, ip_sweep, grid_level, ind_cloud)
+          call cic_histogram(xpart, mpart, bin_nr, ip_sweep, grid_level, ind)
        end if
 
        ! Reset particles to original positions
@@ -1303,38 +1300,30 @@ contains
     
   end subroutine rho_particle_histogram_onelevel
   
-  subroutine cic_histogram(xpart, mpart, bin_nr, np, grid_level, ind_cloud)
-    use amr_commons,     only: boxlen, icoarse_max, nvector, ndim
+  subroutine cic_histogram(xpart, mpart, bin_nr, np, grid_level, ind)
+    use amr_parameters,  only: ndim, nvector
+    use amr_commons,     only: boxlen, icoarse_max
     use pm_commons,      only: bin_keys, bin_mass, nbins, bin_count
     implicit none
-    integer,  intent(in)                                  :: np, grid_level, ind_cloud
+    integer,  intent(in)                                  :: np, grid_level
+    integer,  intent(in),    dimension(1:ndim)            :: ind
     integer,  intent(in),    dimension(1:nvector)         :: bin_nr
     real(dp), intent(in),    dimension(1:nvector)         :: mpart
     real(dp), intent(inout), dimension(1:nvector, 1:ndim) :: xpart
 
 
     real(dp), dimension(1:nvector),save :: vol, vol_idim
-    integer,  dimension(1:ndim),   save :: ind
     integer,  save :: idim, ip
     real(dp), save :: pos_to_cart
-
-#if NDIM<3
-    write(*,*)'add non-3D version of this routine'
-    stop
-#endif
 
     ! Convert particle coordinates in code units
     ! into "cartesian" coordinates at grid_level
     pos_to_cart = 2.0**grid_level / dble(boxlen)
     xpart = xpart * pos_to_cart
-    
-    ind(1) = ind_cloud/4
-    ind(2) = mod(ind_cloud,4)/2
-    ind(3) = mod(mod(ind_cloud,4),2)
 
     ! compute volume of cloud/cell intersection
     vol(1:np) = 1.d0
-    do idim=1,ndim       
+    do idim=1, ndim       
        vol_idim(1:np) = xpart(1:np, idim) - floor(xpart(1:np, idim))
        if (ind(idim)==0) vol_idim(1:np) = 1.d0 - vol_idim(1:np)
        vol(1:np) = vol(1:np) * vol_idim(1:np)          
@@ -1349,11 +1338,10 @@ contains
     do ip = 1, np
        bin_mass(bin_nr(ip)) = bin_mass(bin_nr(ip)) + vol(ip) * mpart(ip)
     end do
-
   end subroutine cic_histogram
 
   subroutine dump_histograms(cell_level)
-    use amr_parameters,  only: nvector, dp, nhilbert
+    use amr_parameters,  only: nvector, dp, nhilbert, ndim
     use amr_commons,     only: ncpu, myid
     use pm_commons,      only: bin_keys, bin_mass, nbins
     use poisson_commons, only: rho, phi
@@ -1376,7 +1364,7 @@ contains
     integer,  save :: ib, nb, ibin, recv_tot, local_bins, local_bins_oft, ioft
     real(dp), save :: vol_loc
 
-    vol_loc = (0.5**cell_level * dble(boxlen) )**3    
+    vol_loc = (0.5**cell_level * dble(boxlen) )**ndim    
 
 #ifndef WITHOUTMPI
     call build_communicator(communicator, recv_tot, nbins, local_bins, local_bins_oft, bin_keys(:, 1), &

@@ -24,43 +24,31 @@ module hash
      integer, allocatable, dimension(:) :: next_free
   end type hash_table
 
-
-  
-#if INTKEY_PRECISION == 8
-  integer, parameter :: key_length = 32
-#endif
-#if INTKEY_PRECISION == 4
-  integer, parameter :: key_length = 16
-#endif
-
+  integer, parameter :: key_length = ndim * int_pre
+  integer, dimension(0:3), parameter :: constants = (/5, -1640531527, 97, 1003313/)
 contains
 
   ! ============================================================================= 
-pure function hash_func(htable, key)
+  pure function hash_func(htable, key)
     type(hash_table),                    intent(in) :: htable
-    integer(int_pre) , dimension(0:ndim), intent(in) :: key
+    integer(int_pre), dimension(0:ndim), intent(in) :: key
     integer(kind=8)                                 :: hash_func
-!    integer(kind=4), dimension(1:2),save            :: hash
     integer(kind=4), parameter :: seed=42
-    integer, parameter :: c1=97, c2=-1640531527, c3=-1003313
+
     
-!    interface
-!        pure subroutine murmurhash3_x64_128(key, key_length, seed, hash_func)
-!          use amr_parameters, only: int_pre, ndim
-!          integer(int_pre) , dimension(0:ndim), intent(in) :: key
-!          integer(kind=8), intent(inout)                      :: hash_func
-!          integer, intent(in) :: seed, key_length
-!        end subroutine murmurhash3_x64_128
-!     end interface
-! 
-!    call murmurhash3_x64_128(key, key_length, seed, hash_func)
+    !    interface
+    !        pure subroutine murmurhash3_x64_128(key, key_length, seed, hash_func)
+    !          use amr_parameters, only: int_pre, ndim
+    !          integer(int_pre) , dimension(0:ndim), intent(in) :: key
+    !          integer(kind=8), intent(inout)                      :: hash_func
+    !          integer, intent(in) :: seed, key_length
+    !        end subroutine murmurhash3_x64_128
+    !     end interface
+    ! 
+    !    call murmurhash3_x64_128(key, key_length, seed, hash_func)
     
 
-    ! compute the "bucket" as a function of the nkey-integer key.
-    !    hash_func = MOD(MOD(key(0),htable%prime) + htable%c1 * MOD(key(1),htable%prime)&
-    !         + htable%c2 * MOD(key(2),htable%prime) + htable%c3 * key_level, htable%prime) + 1
-
-        hash_func = key(0) * 5 + c1 * key(1) + c2 * key(2) + c3 * key(3)
+        hash_func = dot_product(key(0:ndim), constants(0:ndim))
 
     
   end function hash_func
@@ -131,7 +119,10 @@ pure function hash_func(htable, key)
     htable%head_free = htable%prime + 1
     htable%nfree_chain = htable%size - htable%prime
   end subroutine reset_entire_hash
+  ! =============================================================================
 
+  
+  ! =============================================================================
   subroutine reset_bucket(buck)
     implicit none
     type(bucket), intent(inout) :: buck
@@ -328,6 +319,27 @@ pure function hash_get(htable, key)
   ! =============================================================================
 
   ! =============================================================================
+
+  pure function same_keys(key1, key2)
+    logical :: same_keys
+    integer(int_pre), dimension(0:ndim), intent(in) :: key1, key2       
+    
+    ! Function to test the equality of two provided keys
+
+    interface
+       pure function memcmp(key1, key2, key_length)
+         use amr_parameters, only: int_pre, ndim
+         integer(int_pre), dimension(0:ndim), intent(in) :: key1, key2     
+         integer, intent(in) :: key_length
+         integer :: memcmp
+       end function memcmp
+    end interface
+    same_keys =  memcmp(key1, key2, key_length) == 0_4
+  end function same_keys
+  
+  ! =============================================================================
+
+  ! =============================================================================
   subroutine hash_stats(htable)
     implicit none
     type(hash_table)::htable
@@ -353,46 +365,4 @@ pure function hash_get(htable, key)
          *1./ (htable%size-htable%prime+tiny(0.D0))
   end subroutine hash_stats
   ! =============================================================================
-
-  ! function same_keys(key1, key2)
-  !   logical :: same_keys
-  !   integer(int_pre), dimension(0:ndim), intent(in) :: key1, key2     
-  !   same_keys =  ( IOR(IEOR(key1(3), key2(3)), &
-  !        IOR(IEOR(key1(2), key2(2)), &
-  !        IOR(IEOR(key1(1), key2(1)), &
-  !        IEOR(key1(0), key2(0)))))) == 0_int_pre
-  ! end function same_keys
-  
-
-pure function same_keys(key1, key2)
-    logical :: same_keys
-    integer(int_pre), dimension(0:ndim), intent(in) :: key1, key2     
-    
-    interface
-       pure function memcmp(key1, key2, key_length)
-         use amr_parameters, only: int_pre, ndim
-         integer(int_pre), dimension(0:ndim), intent(in) :: key1, key2     
-         integer, intent(in) :: key_length
-         integer :: memcmp
-       end function memcmp
-    end interface
-    same_keys =  memcmp(key1, key2, key_length) == 0_4
-  end function same_keys
-
-  !   function same_keys(key1, key2)
-  !   logical :: same_keys
-  !   integer(int_pre), dimension(0:ndim), intent(in) :: key1, key2     
-  !   same_keys =  (key1(0)==key2(0) .and. key1(1)==key2(1) .and. key1(2)==key2(2) .and. key1(3)==key2(3))
-  !   return
-  ! end function same_keys
-
-  ! function same_keys(key1, key2)
-  !   logical :: same_keys
-  !   integer(int_pre), dimension(0:ndim), intent(in) :: key1, key2     
-  !   logical, dimension(0:ndim), save :: ok
-  !   do i = 0, ndmin
-  !      ok(i) = (key1(i)==key2(i))
-  !   end do
-  !   same_keys = ALL(ok)
-  ! end function same_keys
 end module hash

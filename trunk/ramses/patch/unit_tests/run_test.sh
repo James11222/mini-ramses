@@ -1,7 +1,5 @@
 #! /bin/bash
 
-export OMPI_FC=ifort
-
 cp  ../../bin/Makefile ./
 patch -R Makefile < Makefile_diff 
 

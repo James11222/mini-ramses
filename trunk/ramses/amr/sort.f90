@@ -391,7 +391,7 @@ contains
   !########################################################################
   !########################################################################
   !########################################################################
-  
+#if NDIM==3
   subroutine msd_radix_sort_particles(offset, np, initial_level, final_level, key_level)
     implicit none
     integer, intent(in) :: offset, np, initial_level, final_level, key_level
@@ -472,7 +472,7 @@ contains
       end if      
     end subroutine msd_counting_sort_3digits
   end subroutine msd_radix_sort_particles
-
+#endif
   !########################################################################
   !########################################################################
   !########################################################################
@@ -538,6 +538,7 @@ contains
        , hkey3 &
 #endif
        )
+    use amr_parameters, only: ndim, twotondim
     use pm_commons, only: npart
     implicit none    
     integer,                          intent(in)         :: offset, np, ilevel, key_level
@@ -558,28 +559,22 @@ contains
     integer(kind=8),      pointer :: use_key(:)
     integer,                 save :: ipart, ip, ibit1, ikey
     integer(kind=8),         save :: ibucket
-
-#if NDIM==3
-    integer, dimension(0:7), save :: bucket_offset, bucket_count
-    integer, parameter :: nbucket = 7
-    integer, parameter :: nbits_read = 3
-
+    
+    integer, dimension(0:twotondim - 1), save :: bucket_offset, bucket_count
+    integer, parameter :: nbucket = twotondim - 1
+    integer, parameter :: nbits_read = ndim
+    
     ! get bit and key to read from 
-    ibit1 = (key_level-ilevel)*3       
-    ikey = ibit1/63
-    ibit1 = mod(ibit1,63)    
-#endif
-
-#if NDIM==2
-    integer, dimension(0:3), save :: bucket_offset, bucket_count
-    integer, parameter :: nbucket = 3
-    integer, parameter :: nbits_read = 2
- 
-    ! get bit and key to read from 
-    ibit1 = (key_level-ilevel)*2       
-    ikey = ibit1/62
-    ibit1 = mod(ibit1,62)
-#endif
+    if (ndim == 3 .or. ndim == 1)then
+       ibit1 = (key_level - ilevel) * ndim       
+       ikey = ibit1/63
+       ibit1 = mod(ibit1,63)    
+    end if
+    if (ndim == 2)then
+       ibit1 = (key_level - ilevel)*2       
+       ikey = ibit1/62
+       ibit1 = mod(ibit1,62)
+    endif
 
     ! use a pointer here to define which of the three integer keys                          
     ! must be accessed.                                                                     
@@ -591,29 +586,28 @@ contains
     if (ikey==2) use_key => hkey3
 #endif
 
-
     ! Count particles per bucket
     bucket_count=0
-    do ip = offset+1, offset+np
+    do ip = offset + 1, offset + np
        ! This line here is necessary for the sorting of only n_masked particles
        ipart = sigma1(ip)
-       ibucket=ibits(use_key(ipart),ibit1,nbits_read)
+       ibucket = ibits(use_key(ipart), ibit1, nbits_read)
        bucket_count(ibucket) = bucket_count(ibucket) + 1
     end do
 
     ! "Prefix sum"
     bucket_offset(0) = offset
     do ibucket = 1, nbucket
-       bucket_offset(ibucket) = bucket_offset(ibucket-1) &
-            + bucket_count(ibucket-1)
+       bucket_offset(ibucket) = bucket_offset(ibucket - 1) &
+            + bucket_count(ibucket - 1)
     end do
 
     ! Build up index permutation that will sort array
     do ip = offset+1,offset+ np
        ipart = sigma1(ip)
-       ibucket=ibits(use_key(ipart),ibit1,nbits_read)
+       ibucket = ibits(use_key(ipart),ibit1,nbits_read)
        bucket_offset(ibucket) = bucket_offset(ibucket) + 1
-       sigma2(bucket_offset(ibucket))=ipart
+       sigma2(bucket_offset(ibucket)) = ipart
     end do
     sigma1(offset+1:offset+np) = sigma2(offset+1:offset+np)
     
