@@ -291,7 +291,8 @@ recursive subroutine amr_step(ilevel,icount)
 
      ! Synchronize remaining particles for gravity
      if(pic)then
-        call second_kick(ilevel)
+        call kick(ilevel, .true.)
+        call update_levelp(ilevel)
      end if
      ! do i=1,npartmax
      !    do j=1,npart
@@ -367,11 +368,9 @@ recursive subroutine amr_step(ilevel,icount)
      call update_time(ilevel)
   end if
 
-  !---------------
-  ! Move particles
-  !---------------
   if(pic)then
-     call kick_drift(ilevel) ! Only remaining particles
+     call kick(ilevel, .false.) 
+     if (.not. static) call drift(ilevel)
   end if
 
   ! if (ilevel==levelmin)then

@@ -12,7 +12,8 @@ module amr_commons
   integer::nflag,ncreate,nkill                  ! Refinements
   integer::ncoarse                              ! nx.ny.nz
   integer::ngrid_current                        ! Actual number of octs
-
+  logical, dimension(1:ndim) :: period 
+  
   real(dp)::emag_tot=0.0D0                      ! Total magnetic energy
   real(dp)::ekin_tot=0.0D0                      ! Total kinetic energy
   real(dp)::eint_tot=0.0D0                      ! Total internal energy
@@ -148,7 +149,7 @@ module amr_commons
        0,1 /), (/2,1/) )
   integer, dimension(1:1, 0:1), parameter :: ind_table2 = reshape((/&
        0,1 /), (/1,2/) )
-#endif
-
+#endif  
+  
 end module amr_commons
 

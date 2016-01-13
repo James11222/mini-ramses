@@ -236,6 +236,15 @@ subroutine init_part
      end select
   end if
 
+  period(1)=(nx==1)
+#if NDIM>1
+  period(2)=(ny==1)
+#endif
+#if NDIM>2
+  period(3)=(nz==1)
+#endif
+
+  
 end subroutine init_part
 #define TIME_START(cs) call SYSTEM_CLOCK(COUNT=cs)
 #define TIME_END(ce) call SYSTEM_CLOCK(COUNT=ce)
