@@ -21,7 +21,7 @@
 *** 116,122 ****
            load_balance.o title.o units.o movie.o murmur3.o mem_compare.o
   # Particle-Mesh objects
-  PMOBJ = init_part.o output_part.o rho_fine.o synchro_fine.o move_fine.o newdt_fine.o particle_tree.o \
+  PMOBJ = init_part.o output_part.o rho_fine.o leapfrog.o newdt_fine.o particle_tree.o \
 !         add_list.o remove_list.o cic.o output_part_ascii.o
   # Poisson solver objects
   POISSONOBJ = init_poisson.o phi_fine_cg.o interpol_phi.o force_fine.o multigrid_coarse.o multigrid_fine_commons.o \
@@ -29,7 +29,7 @@
 --- 116,122 ----
            load_balance.o title.o units.o movie.o murmur3.o mem_compare.o
   # Particle-Mesh objects
-  PMOBJ = init_part.o output_part.o rho_fine.o synchro_fine.o move_fine.o newdt_fine.o particle_tree.o \
+  PMOBJ = init_part.o output_part.o rho_fine.o leapfrog.o newdt_fine.o particle_tree.o \
 !         add_list.o remove_list.o cic.o
   # Poisson solver objects
   POISSONOBJ = init_poisson.o phi_fine_cg.o interpol_phi.o force_fine.o multigrid_coarse.o multigrid_fine_commons.o \

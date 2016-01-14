@@ -2,30 +2,19 @@
 !#########################################################################
 !#########################################################################
 !#########################################################################
-subroutine kick_drift(ilevel) ! FORMERLY KNOWN AS MOVE_FINE
-  use pm_commons,      only: part_level_offset, xp, vp, idp, nx, ny, nz, boxlen, npart, npartmax
-  use amr_parameters,  only: dp, ndim, tracer, hydro, static, verbose
-  use amr_commons,     only: ncpu, dtnew, myid
+subroutine kick(ilevel, previous_timestep)
+  use pm_commons,      only: part_level_offset, xp, vp, levelp
+  use amr_parameters,  only: dp, ndim, tracer, hydro, static, nvector
+  use amr_commons,     only: dtnew, dtold
   implicit none
-#ifndef WITHOUTMPI
-  include 'mpif.h' 
-#endif
 
   integer, intent(in) :: ilevel
-  integer :: offset, nparts, idim, ipart, i, j, info
-  logical,dimension(1:ndim)::period
-  real(dp), allocatable, dimension(:,:) :: ap
-  
-  ! TODO: make this nicer!
-  period(1)=(nx==1)
-#if NDIM>1
-  if(ndim>1)period(2)=(ny==1)
-#endif
-#if NDIM>2
-  if(ndim>2)period(3)=(nz==1)
-#endif
+  logical, intent(in), value :: previous_timestep
 
-  if(verbose)write(*,'("Test: " (I2))')ilevel 
+
+  integer :: offset, nparts, idim, ioft, np, ip
+  real(dp), allocatable, dimension(:,:) :: ap
+  real(dp), dimension(1:nvector) :: dteff
   
   offset = part_level_offset(ilevel)
   nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
@@ -34,38 +23,58 @@ subroutine kick_drift(ilevel) ! FORMERLY KNOWN AS MOVE_FINE
   
   call compute_particle_acceleration(ap, offset, nparts, ilevel, tracer .and. hydro)
 
-     ! do i=1,npartmax
-     !    do j=1,npart
-     !       if (idp(j)==i)then
-     !          write(*,'(A,X,I8,3(X,F12.8),X,I2)'),"ap:",i,ap(j,:), ilevel
-     !       end if
-     !    end do
-     !    call MPI_BARRIER(MPI_COMM_WORLD,info)
-     ! end do
+  dteff = 0.5d0 * dtnew(ilevel)
   
-  ! Accelerate and move all parts 
-  do idim = 1, ndim
-
+  do ioft = offset, offset + nparts - 1, nvector
+     np = min(nvector, offset + nparts - ioft)
+     
+     ! Compute individual time steps
+     if (previous_timestep)then
+        do ip = 1, np
+           if(levelp(ioft + ip) >= ilevel)then
+              dteff(ip) = 0.5d0 * dtnew(levelp(ioft + ip))
+           else
+              dteff(ip) = 0.5d0 * dtold(levelp(ioft + ip))
+           endif
+        end do
+     end if
+     
      ! Update velocity     
-     if(static .or. tracer)then
-        do ipart = offset + 1, offset + nparts 
-           vp(ipart, idim) = ap(ipart, idim)
+     ! TODO: fix static/tracer cases
+     do idim = 1, ndim     
+        do ip = 1, np
+           vp(ioft + ip, idim) = vp(ioft + ip, idim) &
+                + ap(ioft + ip, idim) * dteff(ip)
         end do
-     else
-        do ipart = offset + 1, offset + nparts 
-           vp(ipart, idim) = vp(ipart, idim) &
-                + ap(ipart, idim) * 0.5D0 * dtnew(ilevel)
-        end do
-     end if
+     end do
+  end do
+  deallocate(ap)
+  
+end subroutine kick
+!#########################################################################
+!#########################################################################
+!#########################################################################
+!#########################################################################
+subroutine drift(ilevel)
+  use pm_commons, only: xp, vp, part_level_offset
+  use amr_parameters, only: dp, ndim, nx, ny, nz, boxlen
+  use amr_commons, only: dtnew, period
+  implicit none
 
-     ! Update position
-     if(.not. static)then
-        do ipart = offset + 1, offset + nparts 
-           xp(ipart, idim) = xp(ipart, idim) &
-                + vp(ipart, idim) * dtnew(ilevel)
-        end do
-     end if
+  integer, intent(in) :: ilevel
 
+  integer :: idim, ipart, offset, nparts
+
+  offset = part_level_offset(ilevel)
+  nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
+  
+  ! Update position
+  do idim = 1, ndim
+     do ipart = offset + 1, offset + nparts 
+        xp(ipart, idim) = xp(ipart, idim) &
+             + vp(ipart, idim) * dtnew(ilevel)
+     end do
+     
      ! Take care of boundary conditions
      ! TODO: non-periodic boundaries!!
      do ipart = offset + 1, offset + nparts
@@ -77,73 +86,32 @@ subroutine kick_drift(ilevel) ! FORMERLY KNOWN AS MOVE_FINE
         end if
      end do
   end do
-  deallocate(ap)
-end subroutine kick_drift
+end subroutine drift
 !#########################################################################
 !#########################################################################
 !#########################################################################
 !#########################################################################
-subroutine second_kick(ilevel) !FORMERLY KNOWN AS SYNCHRO FINE
-  use pm_commons,      only: part_level_offset, xp, vp, levelp, idp
-  use amr_parameters,  only: dp, nvector, ndim, tracer, hydro, static, twotondim, poisson, verbose
-  use hydro_commons,   only: uold
-  use poisson_commons, only: f
-  use amr_commons,     only: dtnew, dtold, myid, levelmin, nlevelmax
+subroutine update_levelp(ilevel)
+  use pm_commons, only: levelp, part_level_offset
   implicit none
-#ifndef WITHOUTMPI
-  include 'mpif.h' 
-  integer :: info
-#endif
-
-
 
   integer, intent(in) :: ilevel
-  real(dp), allocatable, dimension(:,:) :: ap
+  integer :: ipart, nparts, offset
 
-
-  real(dp), dimension(1:nvector),              save :: dteff
-  integer :: offset, nparts, ioft, ind, idim, ip, np
-
-  if(verbose)write(*,'("Entering second_kick, level " I2)')ilevel 
-  
   offset = part_level_offset(ilevel)
   nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
-
-  allocate(ap(offset + 1: offset + nparts, 1:ndim))
-  call compute_particle_acceleration(ap, offset, nparts, ilevel, tracer .and. hydro)
-
-  ! Compute individual time steps
-  do ioft = offset, offset + nparts - 1, nvector
-     np = min(nvector, offset + nparts - ioft)
-
-     do ip = 1, np
-        if(levelp(ioft + ip) >= ilevel)then
-           dteff(ip) = dtnew(levelp(ioft + ip))
-        else
-           dteff(ip) = dtold(levelp(ioft + ip))
-        endif
-     end do
-
-     ! Update particles level
-     do ip = 1, np
-        levelp(ioft + ip) = ilevel
-     end do
-     
-     do idim = 1, ndim
-        do ip = 1, np
-           vp(ioft + ip, idim) = vp(ioft + ip, idim) &
-                + ap(ioft + ip, idim) * 0.5D0 * dteff(ip)
-        end do
-     end do
+  
+  do ipart = offset + 1, offset + nparts 
+     levelp(ipart) = ilevel
   end do
-deallocate(ap)
-end subroutine second_kick
+
+end subroutine update_levelp
 !#########################################################################
 !#########################################################################
 !#########################################################################
 !#########################################################################
 subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_velocity)
-  use pm_commons,      only: part_level_offset, xp, idp, &
+  use pm_commons,      only: part_level_offset, xp, &
                              part_hkey, npart
   use amr_parameters,  only: dp, nvector, ndim, twotondim, poisson, verbose
   use hydro_commons,   only: uold
@@ -151,7 +119,7 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
   use amr_commons,     only: dtnew, ncpu, myid, t, son
   use pm_parameters,   only: npartmax
 #ifndef WITHOUTMPI
-  use particle_communication, only: build_communicator, part_data_to_domain_dp, domain_data_to_part_dp
+  use particle_communication, only: build_communicator, part_data_to_domain, domain_data_to_part
 #endif
   use hilbert,     only: hilbert_for_particle 
   implicit none
@@ -192,9 +160,9 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
        ilevel)
 
   allocate(xp_remote(1:npart_recv, 1:ndim), ap_remote(1:npart_recv, 1:ndim))
-  call part_data_to_domain_dp(communicator, xp(offset + 1 : offset + nparts, 1), xp_remote(:, 1))
-  if (ndim > 1) call part_data_to_domain_dp(communicator, xp(offset + 1 : offset + nparts, 2), xp_remote(:, 2))
-  if (ndim > 2) call part_data_to_domain_dp(communicator, xp(offset + 1 : offset + nparts, 3), xp_remote(:, 3))
+  call part_data_to_domain(communicator, xp(offset + 1 : offset + nparts, 1), xp_remote(:, 1))
+  if (ndim > 1) call part_data_to_domain(communicator, xp(offset + 1 : offset + nparts, 2), xp_remote(:, 2))
+  if (ndim > 2) call part_data_to_domain(communicator, xp(offset + 1 : offset + nparts, 3), xp_remote(:, 3))
 
   
   ! Deal with remote particles
@@ -224,9 +192,9 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
         end do
      endif
   end do
-  call domain_data_to_part_dp(communicator, ap_remote(:,1), ap(offset + 1 : offset + nparts, 1))
-  if (ndim > 1) call domain_data_to_part_dp(communicator, ap_remote(:,2), ap(offset + 1 : offset + nparts, 2))
-  if (ndim > 2) call domain_data_to_part_dp(communicator, ap_remote(:,3), ap(offset + 1 : offset + nparts, 3))
+  call domain_data_to_part(communicator, ap_remote(:,1), ap(offset + 1 : offset + nparts, 1))
+  if (ndim > 1) call domain_data_to_part(communicator, ap_remote(:,2), ap(offset + 1 : offset + nparts, 2))
+  if (ndim > 2) call domain_data_to_part(communicator, ap_remote(:,3), ap(offset + 1 : offset + nparts, 3))
   deallocate(xp_remote, ap_remote)
 
 #endif

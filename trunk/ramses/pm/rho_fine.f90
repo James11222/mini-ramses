@@ -663,142 +663,6 @@ end subroutine cic_cell
 !##############################################################################
 !##############################################################################
 !##############################################################################
-! subroutine hilbert_allparts(ilevel)
-!   use pm_commons
-!   use amr_commons
-!   use sort, only: quick_sort_keys, qsort_parts_in_mem
-!   implicit none
-! #ifndef WITHOUTMPI
-!   include 'mpif.h'
-! #endif
-
-
-!   integer::ilevel
-!   integer::igrid,jgrid,i,ngrid,ncache,ipart,jpart
-!   integer::ip,npart1,icpu,info
-!   integer,dimension(1:nvector)::ind_grid
-!   integer,dimension(1:nlevelmax)::npts
-! !  real(qdp),dimension(1:nvector)::order
-!   real(dp),dimension(1:nvector,1:ndim)::xtest
-!   integer(kind=8),dimension(1:nvector)::hkey0,hkey1,hkey2
-!   integer::ntot
-!   integer,allocatable,dimension(:)::order
-
-
-!   ntot=0
-!   ! Loop over cpus
-!   do icpu=1,ncpu
-!      igrid=headl(icpu,ilevel)
-!      ip=0
-!      ! Loop over grids
-!      do jgrid=1,numbl(icpu,ilevel)
-!         npart1=numbp(igrid)  ! Number of particles in the grid
-!         if(npart1>0)then
-!            ipart=headp(igrid)
-!            ! Loop over particles
-!            do jpart=1,npart1
-!               ! Save next particle   <--- Very important !!!
-!               ip=ip+1
-!               xtest(ip,1:ndim)=xp(ipart,1:ndim)
-!               if(ip==nvector)then
-!                  call cmp_ordering_int(xtest,hkey2,hkey1,hkey0,ip)
-!                  part_hkey(ntot+1:ntot+ip,2)=hkey2(1:ip)
-!                  part_hkey(ntot+1:ntot+ip,1)=hkey1(1:ip)
-!                  part_hkey(ntot+1:ntot+ip,0)=hkey0(1:ip)
-!                  ntot=ntot+ip
-!                  ip=0
-!               end if
-!               ipart=nextp(ipart)  ! Go to next particle
-!            end do
-!         endif
-!         igrid=next(igrid)   ! Go to next grid
-!      end do
-!      if(ip>0)then 
-!         call cmp_ordering_int(xtest,hkey2,hkey1,hkey0,ip)
-!         part_hkey(ntot+1:ntot+ip,2)=hkey2(1:ip)
-!         part_hkey(ntot+1:ntot+ip,1)=hkey1(1:ip)
-!         part_hkey(ntot+1:ntot+ip,0)=hkey0(1:ip)
-!         ntot=ntot+ip
-!      end if
-!   end do
-
-!   print*,'ntot:',ntot,npart,myid
-
-! !  call qsort_parts_in_mem(ntot,1)
-
-!   allocate(order(1:ntot))
-!   call quick_sort_keys(order, ntot)
-  
-! !  do i=1,ntot
-! !     write(*,'(A8,I5,I10,3(I20))'),"myid: ",myid,i,order(i),part_hkey(i,1),part_hkey(i,0)
-! !  end do
-!   deallocate(order)
-
-! end subroutine hilbert_allparts
-
-
-
-! subroutine hilbert_allparts
-!   use pm_commons
-!   use amr_commons
-!   use sort, only: qsort_parts_in_mem
-!   implicit none
-! #ifndef WITHOUTMPI
-!   include 'mpif.h'
-! #endif
-
-
-!   integer::ilevel
-!   integer::igrid,jgrid,i,ngrid,ncache,jpart
-!   integer::ip,npart1,icpu,info
-!   integer,dimension(1:nvector)::ind_grid
-!   integer,dimension(1:nlevelmax)::npts
-! !  real(qdp),dimension(1:nvector)::order
-!   real(dp),dimension(1:nvector,1:ndim)::xtest
-!   integer(kind=8),dimension(1:nvector)::hkey0,hkey1,hkey2
-!   integer::ntot
-!   integer,allocatable,dimension(:)::order
-
-
-!   ntot=0
-!   ip=0
-!   do while(ntot+ip<npart)
-!      ip=ip+1
-!      xtest(ip,1:ndim)=xp(ntot+ip,1:ndim)
-!      if(ip==nvector)then
-!         call cmp_ordering_int(xtest,hkey2,hkey1,hkey0,ip)
-!         part_hkey(ntot+1:ntot+ip,2)=hkey2(1:ip)
-!         part_hkey(ntot+1:ntot+ip,1)=hkey1(1:ip)
-!         part_hkey(ntot+1:ntot+ip,0)=hkey0(1:ip)
-!         ntot=ntot+ip
-!         ip=0
-!      end if
-!   end do
-!   if(ip>0)then 
-!      call cmp_ordering_int(xtest,hkey2,hkey1,hkey0,ip)
-!      part_hkey(ntot+1:ntot+ip,2)=hkey2(1:ip)
-!      part_hkey(ntot+1:ntot+ip,1)=hkey1(1:ip)
-!      part_hkey(ntot+1:ntot+ip,0)=hkey0(1:ip)
-!      ntot=ntot+ip
-!   end if
-
-!   print*,'ntot:',ntot,npart,myid
-
-! !  call qsort_parts_in_mem(ntot,1)
-
-! !   allocate(order(1:ntot))
-! !   call quick_sort_keys(order, ntot)
-  
-! ! !  do i=1,ntot
-! ! !     write(*,'(A8,I5,I10,3(I20))'),"myid: ",myid,i,order(i),part_hkey(i,1),part_hkey(i,0)
-! ! !  end do
-! !   deallocate(order)
-
-! end subroutine hilbert_allparts
-!##############################################################################
-!##############################################################################
-!##############################################################################
-!##############################################################################
 subroutine rho_direct_particles(part_level, min_grid_level)
   use amr_parameters, only: dp, levelmin, nvector, ndim, nhilbert
   use amr_commons,    only: ncpu, myid
@@ -806,7 +670,7 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   use pm_commons,     only: part_level_offset, bin_start_offset, bin_count, &
                             xp, mp, idp, nbins, part_hkey
 #ifndef WITHOUTMPI
-  use particle_communication, only: build_communicator, part_data_to_domain_dp
+  use particle_communication, only: build_communicator, part_data_to_domain
 #endif
   implicit none
   integer, intent(in) :: part_level, min_grid_level
@@ -878,10 +742,10 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   allocate(xp_remote(1:recv_tot, 1:ndim))
   allocate(mp_remote(1:recv_tot))
 
-  call part_data_to_domain_dp(communicator, xp_direct(:, 1), xp_remote(:, 1))
-  call part_data_to_domain_dp(communicator, xp_direct(:, 2), xp_remote(:, 2))
-  call part_data_to_domain_dp(communicator, xp_direct(:, 3), xp_remote(:, 3))
-  call part_data_to_domain_dp(communicator, mp_direct, mp_remote)
+  call part_data_to_domain(communicator, xp_direct(:, 1), xp_remote(:, 1))
+  call part_data_to_domain(communicator, xp_direct(:, 2), xp_remote(:, 2))
+  call part_data_to_domain(communicator, xp_direct(:, 3), xp_remote(:, 3))
+  call part_data_to_domain(communicator, mp_direct, mp_remote)
 #endif
   ! Project local direct particles
   do ioft = local_data_oft, local_data_oft + local_data - 1, nvector
@@ -954,176 +818,6 @@ contains
     
   end subroutine cic_amr
 
-!   subroutine cic_amr(xpart, mpart, np, grid_level)
-!     use amr_parameters,  only: static, mass_cut_refine
-!     use amr_commons,     only: boxlen, icoarse_max, & 
-!                                icoarse_min, nvector, ndim, nstep_coarse
-!     use poisson_commons, only: multipole, rho, phi
-!     use hilbert,         only: hilbert3d
-!     implicit none
-!     integer,  intent(in)                               :: np, grid_level
-!     real(dp), intent(in), dimension(1:nvector)         :: mpart
-!     real(dp), intent(in), dimension(1:nvector, 1:ndim) :: xpart
-!     ! This routine deposits nvector particles (local or remote) onto the grid (local)
-!     ! at level grid_level.
-
-!     ! in:           - particle masses
-!     !               - particle positions
-!     !               - number of particles
-!     !               - grid_level 
-    
-!     ! out:          - "corrupted" particle positions -> do not reuse xpart outside of 
-!     !                 this subroutine  
-    
-!     ! side effect:  - updates rho field on level grid_level
-
-!     integer(kind=8), dimension(1:nvector, 0:2),    save :: cloud_hkey
-! !    integer(kind=8), dimension(1:nvector, 1:ndim), save :: id
-!     integer(kind=8), dimension(1:nvector, 1:ndim), save :: ix
-!     integer(kind=4), dimension(1:nvector),         save :: dummy_state
-!     integer(kind=4), dimension(1:nvector),         save :: parent_cell_level, parent_cell_index
-!     real(dp),   dimension(1:nvector, 0:1, 1:ndim), save :: cloud_boundary
-!     real(dp),        dimension(1:nvector),         save :: vol, delta
-!     real(dp),        dimension(1:nvector, 1:3),    save :: xpart_cart
-!     logical,         dimension(1:nvector),         save :: ok
-!     integer,         dimension(1:ndim),            save :: ind
-!     integer,  save :: idim, nx_loc, ind_cloud, ip
-!     real(dp), save :: dx, dx_loc, scale, vol_loc, pos_to_cart
-!     integer(kind=8) :: grid_size
-
-!     grid_size = 2**grid_level    
-!     nx_loc=(icoarse_max-icoarse_min+1)
-!     scale=boxlen/dble(nx_loc)
-!     dx = 0.5D0**grid_level
-!     dx_loc=dx*scale
-!     vol_loc=dx_loc**ndim
-    
-
-!     ! Convert particle coordinates in code units
-!     ! into "cartesian" coordinates at grid_level
-!     pos_to_cart = 2.0_dp**grid_level / dble(boxlen)
-!     xpart_cart = xpart * pos_to_cart
-
-!     ! compute distances of cloud boundary from nearest "integer coordinate"
-!     do idim=1,ndim       
-
-!        ! upper/right/front boundary of the cloud
-!        do ip=1,np
-!           cloud_boundary(ip,1,idim) = xpart_cart(ip, idim) + 0.5D0
-!        end do
-
-!        ! upper/rigt/front boundary rel to nearest integer (type conversion here...)
-!        do ip=1,np
-!           cloud_boundary(ip,1,idim) = cloud_boundary(ip,1,idim) - floor(cloud_boundary(ip,1,idim), kind=8)
-!        end do
-       
-!        ! lower/left/back boundary rel to nearest integer
-!        do ip=1,np
-!           cloud_boundary(ip,0,idim) = 1._dp - cloud_boundary(ip,1,idim)
-!        end do
-!     end do
-    
-! #if NDIM<3
-!     write(*,*)'add non-3D version of this routine'
-!     stop
-! #endif
-! #if NDIM==1
-!     ! Loop cloud/cell intersections
-!     do ind_cloud = 0, 1
-!        ind(1) = ind_cloud 
-       
-!        ! Compute cloud volume
-!        do ip=1,np
-!           vol(ip) = cloud_boundary(ip,ind(1),1) * &
-!                cloud_boundary(ip,ind(2),2) 
-!        end do
-! #endif
-! #if NDIM==2
-!     ! Loop cloud/cell intersections
-!     do ind_cloud = 0, 3
-!        ind(1) = ind_cloud/2
-!        ind(2) = mod(ind_cloud,2)
-       
-!        ! Compute cloud volume
-!        do ip=1,np
-!           vol(ip) = cloud_boundary(ip,ind(1),1) * &
-!                cloud_boundary(ip,ind(2),2) 
-!        end do
-! #endif
-! #if NDIM==3
-!     ! Loop cloud/cell intersections
-!     do ind_cloud = 0, 7
-!        ind(1) = ind_cloud/4
-!        ind(2) = mod(ind_cloud,4)/2
-!        ind(3) = mod(mod(ind_cloud,4),2)
-       
-!        ! Compute cloud volume
-!        do ip=1,np
-!           vol(ip) = cloud_boundary(ip,ind(1),1) * &
-!                cloud_boundary(ip,ind(2),2) * &
-!                cloud_boundary(ip,ind(3),3) 
-!        end do
-! #endif
-
-!        ! Compute cloud corner offset from cloud center
-!        delta(1:ndim) = ind(1:ndim) - 0.5D0       
-
-!        ! Get cell indices which are covered by cloud
-!        ! (cartesian key -> hilbert key -> cell index)
-!        ! TODO: Add support for non-periodic boundaries
-!        ! TODO: Check boundary behaviour - currently particles sitting in cell touching the boundary cause
-!        ! deviations from the old code.
-!        do idim = 1, ndim
-!           do ip = 1, np
-!              ix(ip,idim) = floor(xpart_cart(ip,idim) + delta(idim), kind = 8)
-!           end do
-!        end do
-!        do idim = 1, ndim
-!           do ip = 1, np
-!              if (ix(ip, idim) >= grid_size)then
-!                 ix(ip, idim) = ix(ip, idim) - grid_size
-!              else if (ix(ip, idim) < 0) then
-!                 ix(ip, idim) = ix(ip, idim) + grid_size
-!              end if
-!           end do
-!        end do
-       
-!        ! call hilbert3d(ix(1:np,1), ix(1:np,2), ix(1:np,3), &
-!        !      cloud_hkey(1:np, 2), cloud_hkey(1:np, 1), cloud_hkey(1:np, 0), &
-!        !      dummy_state, 0, grid_level, np)
-      
-!        ! call get_cell_index_from_hilbertkey(parent_cell_index(1:np), parent_cell_level(1:np), &
-!        !      cloud_hkey(1:np, 2), cloud_hkey(1:np, 1), cloud_hkey(1:np, 0), np, grid_level)
-
-
-!        call get_cell_index_from_cartesian_hash(parent_cell_index(1:np), parent_cell_level(1:np), &
-!             ix(1:np, 1), ix(1:np, 2), ix(1:np, 3), grid_level, np, grid_level)  
-       
-!        ! Exclude cloud fraction which lies in coarser level
-!        do ip = 1, np        
-!           ok(ip) = (parent_cell_level(ip) == grid_level)
-!        end do
-
-!        ! Add to number density which is stored in phi
-!        do ip=1,np
-!           if(ok(ip))then
-!              phi(parent_cell_index(ip)) = phi(parent_cell_index(ip)) + vol(ip)
-!           end if
-!        end do
-
-!        ! compute delta rho and add to rho
-!        do ip = 1, np
-!           vol(ip) = mpart(ip) * vol(ip) / vol_loc
-!        end do
-
-!        do ip = 1, np
-!           if (ok(ip)) then
-!              rho(parent_cell_index(ip)) = rho(parent_cell_index(ip)) + vol(ip)
-!           end if
-!        end do
-
-!     end do ! end loop over cloud/cell intersections
-!   end subroutine cic_amr
 end subroutine rho_direct_particles
 
 !##############################################################################
@@ -1346,8 +1040,7 @@ contains
     use pm_commons,      only: bin_keys, bin_mass, nbins
     use poisson_commons, only: rho, phi
 #ifndef WITHOUTMPI
-    use particle_communication, only: build_communicator, part_data_to_domain_dp, &
-         part_data_to_domain_i8
+    use particle_communication, only: build_communicator, part_data_to_domain
 #endif
     implicit none
     integer, intent(in) :: cell_level
@@ -1384,15 +1077,15 @@ contains
       bin_keys_remote = 0
       bin_count_remote = 0.d0
 
-      call part_data_to_domain_i8(communicator, bin_keys(:, 1), bin_keys_remote(:, 1))
+      call part_data_to_domain(communicator, bin_keys(:, 1), bin_keys_remote(:, 1))
 #if NHILBERT > 1
-      call part_data_to_domain_i8(communicator, bin_keys(:, 2), bin_keys_remote(:, 2))
+      call part_data_to_domain(communicator, bin_keys(:, 2), bin_keys_remote(:, 2))
 #endif
 #if NHILBERT > 2
-      call part_data_to_domain_i8(communicator, bin_keys(:, 3), bin_keys_remote(:, 3))
+      call part_data_to_domain(communicator, bin_keys(:, 3), bin_keys_remote(:, 3))
 #endif
-      call part_data_to_domain_dp(communicator, bin_mass, bin_mass_remote)
-      call part_data_to_domain_dp(communicator, bin_count, bin_count_remote)
+      call part_data_to_domain(communicator, bin_mass, bin_mass_remote)
+      call part_data_to_domain(communicator, bin_count, bin_count_remote)
 #endif      
       ! go through bins in sweeps and add mass to corresponding cell
       do ioft = local_bins_oft, local_bins_oft + local_bins - 1, nvector
