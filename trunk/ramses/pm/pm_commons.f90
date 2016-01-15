@@ -7,8 +7,8 @@ module pm_commons
   real(dp),allocatable,dimension(:,:)       ::vp       ! Velocities
   real(dp),allocatable,dimension(:)         ::mp       ! Masses
 
-  integer(kind=8),allocatable,dimension(:,:)::part_hkey
-  integer(kind=4),allocatable,dimension(:)  ::current_state
+  integer(kind=8),allocatable,dimension(:,:), target :: part_hkey
+  integer(kind=4),allocatable,dimension(:  ), target :: current_state
   integer(kind=4),allocatable,dimension(:)  ::sorted_particle_index
   integer(kind=4),allocatable,dimension(:)  ::sort_index
   integer(kind=4),allocatable,dimension(:)  ::part_ind_permutation, part_ind_permutation2
