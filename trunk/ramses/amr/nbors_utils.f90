@@ -1,224 +1,24 @@
-! subroutine get3cubefather(ind_cell_father,nbors_father_cells,&
-!      &                    nbors_father_grids,ncell,ilevel)
-!   use amr_commons 
-!   implicit none
-!   integer::ncell,ilevel
-!   integer,dimension(1:nvector)::ind_cell_father
-!   integer,dimension(1:nvector,1:threetondim)::nbors_father_cells
-!   integer,dimension(1:nvector,1:twotondim)::nbors_father_grids
-!   !------------------------------------------------------------------
-!   ! This subroutine determines the 3^ndim neighboring father cells 
-!   ! of the input father cell. According to the refinement rule, 
-!   ! they should be present anytime.
-!   !------------------------------------------------------------------
-!   integer::i,j,nxny,i1,j1,k1,ind,iok
-!   integer::i1min,i1max,j1min,j1max,k1min,k1max,ind_father
-!   integer,dimension(1:nvector),save::ix,iy,iz,iix,iiy,iiz
-!   integer,dimension(1:nvector),save::pos,ind_grid_father,ind_grid_ok
-!   integer,dimension(1:nvector,1:threetondim),save::nbors_father_ok
-!   integer,dimension(1:nvector,1:twotondim),save::nbors_grids_ok
-!   logical::oups
-
-!   nxny=nx*ny
-
-!   if(ilevel==1)then  ! Easy...
-
-!      oups=.false.
-!      do i=1,ncell
-!         if(ind_cell_father(i)>ncoarse)oups=.true.
-!      end do
-!      if(oups)then
-!         write(*,*)'get3cubefather'
-!         write(*,*)'oupsssss !'
-!         call clean_stop
-!      endif
-
-!      do i=1,ncell
-!         iz(i)=(ind_cell_father(i)-1)/nxny
-!      end do
-!      do i=1,ncell
-!         iy(i)=(ind_cell_father(i)-1-iz(i)*nxny)/nx
-!      end do
-!      do i=1,ncell
-!         ix(i)=(ind_cell_father(i)-1-iy(i)*nx-iz(i)*nxny)
-!      end do
-
-!      i1min=0; i1max=0
-!      if(ndim > 0)i1max=2
-!      j1min=0; j1max=0
-!      if(ndim > 1)j1max=2
-!      k1min=0; k1max=0
-!      if(ndim > 2)k1max=2
-
-!      ! Loop over 3^ndim neighboring father cells
-!      do k1=k1min,k1max
-!         iiz=iz
-!         if(ndim > 2)then
-!            do i=1,ncell
-!               iiz(i)=iz(i)+k1-1
-!               if(iiz(i) < 0   )iiz(i)=nz-1
-!               if(iiz(i) > nz-1)iiz(i)=0
-!            end do
-!         end if
-!         do j1=j1min,j1max
-!            iiy=iy
-!            if(ndim > 1)then
-!               do i=1,ncell
-!                  iiy(i)=iy(i)+j1-1
-!                  if(iiy(i) < 0   )iiy(i)=ny-1
-!                  if(iiy(i) > ny-1)iiy(i)=0
-!               end do
-!            end if
-!            do i1=i1min,i1max
-!               iix=ix
-!               if(ndim > 0)then
-!                  do i=1,ncell
-!                     iix(i)=ix(i)+i1-1
-!                     if(iix(i) < 0   )iix(i)=nx-1
-!                     if(iix(i) > nx-1)iix(i)=0
-!                  end do
-!               end if
-!               ind_father=1+i1+3*j1+9*k1
-!               do i=1,ncell
-!                  nbors_father_cells(i,ind_father)=1 &
-!                       & +iix(i) &
-!                       & +iiy(i)*nx &
-!                       & +iiz(i)*nxny
-!               end do
-!            end do
-!         end do
-!      end do
-
-!      i1min=0; i1max=0
-!      if(ndim > 0)i1max=1
-!      j1min=0; j1max=0
-!      if(ndim > 1)j1max=1
-!      k1min=0; k1max=0
-!      if(ndim > 2)k1max=1
-
-!      ! Loop over 2^ndim neighboring father grids
-!      do k1=k1min,k1max
-!         iiz=iz
-!         if(ndim > 2)then
-!            do i=1,ncell
-!               iiz(i)=iz(i)+2*k1-1
-!               if(iiz(i) < 0   )iiz(i)=nz-1
-!               if(iiz(i) > nz-1)iiz(i)=0
-!            end do
-!         end if
-!         do j1=j1min,j1max
-!            iiy=iy
-!            if(ndim > 1)then
-!               do i=1,ncell
-!                  iiy(i)=iy(i)+2*j1-1
-!                  if(iiy(i) < 0   )iiy(i)=ny-1
-!                  if(iiy(i) > ny-1)iiy(i)=0
-!               end do
-!            end if
-!            do i1=i1min,i1max
-!               iix=ix
-!               if(ndim > 0)then
-!                  do i=1,ncell
-!                     iix(i)=ix(i)+2*i1-1
-!                     if(iix(i) < 0   )iix(i)=nx-1
-!                     if(iix(i) > nx-1)iix(i)=0
-!                  end do
-!               end if
-!               ind_father=1+i1+2*j1+4*k1
-!               do i=1,ncell
-!                  nbors_father_grids(i,ind_father)=1 &
-!                       & +(iix(i)/2) &
-!                       & +(iiy(i)/2)*(nx/2) &
-!                       & +(iiz(i)/2)*(nxny/4)
-!               end do
-!            end do
-!         end do
-!      end do
-
-!   else    ! else, more complicated...
-     
-!      ! Get father cell position in the grid
-!      do i=1,ncell
-!         pos(i)=(ind_cell_father(i)-ncoarse-1)/ngridmax+1
-!      end do
-!      ! Get father grid
-!      do i=1,ncell
-!         ind_grid_father(i)=ind_cell_father(i)-ncoarse-(pos(i)-1)*ngridmax
-!      end do
-
-!      ! Loop over position
-!      do ind=1,twotondim
-
-!         ! Select father cells that sit at position ind
-!         iok=0
-!         do i=1,ncell
-!            if(pos(i)==ind)then
-!               iok=iok+1
-!               ind_grid_ok(iok)=ind_grid_father(i)
-!            end if
-!         end do
-
-!         if(iok>0)&
-!         & call get3cubepos(ind_grid_ok,ind,nbors_father_ok,nbors_grids_ok,iok)
-
-!         ! Store neighboring father cells for selected cells
-!         do j=1,threetondim
-!            iok=0
-!            do i=1,ncell
-!               if(pos(i)==ind)then
-!                  iok=iok+1
-!                  nbors_father_cells(i,j)=nbors_father_ok(iok,j)
-!               end if
-!            end do
-!         end do
-
-!         ! Store neighboring father grids for selected cells
-!         do j=1,twotondim
-!            iok=0
-!            do i=1,ncell
-!               if(pos(i)==ind)then
-!                  iok=iok+1
-!                  nbors_father_grids(i,j)=nbors_grids_ok(iok,j)
-!               end if
-!            end do
-!         end do
-
-!      end do
-
-!   end if
-
-! end subroutine get3cubefather
-!##############################################################
-!##############################################################
-!##############################################################
-!##############################################################
 subroutine get3cubefather(ind_cell_father,nbors_father_cells,&
      &                    nbors_father_grids,ncell,ilevel)
-  use amr_parameters
-  use amr_commons
-  use coordinates
+  use amr_commons 
   implicit none
   integer::ncell,ilevel
   integer,dimension(1:nvector)::ind_cell_father
   integer,dimension(1:nvector,1:threetondim)::nbors_father_cells
-  integer,dimension(1:nvector,1:threetondim)::nbors_father_cells_a
   integer,dimension(1:nvector,1:twotondim)::nbors_father_grids
   !------------------------------------------------------------------
   ! This subroutine determines the 3^ndim neighboring father cells 
   ! of the input father cell. According to the refinement rule, 
   ! they should be present anytime.
   !------------------------------------------------------------------
-  integer::i,j,nxny,i1,j1,k1,ind,iok, idim
+  integer::i,j,nxny,i1,j1,k1,ind,iok
   integer::i1min,i1max,j1min,j1max,k1min,k1max,ind_father
   integer,dimension(1:nvector),save::ix,iy,iz,iix,iiy,iiz
-  integer(int_pre),dimension(1:nvector, 1:3),save::ix_a
-  real(dp),dimension(1:nvector, 1:3),save::xgrid
-  integer,dimension(1:nvector),save::pos,ind_grid_father,ind_grid_ok, cell_levl, ind_grid
+  integer,dimension(1:nvector),save::pos,ind_grid_father,ind_grid_ok
   integer,dimension(1:nvector,1:threetondim),save::nbors_father_ok
   integer,dimension(1:nvector,1:twotondim),save::nbors_grids_ok
   logical::oups
-  integer :: jj
-  integer(int_pre)::iiix, iiiy, iiiz, grid_size, grid_size_one
+
   nxny=nx*ny
 
   if(ilevel==1)then  ! Easy...
@@ -336,138 +136,339 @@ subroutine get3cubefather(ind_cell_father,nbors_father_cells,&
      end do
 
   else    ! else, more complicated...
-!     do i = 1, ncell
-!        ind_grid(i) = son(ind_cell_father(i))
- !       xgrid(i,1:3) = xg(ind_grid(i),1:3)
-!     end do
-
-     call get_cell_cartesian_key(ind_cell_father, ix_a, ilevel - 1, ncell)
-!     ix_a =  grid_to_integer_nvector(xgrid, ilevel - 1, ncell)
-
-     grid_size = 2_int_pre ** (ilevel - 1)
-     grid_size_one = grid_size - 1
-
-     do j = 1, threetondim
-        iiix = mod(j-1,3) - 1
-        iiiy = mod(j-1,9)/3 - 1
-        iiiz = (j-1) / 9 - 1
-        
-        do i = 1, ncell
-           ix_a(i, 1) = ix_a(i, 1) + iiix           
-           ix_a(i, 2) = ix_a(i, 2) + iiiy
-           ix_a(i, 3) = ix_a(i, 3) + iiiz
-        end do
-        ! do idim = 1, ndim
-        !    do i = 1, ncell              
-        !       if(ix_a(i, idim)  < 0) ix_a(i, idim)=ix_a(i, idim) + grid_size
-        !       if(ix_a(i, idim)  >= grid_size) ix_a(i, idim)=ix_a(i, idim) - grid_size
-        !    end do
-        ! end do
-        do idim = 1, ndim
-           do i = 1, ncell              
-!              ix_a(i, idim) = ix_a(i, idim) + grid_size
-!              ix_a(i, idim) = IAND(ix_a(i, idim), grid_size_one)
-              ix_a(i, idim) = IAND(ix_a(i, idim) + grid_size, grid_size_one)
-           end do
-        end do
-        
-        call get_cell_index_from_cartesian_hash(nbors_father_cells(1,j), cell_levl, ix_a, ilevel - 1, ncell)
-        
-        ! do i = 1, ncell
-        !    if (cell_levl(i) .ne. ilevel-1)then
-        !       print*,'wrong level', cell_levl(i), ilevel - 1
-        !       print*,'wrong level', ix_a(i,1:3), 2**(ilevel-1)
-        !       stop
-        !    end if
-        ! end do
-        
-        do i = 1, ncell
-           ix_a(i, 1) = ix_a(i, 1) - iiix
-           ix_a(i, 2) = ix_a(i, 2) - iiiy
-           ix_a(i, 3) = ix_a(i, 3) - iiiz
-        end do
-        do idim = 1, ndim
-           do i = 1, ncell              
-              ix_a(i, idim) = IAND(ix_a(i, idim) + grid_size, grid_size_one)
-           end do
-        end do
-        
-        ! do idim = 1, ndim
-        !    do i = 1, ncell              
-        !       if(ix_a(i, idim)  < 0) ix_a(i, idim)=ix_a(i, idim) + grid_size
-        !       if(ix_a(i, idim)  >= grid_size) ix_a(i, idim)=ix_a(i, idim) - grid_size
-        !    end do
-        ! end do   
-        
-     end do
      
-     ! ! Get father cell position in the grid
+     ! Get father cell position in the grid
      do i=1,ncell
         pos(i)=(ind_cell_father(i)-ncoarse-1)/ngridmax+1
      end do
-     ! ! Get father grid
-     ! do i=1,ncell
-     !    ind_grid_father(i)=ind_cell_father(i)-ncoarse-(pos(i)-1)*ngridmax
-     ! end do
+     ! Get father grid
+     do i=1,ncell
+        ind_grid_father(i)=ind_cell_father(i)-ncoarse-(pos(i)-1)*ngridmax
+     end do
 
-     ! ! Loop over position
-     ! do ind=1,twotondim
-     !    ! Select father cells that sit at position ind
-     !    iok=0
-     !    do i=1,ncell
-     !       if(pos(i)==ind)then
-     !          iok=iok+1
-     !          ind_grid_ok(iok)=ind_grid_father(i)
-     !       end if
-     !    end do
+     ! Loop over position
+     do ind=1,twotondim
 
-     !    if(iok>0)&
-     !    & call get3cubepos(ind_grid_ok,ind,nbors_father_ok,nbors_grids_ok,iok)
-
-     !    ! Store neighboring father cells for selected cells
-     !    do j=1,threetondim
-     !       iok=0
-     !       do i=1,ncell
-     !          if(pos(i)==ind)then
-     !             iok=iok+1
-     !             nbors_father_cells(i,j)=nbors_father_ok(iok,j)                 
-     !          end if
-     !       end do
-     !    end do
-
-        ! ! Store neighboring father grids for selected cells
-        ! do j=1,twotondim
-        !    iok=0
-        !    do i=1,ncell
-        !       if(pos(i)==ind)then
-        !          iok=iok+1
-        !          nbors_father_grids(i,j)=nbors_grids_ok(iok,j)
-        !       end if
-        !    end do
-        ! end do
-
-!     end do
-
-     ! do i = 1, ncell
-     !    do j=1,threetondim
-     !       if (nbors_father_cells_a(i,j) .ne.  nbors_father_cells(i,j) )then
-     !          print*, nbors_father_cells_a(i,j),  nbors_father_cells(i,j) 
-     !       end if
-     !    end do
-     ! end do
-     
-     do i = 1, ncell
-        do j=1,twotondim
-           iiix = 1 - IEOR(mod(j-1,2), mod(pos(i)-1,2))
-           iiiy = 1 - IEOR(mod(j-1,4)/2, mod(pos(i)-1,4)/2)
-           iiiz = 1 - IEOR((j-1)/4,(pos(i)-1)/4)
-           jj = iiiz * 2 * 9 + iiiy * 2 * 3 + iiix * 2 + 1
-           nbors_father_grids(i,j) = mod(nbors_father_cells(i,jj) - ncoarse, ngridmax)
+        ! Select father cells that sit at position ind
+        iok=0
+        do i=1,ncell
+           if(pos(i)==ind)then
+              iok=iok+1
+              ind_grid_ok(iok)=ind_grid_father(i)
+           end if
         end do
-     end do     
+
+        if(iok>0)&
+        & call get3cubepos(ind_grid_ok,ind,nbors_father_ok,nbors_grids_ok,iok)
+
+        ! Store neighboring father cells for selected cells
+        do j=1,threetondim
+           iok=0
+           do i=1,ncell
+              if(pos(i)==ind)then
+                 iok=iok+1
+                 nbors_father_cells(i,j)=nbors_father_ok(iok,j)
+              end if
+           end do
+        end do
+
+        ! Store neighboring father grids for selected cells
+        do j=1,twotondim
+           iok=0
+           do i=1,ncell
+              if(pos(i)==ind)then
+                 iok=iok+1
+                 nbors_father_grids(i,j)=nbors_grids_ok(iok,j)
+              end if
+           end do
+        end do
+
+     end do
+
   end if
 
 end subroutine get3cubefather
+!##############################################################
+!##############################################################
+!##############################################################
+!##############################################################
+! EXPERIMENTAL VERSION TO TEST HASH PERFORMANCE - WORKS ONLY IN 3D
+! subroutine get3cubefather(ind_cell_father,nbors_father_cells,&
+!      &                    nbors_father_grids,ncell,ilevel)
+!   use amr_parameters
+!   use amr_commons
+!   use coordinates
+!   implicit none
+!   integer::ncell,ilevel
+!   integer,dimension(1:nvector)::ind_cell_father
+!   integer,dimension(1:nvector,1:threetondim)::nbors_father_cells
+!   integer,dimension(1:nvector,1:threetondim)::nbors_father_cells_a
+!   integer,dimension(1:nvector,1:twotondim)::nbors_father_grids
+!   !------------------------------------------------------------------
+!   ! This subroutine determines the 3^ndim neighboring father cells 
+!   ! of the input father cell. According to the refinement rule, 
+!   ! they should be present anytime.
+!   !------------------------------------------------------------------
+!   integer::i,j,nxny,i1,j1,k1,ind,iok, idim
+!   integer::i1min,i1max,j1min,j1max,k1min,k1max,ind_father
+!   integer,dimension(1:nvector),save::ix,iy,iz,iix,iiy,iiz
+!   integer(int_pre),dimension(1:nvector, 1:3),save::ix_a
+!   real(dp),dimension(1:nvector, 1:3),save::xgrid
+!   integer,dimension(1:nvector),save::pos,ind_grid_father,ind_grid_ok, cell_levl, ind_grid
+!   integer,dimension(1:nvector,1:threetondim),save::nbors_father_ok
+!   integer,dimension(1:nvector,1:twotondim),save::nbors_grids_ok
+!   logical::oups
+!   integer :: jj
+!   integer(int_pre)::iiix, iiiy, iiiz, grid_size, grid_size_one
+!   nxny=nx*ny
+
+!   if(ilevel==1)then  ! Easy...
+
+!      oups=.false.
+!      do i=1,ncell
+!         if(ind_cell_father(i)>ncoarse)oups=.true.
+!      end do
+!      if(oups)then
+!         write(*,*)'get3cubefather'
+!         write(*,*)'oupsssss !'
+!         call clean_stop
+!      endif
+
+!      do i=1,ncell
+!         iz(i)=(ind_cell_father(i)-1)/nxny
+!      end do
+!      do i=1,ncell
+!         iy(i)=(ind_cell_father(i)-1-iz(i)*nxny)/nx
+!      end do
+!      do i=1,ncell
+!         ix(i)=(ind_cell_father(i)-1-iy(i)*nx-iz(i)*nxny)
+!      end do
+
+!      i1min=0; i1max=0
+!      if(ndim > 0)i1max=2
+!      j1min=0; j1max=0
+!      if(ndim > 1)j1max=2
+!      k1min=0; k1max=0
+!      if(ndim > 2)k1max=2
+
+!      ! Loop over 3^ndim neighboring father cells
+!      do k1=k1min,k1max
+!         iiz=iz
+!         if(ndim > 2)then
+!            do i=1,ncell
+!               iiz(i)=iz(i)+k1-1
+!               if(iiz(i) < 0   )iiz(i)=nz-1
+!               if(iiz(i) > nz-1)iiz(i)=0
+!            end do
+!         end if
+!         do j1=j1min,j1max
+!            iiy=iy
+!            if(ndim > 1)then
+!               do i=1,ncell
+!                  iiy(i)=iy(i)+j1-1
+!                  if(iiy(i) < 0   )iiy(i)=ny-1
+!                  if(iiy(i) > ny-1)iiy(i)=0
+!               end do
+!            end if
+!            do i1=i1min,i1max
+!               iix=ix
+!               if(ndim > 0)then
+!                  do i=1,ncell
+!                     iix(i)=ix(i)+i1-1
+!                     if(iix(i) < 0   )iix(i)=nx-1
+!                     if(iix(i) > nx-1)iix(i)=0
+!                  end do
+!               end if
+!               ind_father=1+i1+3*j1+9*k1
+!               do i=1,ncell
+!                  nbors_father_cells(i,ind_father)=1 &
+!                       & +iix(i) &
+!                       & +iiy(i)*nx &
+!                       & +iiz(i)*nxny
+!               end do
+!            end do
+!         end do
+!      end do
+
+!      i1min=0; i1max=0
+!      if(ndim > 0)i1max=1
+!      j1min=0; j1max=0
+!      if(ndim > 1)j1max=1
+!      k1min=0; k1max=0
+!      if(ndim > 2)k1max=1
+
+!      ! Loop over 2^ndim neighboring father grids
+!      do k1=k1min,k1max
+!         iiz=iz
+!         if(ndim > 2)then
+!            do i=1,ncell
+!               iiz(i)=iz(i)+2*k1-1
+!               if(iiz(i) < 0   )iiz(i)=nz-1
+!               if(iiz(i) > nz-1)iiz(i)=0
+!            end do
+!         end if
+!         do j1=j1min,j1max
+!            iiy=iy
+!            if(ndim > 1)then
+!               do i=1,ncell
+!                  iiy(i)=iy(i)+2*j1-1
+!                  if(iiy(i) < 0   )iiy(i)=ny-1
+!                  if(iiy(i) > ny-1)iiy(i)=0
+!               end do
+!            end if
+!            do i1=i1min,i1max
+!               iix=ix
+!               if(ndim > 0)then
+!                  do i=1,ncell
+!                     iix(i)=ix(i)+2*i1-1
+!                     if(iix(i) < 0   )iix(i)=nx-1
+!                     if(iix(i) > nx-1)iix(i)=0
+!                  end do
+!               end if
+!               ind_father=1+i1+2*j1+4*k1
+!               do i=1,ncell
+!                  nbors_father_grids(i,ind_father)=1 &
+!                       & +(iix(i)/2) &
+!                       & +(iiy(i)/2)*(nx/2) &
+!                       & +(iiz(i)/2)*(nxny/4)
+!               end do
+!            end do
+!         end do
+!      end do
+
+!   else    ! else, more complicated...
+! !     do i = 1, ncell
+! !        ind_grid(i) = son(ind_cell_father(i))
+!  !       xgrid(i,1:3) = xg(ind_grid(i),1:3)
+! !     end do
+
+!      call get_cell_cartesian_key(ind_cell_father, ix_a, ilevel - 1, ncell)
+! !     ix_a =  grid_to_integer_nvector(xgrid, ilevel - 1, ncell)
+
+!      grid_size = 2_int_pre ** (ilevel - 1)
+!      grid_size_one = grid_size - 1
+
+!      do j = 1, threetondim
+!         iiix = mod(j-1,3) - 1
+!         iiiy = mod(j-1,9)/3 - 1
+!         iiiz = (j-1) / 9 - 1
+        
+!         do i = 1, ncell
+!            ix_a(i, 1) = ix_a(i, 1) + iiix           
+!            ix_a(i, 2) = ix_a(i, 2) + iiiy
+!            ix_a(i, 3) = ix_a(i, 3) + iiiz
+!         end do
+!         ! do idim = 1, ndim
+!         !    do i = 1, ncell              
+!         !       if(ix_a(i, idim)  < 0) ix_a(i, idim)=ix_a(i, idim) + grid_size
+!         !       if(ix_a(i, idim)  >= grid_size) ix_a(i, idim)=ix_a(i, idim) - grid_size
+!         !    end do
+!         ! end do
+!         do idim = 1, ndim
+!            do i = 1, ncell              
+! !              ix_a(i, idim) = ix_a(i, idim) + grid_size
+! !              ix_a(i, idim) = IAND(ix_a(i, idim), grid_size_one)
+!               ix_a(i, idim) = IAND(ix_a(i, idim) + grid_size, grid_size_one)
+!            end do
+!         end do
+        
+!         call get_cell_index_from_cartesian_hash(nbors_father_cells(1,j), cell_levl, ix_a, ilevel - 1, ncell)
+        
+!         ! do i = 1, ncell
+!         !    if (cell_levl(i) .ne. ilevel-1)then
+!         !       print*,'wrong level', cell_levl(i), ilevel - 1
+!         !       print*,'wrong level', ix_a(i,1:3), 2**(ilevel-1)
+!         !       stop
+!         !    end if
+!         ! end do
+        
+!         do i = 1, ncell
+!            ix_a(i, 1) = ix_a(i, 1) - iiix
+!            ix_a(i, 2) = ix_a(i, 2) - iiiy
+!            ix_a(i, 3) = ix_a(i, 3) - iiiz
+!         end do
+!         do idim = 1, ndim
+!            do i = 1, ncell              
+!               ix_a(i, idim) = IAND(ix_a(i, idim) + grid_size, grid_size_one)
+!            end do
+!         end do
+        
+!         ! do idim = 1, ndim
+!         !    do i = 1, ncell              
+!         !       if(ix_a(i, idim)  < 0) ix_a(i, idim)=ix_a(i, idim) + grid_size
+!         !       if(ix_a(i, idim)  >= grid_size) ix_a(i, idim)=ix_a(i, idim) - grid_size
+!         !    end do
+!         ! end do   
+        
+!      end do
+     
+!      ! ! Get father cell position in the grid
+!      do i=1,ncell
+!         pos(i)=(ind_cell_father(i)-ncoarse-1)/ngridmax+1
+!      end do
+!      ! ! Get father grid
+!      ! do i=1,ncell
+!      !    ind_grid_father(i)=ind_cell_father(i)-ncoarse-(pos(i)-1)*ngridmax
+!      ! end do
+
+!      ! ! Loop over position
+!      ! do ind=1,twotondim
+!      !    ! Select father cells that sit at position ind
+!      !    iok=0
+!      !    do i=1,ncell
+!      !       if(pos(i)==ind)then
+!      !          iok=iok+1
+!      !          ind_grid_ok(iok)=ind_grid_father(i)
+!      !       end if
+!      !    end do
+
+!      !    if(iok>0)&
+!      !    & call get3cubepos(ind_grid_ok,ind,nbors_father_ok,nbors_grids_ok,iok)
+
+!      !    ! Store neighboring father cells for selected cells
+!      !    do j=1,threetondim
+!      !       iok=0
+!      !       do i=1,ncell
+!      !          if(pos(i)==ind)then
+!      !             iok=iok+1
+!      !             nbors_father_cells(i,j)=nbors_father_ok(iok,j)                 
+!      !          end if
+!      !       end do
+!      !    end do
+
+!         ! ! Store neighboring father grids for selected cells
+!         ! do j=1,twotondim
+!         !    iok=0
+!         !    do i=1,ncell
+!         !       if(pos(i)==ind)then
+!         !          iok=iok+1
+!         !          nbors_father_grids(i,j)=nbors_grids_ok(iok,j)
+!         !       end if
+!         !    end do
+!         ! end do
+
+! !     end do
+
+!      ! do i = 1, ncell
+!      !    do j=1,threetondim
+!      !       if (nbors_father_cells_a(i,j) .ne.  nbors_father_cells(i,j) )then
+!      !          print*, nbors_father_cells_a(i,j),  nbors_father_cells(i,j) 
+!      !       end if
+!      !    end do
+!      ! end do
+     
+!      do i = 1, ncell
+!         do j=1,twotondim
+!            iiix = 1 - IEOR(mod(j-1,2), mod(pos(i)-1,2))
+!            iiiy = 1 - IEOR(mod(j-1,4)/2, mod(pos(i)-1,4)/2)
+!            iiiz = 1 - IEOR((j-1)/4,(pos(i)-1)/4)
+!            jj = iiiz * 2 * 9 + iiiy * 2 * 3 + iiix * 2 + 1
+!            nbors_father_grids(i,j) = mod(nbors_father_cells(i,jj) - ncoarse, ngridmax)
+!         end do
+!      end do     
+!   end if
+
+! end subroutine get3cubefather
 !##############################################################
 !##############################################################
 !##############################################################
