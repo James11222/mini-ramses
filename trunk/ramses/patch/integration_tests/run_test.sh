@@ -12,7 +12,7 @@ patch -R update_time.f90 < update_time.f90_diff
 patch -R Makefile < Makefile_diff 
 
 cd ../../bin/
-#make clean 
+make clean 
 rm ramses$ending
 make -f ../patch/integration_tests/Makefile
 cd ../patch/integration_tests/
