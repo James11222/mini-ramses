@@ -19,7 +19,8 @@ subroutine init_part
   integer::ind,ix,iy,iz,ilun,info,icpu,nx_loc
   integer::i1,i2,i3,i1_min,i1_max,i2_min,i2_max,i3_min,i3_max
   integer::buf_count,indglob,npart_new
-  real(dp)::dx,xx1,xx2,xx3,vv1,vv2,vv3,mm1,ll1,ll2,ll3
+  real(dp)::dx,mm1,ll1,ll2,ll3
+  real(dp), dimension(1:ndim) :: xx_read, vv_read, ll_read
   real(dp)::scale,dx_loc,rr,rmax,dx_min
   integer::ncode,bit_length,temp
   real(kind=8)::bscale
@@ -161,10 +162,10 @@ subroutine init_part
            open(10,file=filename,form='formatted')
            indglob=0
 
-           !figure out starting indices for domains
+           ! Figure out starting indices for domains
            jpart=0
-           do while (1==1)
-              read(10,*,end=101)xx1,xx2,xx3,vv1,vv2,vv3,mm1
+           do 
+              read(10,*,end=101)xx_read(1:ndim), vv_read(1:ndim), mm1
               jpart=jpart+1
            end do
 101        continue
@@ -177,8 +178,8 @@ subroutine init_part
 
            jpart=0
            jpart_loc=0
-           do 
-              read(10,*,end=100)xx1,xx2,xx3,vv1,vv2,vv3,mm1
+           do
+              read(10,*,end=100)xx_read(1:ndim), vv_read(1:ndim), mm1
               jpart=jpart+1
               indglob=indglob+1
               if(jpart >= start_ind(myid) .and. jpart < start_ind(myid+1))then
@@ -188,12 +189,10 @@ subroutine init_part
                     write(*,*)'npartmax should be greater than',start_ind(2)
                     call clean_stop
                  endif
-                 xp(jpart_loc,1)=xx1+boxlen/2.0
-                 xp(jpart_loc,2)=xx2+boxlen/2.0
-                 xp(jpart_loc,3)=xx3+boxlen/2.0
-                 vp(jpart_loc,1)=vv1
-                 vp(jpart_loc,2)=vv2
-                 vp(jpart_loc,3)=vv3
+                 do idim = 1, ndim 
+                    xp(jpart_loc, idim)=xx_read(idim) + boxlen / 2.0
+                    vp(jpart_loc, idim)=vv_read(idim)
+                 end do
                  mp(jpart_loc  )=mm1
                  idp(jpart_loc )=indglob
                  levelp(jpart_loc)=levelmin

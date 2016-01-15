@@ -362,7 +362,7 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
 
   !----------------------------------------------------------------------------
   !----------------------------------------------------------------------------
-  integer :: i
+  integer :: i, idim
   integer(int_pre), dimension(0:ndim) :: hash_key
   integer, dimension(1:nvector) :: ind, igrid
 !  logical, dimension(1:nvector) :: same, same2
@@ -381,10 +381,19 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
   
   ! Construct ind from last digits
   do i = 1, n
-     ind(i) = IAND(ix(i, 1), 1_int_pre)     + &
-              IAND(ix(i, 2), 1_int_pre) * 2 + &
-              IAND(ix(i, 3), 1_int_pre) * 4 
+     ind(i) = IAND(ix(i, 1), 1_int_pre)
   end do
+#if NDIM>1
+  do i = 1, n
+     ind(i) = ind(i) + IAND(ix(i, 2), 1_int_pre) * 2
+  end do
+#endif
+#if NDIM>2
+  do i = 1, n
+     ind(i) = ind(i) + IAND(ix(i, 3), 1_int_pre) * 4
+  end do
+#endif
+ 
 
   ! do i = 1, n
   !    sort_ind(i) = i
@@ -427,19 +436,18 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
      
      ! Initial hash key
      hash_key(0) = ilevel
-     hash_key(1) = ISHFT(ix(i, 1), -1)
-     hash_key(2) = ISHFT(ix(i, 2), -1)
-     hash_key(3) = ISHFT(ix(i, 3), -1)
-
+     do idim = 1, ndim
+        hash_key(idim) = ISHFT(ix(i, idim), -1)
+     end do
      igrid(i) = hash_get(grid_dict, hash_key(0:ndim))
      
      ! If nothing found, try coarser
      do while (igrid(i) == 0 .and. cell_levl(i) > 2)
         cell_levl(i) = cell_levl(i) - 1
         hash_key(0) = cell_levl(i)
-        hash_key(1) = ISHFT(hash_key(1), -1)
-        hash_key(2) = ISHFT(hash_key(2), -1)
-        hash_key(3) = ISHFT(hash_key(3), -1)
+        do idim = 1, ndim
+           hash_key(idim) = ISHFT(hash_key(idim), -1)
+        end do 
         igrid(i) = hash_get(grid_dict, hash_key(0:ndim))
      end do
   end do

@@ -768,7 +768,7 @@ subroutine rho_direct_particles(part_level, min_grid_level)
 
 contains
   subroutine cic_amr(xpart, mpart, array_size, offset, np, grid_level)
-    use amr_parameters,  only: static, mass_cut_refine, nvector, ndim
+    use amr_parameters,  only: static, mass_cut_refine, nvector, ndim, twotondim
     use amr_commons,     only: boxlen, icoarse_max, icoarse_min
     use poisson_commons, only: rho, phi
     use hilbert,         only: hilbert3d
@@ -790,8 +790,8 @@ contains
     
     ! side effect:  - updates rho field on level grid_level
 
-    integer(kind=4), dimension(1:nvector, 1:8), save :: cell_index
-    real(dp),        dimension(1:nvector, 1:8), save :: vol
+    integer(kind=4), dimension(1:nvector, 1:twotondim), save :: cell_index
+    real(dp),        dimension(1:nvector, 1:twotondim), save :: vol
     integer  :: ind_cloud, ip, nx_loc
     real(dp) :: one_over_vol_loc, dx_loc
 
@@ -803,7 +803,7 @@ contains
     call cic(xpart, array_size, cell_index, vol, offset, np, grid_level, 1)
     
     ! Loop cloud/cell intersections
-    do ind_cloud = 1, 8
+    do ind_cloud = 1, twotondim
 
        ! Add to number density which is stored in phi
        do ip=1,np

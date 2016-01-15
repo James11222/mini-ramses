@@ -3,16 +3,21 @@
 cp  ../../amr/update_time.f90 ./
 cp  ../../bin/Makefile ./
 
+ending=`cat Makefile | grep NDIM -m 1 | sed 's/[^0-9]//g'`d
+
+echo $ending
+cp halo_ics_small/ic_part$ending halo_ics_small/ic_part
+
 patch -R update_time.f90 < update_time.f90_diff
 patch -R Makefile < Makefile_diff 
 
 cd ../../bin/
-make clean 
-rm ramses3d
+#make clean 
+rm ramses$ending
 make -f ../patch/integration_tests/Makefile
 cd ../patch/integration_tests/
 
-../../bin/ramses3d param_file.nml > run_serial.log
+../../bin/ramses$ending param_file.nml > run_serial.log
 if diff particles.txt particles.txt_comp > /dev/null; then
     echo "=============================="
     echo "NON MPI TEST OK"
@@ -23,7 +28,7 @@ else
     echo "=============================="
 fi
 rm particles.txt
-mpirun -np 3 ../../bin/ramses3d param_file.nml > run_parallel.log
+mpirun -np 3 ../../bin/ramses$ending param_file.nml > run_parallel.log
 if diff particles.txt particles.txt_comp > /dev/null; then
     echo "=============================="
     echo "MPI TEST OK"

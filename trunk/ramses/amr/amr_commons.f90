@@ -142,7 +142,7 @@ module amr_commons
        0,0, &
        0,1, &
        1,0, &
-       1,1, (/2,4/) )
+       1,1 /), (/2,4/) )
 #endif
 #if NDIM == 1
   integer(int_pre), dimension(0:1, 1:1), parameter :: ind_table = reshape((/&
