@@ -1410,8 +1410,8 @@ subroutine cmp_ordering_int(x,hkey1, &
   ! ordering. Position x are in user units.
   !-----------------------------------------------------
   integer(kind=4),dimension(1:nvector)::cstate
-  integer(int_pre),dimension(1:nvector),save::ix,iy,iz
-  integer::i,ncode,bit_length,nx_loc
+  integer(int_pre),dimension(1:nvector, 1:ndim), save :: ix
+  integer::i,ncode,bit_length,nx_loc, idim
   integer::temp,info
   real(kind=8)::scale,bscale,xx,yy,zz,xc,yc,zc
 
@@ -1437,25 +1437,21 @@ subroutine cmp_ordering_int(x,hkey1, &
      stop
 #endif
   end if
-  
-  do i=1,nn
-     ix(i)=int(x(i,1)*bscale,kind=8)
-#if NDIM>1           
-     iy(i)=int(x(i,2)*bscale,kind=8)
-#endif
-#if NDIM>2
-     iz(i)=int(x(i,3)*bscale,kind=8)
-#endif
+
+  do idim = 1, ndim
+     do i = 1, nn
+        ix(i, idim) = int(x(i, idim) * bscale, kind=int_pre)
+     end do
   end do
   
-  call hilbert3d(ix,iy,iz,hkey1, &
+  call hilbert3d(ix,hkey1, &
 #if NHILBERT > 1
        hkey2, &
 #endif
 #if NHILBERT > 2
        hkey3, &
 #endif
-       cstate,0,bit_length,nn)
+       cstate, 0, bit_length, nn, ndim)
   
 end subroutine cmp_ordering_int
 !#########################################################################

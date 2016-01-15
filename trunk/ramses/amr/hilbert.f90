@@ -601,19 +601,19 @@ contains
   !================================================================
   !================================================================
   !================================================================
-  subroutine hilbert3d(ix, iy, iz, hkey1, &
+  subroutine hilbert3d(ix, hkey1, &
 #if NHILBERT > 1
        hkey2, &
 #endif
 #if NHILBERT > 2
        hkey3, &
 #endif
-       cstate, initial_level, final_level, npoint)
+       cstate, initial_level, final_level, npoint, ndim)
 
     use amr_parameters, only: qdp, nvector, int_pre
     implicit none
-    integer        , intent(in)                          :: initial_level, final_level, npoint
-    integer(int_pre), intent(in),    dimension(1:npoint) :: ix, iy, iz
+    integer        , intent(in)                          :: initial_level, final_level, npoint, ndim
+    integer(int_pre), intent(in),    dimension(:,:) :: ix
     integer(kind=4), intent(inout), dimension(1:npoint) :: cstate
     integer(kind=8), intent(inout), dimension(1:npoint) :: hkey1
 #if NHILBERT > 1
@@ -622,10 +622,10 @@ contains
 #if NHILBERT > 2
     integer(kind=8), intent(inout), dimension(1:npoint) :: hkey3
 #endif    
-    ! Compute nvector 3-integer hilbert keys from the cartesian keys ix, iy, iz
-    
+    ! Compute nvector 3-integer hilbert keys from the cartesian keys ix
+        
     ! Local vars
-    integer :: ibit, ip
+    integer :: ibit, ip, add_digit, idim
     integer(kind=4),dimension(1:nvector) :: nstate, sdigit, ind
     
     ! if no keys present yet
@@ -640,8 +640,8 @@ contains
 #endif
     end if
 
-    do ibit=final_level-initial_level-1,0,-1
-
+    do ibit = final_level - initial_level - 1, 0, -1
+       
 #if NHILBERT > 2       
        if (final_level > 42)then
           do ip=1,npoint
@@ -670,10 +670,11 @@ contains
        end do
 
        sdigit=0
-       do ip=1,npoint
-          if(btest(ix(ip),ibit)) sdigit(ip) = sdigit(ip)+four
-          if(btest(iy(ip),ibit)) sdigit(ip) = sdigit(ip)+two
-          if(btest(iz(ip),ibit)) sdigit(ip) = sdigit(ip)+one
+       do idim = 1, ndim
+          add_digit = 2 ** (idim - 1)
+          do ip = 1, npoint
+             if(btest(ix(ip, idim),ibit)) sdigit(ip) = sdigit(ip) + add_digit
+          end do
        end do
 
        do ip=1,npoint
@@ -794,7 +795,7 @@ contains
   !================================================================
   subroutine hilbert_for_particle(offset, np, initial_level, final_level)
 
-    use amr_parameters, only: nvector, boxlen, dp, int_pre
+    use amr_parameters, only: nvector, boxlen, dp, int_pre, ndim
     use amr_commons,    only: myid
     use pm_commons,     only: part_hkey, current_state, xp
     implicit none
@@ -820,10 +821,10 @@ contains
     ! levelmin particles (resulting in a total of 3 * nlevelmax bits)
 
     ! Local variables
-    integer :: ibit, ip, ind_part
+    integer :: ibit, ip, ind_part, idim
     integer :: sweep_size, sweep_offset, nsweep, isweep 
     integer(kind=4), dimension(1:nvector) :: nstate, sdigit, ind
-    integer(int_pre), dimension(1:nvector) :: ix, iy, iz
+    integer(int_pre), dimension(1:nvector, 1:ndim) :: ix
     real(dp) :: ckey_factor
 
     ! Compute particle position to cartesian key factor
@@ -838,15 +839,13 @@ contains
        sweep_offset = sweep_offset + offset
 
        ! compute cartesian keys
-       do ip = 1, sweep_size 
-          ix(ip) = int(xp(ip+sweep_offset,1)*ckey_factor, kind=8)
-          iy(ip) = int(xp(ip+sweep_offset,2)*ckey_factor, kind=8)
-#if NDIM == 3
-          iz(ip) = int(xp(ip+sweep_offset,3)*ckey_factor, kind=8)
-#endif
+       do idim = 1, ndim
+          do ip = 1, sweep_size 
+             ix(ip, idim) = int(xp(ip+sweep_offset, idim)*ckey_factor, kind=int_pre)
+          end do
        end do
 #if NDIM == 3
-       call hilbert3d(ix, iy, iz, &            
+       call hilbert3d(ix, &            
             part_hkey(1+sweep_offset:sweep_size+sweep_offset, 1), &
 #if NHILBERT > 1
             part_hkey(1+sweep_offset:sweep_size+sweep_offset, 2), &
@@ -854,7 +853,7 @@ contains
 #if NHILBERT > 1
             part_hkey(1+sweep_offset:sweep_size+sweep_offset, 3), &
 #endif
-            current_state, initial_level, final_level, sweep_size)
+            current_state, initial_level, final_level, sweep_size, ndim)
 #endif
 #if NDIM == 2
        call hilbert2d(ix, iy, &            
