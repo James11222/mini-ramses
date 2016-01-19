@@ -230,9 +230,89 @@ contains
   end subroutine domain_data_to_part_dp
   !################################################################
   !################################################################
-
   !################################################################
   !################################################################
+  subroutine communicate_refinements(communicator, ndata_remote, ndata, ndata_local, ndata_local_oft, &
+       refined, hkeys, ilevel)
+    use amr_parameters, only: nhilbert, nvector
+    use amr_commons,   only: ncpu, myid, bound_key_level, son, nvector, nlevelmax
+    implicit none
+    include 'mpif.h'
+    integer, intent(in) ::  ilevel, ndata
+    integer, intent(in) :: ndata_remote, ndata_local, ndata_local_oft
+    integer(kind=8), dimension(:,:), intent(inout) :: hkeys
+    integer, dimension(1:ncpu, 1:4), intent(in) :: communicator
+    integer, dimension(1:ndata), intent(inout) :: refined
 
+    ! This routine sorts particles between ilevel and ilevel + 1
+    ! (formerly known as kill_tree_fine).
+
+    ! The routine can only run after:
+    ! call compute_particle_histogram(ilevel)
+    ! call build_communicator(...)
+
+    ! The "bins" here are the histogram bins and correspond to 
+    ! actual grid cells. "local_... variables" denote properties in the
+    ! MPI process which hosts the particles, while "remote_... variables" 
+    ! are used for properties in the MPI process which hosts the corresponding
+    ! leaf-cell.
+
+
+    integer  :: idata, ioft, nd, i
+    integer, dimension(1:nvector) :: dummy_int
+
+    integer,         allocatable, dimension(:  ) :: remote_refined
+    integer(kind=8), allocatable, dimension(:,:) :: remote_keys
+
+    allocate(remote_refined(1:ndata_remote))
+    allocate(remote_keys(1:ndata_remote, 1:nhilbert))
+    do i = 1, nhilbert
+       call part_data_to_domain(communicator, hkeys(:,i), remote_keys(:,i))
+    end do
+
+
+    ! Probe local cells for refinement (abuse refined to store cell index)
+    do ioft = ndata_local_oft, ndata_local_oft + ndata_local - 1, nvector
+       nd = min(ndata_local_oft + ndata_local - ioft, nvector) 
+       call get_cell_index_from_hilbertkey(refined(ioft + 1: ioft + nd), &
+            dummy_int(1: nd), hkeys(ioft + 1: ioft + nd, 1:nhilbert), nd, ilevel)
+    end do
+
+    ! Mark data corresponding to refined cells
+    do idata = ndata_local_oft + 1, ndata_local_oft + ndata_local
+       if (son(refined(idata)) > 0)then
+          refined(idata) = 1
+       else
+          refined(idata) = 0
+       end if
+    end do
+
+    ! Probe remote cells for refinement (abuse remote_refined to store cell index) 
+    do ioft = 0, ndata_remote - 1 , nvector
+       nd = min(ndata_remote - ioft, nvector) 
+       call get_cell_index_from_hilbertkey(remote_refined(ioft + 1:ioft + nd), &
+            dummy_int(1:nd), remote_keys(ioft + 1:ioft + nd, 1:nhilbert), nd, ilevel)
+    end do
+
+    ! Mark bins corresponding to refined cells
+    do idata = 1, ndata_remote
+       if (son(remote_refined(idata))>0)then
+          remote_refined(idata) = 1
+       else
+          remote_refined(idata) = 0
+       end if
+    end do
+
+    ! Send refinement information back
+    call domain_data_to_part(communicator, remote_refined, refined)
+
+    deallocate(remote_refined)
+    deallocate(remote_keys)
+
+  end subroutine communicate_refinements
+!################################################################
+!################################################################
+!################################################################
+!################################################################
 #endif
 end module particle_communication

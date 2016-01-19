@@ -1,7 +1,6 @@
 recursive subroutine cic(xpart, array_size, cell_index, vol, offset, np, cic_level, level_boundary_case)
-   use amr_parameters,  only: static, dp, twotondim, int_pre
-   use amr_commons,     only: boxlen, nvector, ndim, ind_table2
-   use hilbert,         only: hilbert3d
+   use amr_parameters,  only: static, dp, twotondim, int_pre, ndim
+   use amr_commons,     only: boxlen, nvector, ind_table2
    implicit none
 
    integer,  intent(in)                                              :: offset, np, array_size, cic_level, level_boundary_case

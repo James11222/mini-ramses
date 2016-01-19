@@ -2,11 +2,12 @@ subroutine sort_particles(ilevel, use_histograms)
   use pm_commons,  only: npart, part_level_offset, &
                          nbins, bin_keys, part_hkey, &
                          part_ind_permutation
-  use amr_commons, only: dp, myid, levelmin, nlevelmax, ncpu
+  use amr_commons, only: myid, levelmin, nlevelmax, ncpu
+  use amr_parameters, only: dp, nhilbert
   use sort,        only: lsd_radix_sort_particles, apply_particle_permutation
   use hilbert,     only: hilbert_for_particle 
 #ifndef WITHOUTMPI
-  use particle_communication, only: build_communicator
+  use particle_communication, only: build_communicator, communicate_refinements
 #endif
   implicit none
 
@@ -35,27 +36,13 @@ subroutine sort_particles(ilevel, use_histograms)
      call compute_particle_histogram(offset, np)          
 #ifndef WITHOUTMPI
      call build_communicator(communicator, ndata_remote, &
-          nbins, ndata_local, local_oft, bin_keys(1:nbins, 1), &
-#if NHILBERT > 1
-          bin_keys(1:nbins, 2), &
-#endif
-#if NHILBERT > 2
-          bin_keys(1:nbins, 3), &
-#endif
-          ilevel)
+          nbins, ndata_local, local_oft, bin_keys(1:nbins, 1:nhilbert), ilevel)
 #endif
      
      allocate(refined(1:nbins))     
 #ifndef WITHOUTMPI
      call communicate_refinements(communicator, ndata_remote, nbins, ndata_local, &
-          local_oft, refined, bin_keys(1:nbins, 1), &
-#if NHILBERT > 1
-          bin_keys(1:nbins, 2), &
-#endif
-#if NHILBERT > 2
-          bin_keys(1:nbins, 3), &
-#endif
-          ilevel)
+          local_oft, refined, bin_keys(1:nbins, 1:nhilbert), ilevel)
 #endif
      call reshuffle_particles(ilevel, np, nbins, refined, use_histograms)
   else
@@ -67,28 +54,13 @@ subroutine sort_particles(ilevel, use_histograms)
      call apply_particle_permutation(offset, np, ilevel) 
 #ifndef WITHOUTMPI
      call build_communicator(communicator, ndata_remote, np, ndata_local, local_oft, &
-          part_hkey(offset + 1: offset + np, 1), &
-#if NHILBERT > 1
-          part_hkey(offset + 1: offset + np, 2), &
-#endif
-#if NHILBERT > 2
-          part_hkey(offset + 1: offset + np, 3), &
-#endif
-          ilevel)
+          part_hkey(offset + 1: offset + np, 1:nhilbert), ilevel)
 #endif
      
      allocate(refined(1:np))
 #ifndef WITHOUTMPI
      call communicate_refinements(communicator, ndata_remote, &
-          np, ndata_local, local_oft, refined, &
-          part_hkey(offset + 1: offset + np, 1), &
-#if NHILBERT > 1
-          part_hkey(offset + 1: offset + np, 2), &
-#endif
-#if NHILBERT > 2
-          part_hkey(offset + 1: offset + np, 3), &
-#endif
-          ilevel)
+          np, ndata_local, local_oft, refined, part_hkey(offset + 1: offset + np, 1:nhilbert), ilevel)
 
 #endif
      call reshuffle_particles(ilevel, np, np, refined, use_histograms)
@@ -111,123 +83,6 @@ subroutine sort_particles(ilevel, use_histograms)
 !  end if
   
 end subroutine sort_particles
-!################################################################
-!################################################################
-!################################################################
-!################################################################
-#ifndef WITHOUTMPI
-subroutine communicate_refinements(communicator, ndata_remote, ndata, ndata_local, ndata_local_oft, &
-     refined, keys1, &
-#if NHILBERT > 1
-     keys2, &
-#endif
-#if NHILBERT > 2
-     keys3, &
-#endif
-     ilevel)
-
-  use amr_parameters, only: nhilbert
-  use amr_commons,   only: ncpu, myid, bound_key_level, son, nvector, nlevelmax
-  use particle_communication, only: part_data_to_domain, domain_data_to_part
-  implicit none
-  include 'mpif.h'
-  integer, intent(in) ::  ilevel, ndata
-  integer, intent(in) :: ndata_remote, ndata_local, ndata_local_oft
-  integer(kind=8), dimension(1:ndata), intent(in) :: keys1
-#if NHILBERT > 1
-  integer(kind=8), dimension(1:ndata), intent(in) :: keys2
-#endif
-#if NHILBERT > 2
-  integer(kind=8), dimension(1:ndata), intent(in) :: keys3
-#endif
-  integer, dimension(1:ncpu, 1:4), intent(in) :: communicator
-  integer, dimension(1:ndata), intent(inout) :: refined
-  
-  ! This routine sorts particles between ilevel and ilevel + 1
-  ! (formerly known as kill_tree_fine).
-
-  ! The routine can only run after:
-  ! call compute_particle_histogram(ilevel)
-  ! call build_communicator(...)
-
-  ! The "bins" here are the histogram bins and correspond to 
-  ! actual grid cells. "local_... variables" denote properties in the
-  ! MPI process which hosts the particles, while "remote_... variables" 
-  ! are used for properties in the MPI process which hosts the corresponding
-  ! leaf-cell.
-
-
-  integer  :: idata, ioft, nd
-  integer, dimension(1:nvector) :: dummy_int
-  
-  integer,         allocatable, dimension(:  ) :: remote_refined
-  integer(kind=8), allocatable, dimension(:,:) :: remote_keys
-
-  allocate(remote_refined(1:ndata_remote))
-  allocate(remote_keys(1:ndata_remote, 1:nhilbert))
-  call part_data_to_domain(communicator, keys1, remote_keys(:,1))
-#if NHILBERT > 1
-  call part_data_to_domain(communicator, keys2, remote_keys(:,2))
-#endif
-#if NHILBERT > 2
-  call part_data_to_domain(communicator, keys3, remote_keys(:,3))
-#endif
-
-
-  ! Probe local cells for refinement (abuse refined to store cell index)
-  do ioft = ndata_local_oft, ndata_local_oft + ndata_local -1, nvector
-     nd = min(ndata_local_oft + ndata_local - ioft, nvector) 
-     call get_cell_index_from_hilbertkey(refined(ioft + 1 : ioft + nd), &
-          dummy_int(1 : nd), keys1(ioft + 1: ioft + nd), &
-#if NHILBERT > 1
-          keys2(ioft + 1: ioft + nd), &
-#endif
-#if NHILBERT > 2
-          keys3(ioft + 1: ioft + nd), &
-#endif
-          nd, ilevel)
-  end do
-
-  ! Mark data corresponding to refined cells
-  do idata = ndata_local_oft + 1, ndata_local_oft + ndata_local
-     if (son(refined(idata)) > 0)then
-        refined(idata) = 1
-     else
-        refined(idata) = 0
-     end if
-  end do
-  
-  ! Probe remote cells for refinement (abuse remote_refined to store cell index) 
-  do ioft = 0, ndata_remote - 1 , nvector
-     nd = min(ndata_remote - ioft, nvector) 
-     call get_cell_index_from_hilbertkey(remote_refined(ioft + 1 : ioft + nd), &
-          dummy_int(1 : nd), remote_keys(ioft + 1: ioft + nd,1), &
-#if NHILBERT > 1
-          remote_keys(ioft + 1: ioft + nd, 2), &
-#endif
-#if NHILBERT > 2
-          remote_keys(ioft + 1: ioft + nd, 3), &
-#endif
-          nd, ilevel)
-  end do
-
-  ! Mark bins corresponding to refined cells
-  do idata = 1, ndata_remote
-     if (son(remote_refined(idata))>0)then
-        remote_refined(idata) = 1
-     else
-        remote_refined(idata) = 0
-     end if
-  end do
-
-  ! Send refinement information back
-  call domain_data_to_part(communicator, remote_refined, refined)
-
-  deallocate(remote_refined)
-  deallocate(remote_keys)
-  
-end subroutine communicate_refinements
-#endif
 !################################################################
 !################################################################
 !################################################################
@@ -314,37 +169,20 @@ end subroutine reshuffle_particles
 !################################################################
 !################################################################
 !################################################################
-subroutine get_cell_index_from_hilbertkey(cell_index,cell_levl,hilbert_key1, &
-#if NHILBERT > 1
-     hilbert_key2, &
-#endif
-#if NHILBERT > 2
-     hilbert_key3, &
-#endif
-     np,ilevel)
-  use amr_parameters, only: int_pre
-  use amr_commons, only: nvector
-  use hilbert,     only: hilbert3d_reverse
+subroutine get_cell_index_from_hilbertkey(cell_index, cell_levl, hkey, np, ilevel)
+  use amr_parameters, only: int_pre, nvector, nhilbert, ndim
+  use hilbert,     only: hilbert_nd_reverse
   implicit none
-  integer, intent(in)::np,ilevel
-  integer(int_pre),dimension(1:nvector, 1:3)::ix
-  integer(kind=8),dimension(1:nvector)::hilbert_key1
-#if NHILBERT > 1
-  integer(kind=8),dimension(1:nvector)::hilbert_key2
-#endif
-#if NHILBERT > 2
-  integer(kind=8),dimension(1:nvector)::hilbert_key3
-#endif
-  integer,dimension(1:nvector)::cell_levl, cell_index
-  call hilbert3d_reverse(ix(1,1),ix(1,2),ix(1,3),hilbert_key1, &
-#if NHILBERT > 1
-       hilbert_key2, &
-#endif
-#if NHILBERT > 2
-       hilbert_key3, &
-#endif
-       ilevel,np)
-  call get_cell_index_from_cartesian_hash(cell_index,cell_levl,ix,ilevel,np)     
+  integer, intent(in) :: np, ilevel
+  integer(kind=8),dimension(1:nvector, 1:nhilbert), intent(inout) :: hkey
+  integer, dimension(1:nvector), intent(inout) :: cell_levl, cell_index
+
+  integer(int_pre),dimension(1:nvector, 1:ndim) :: ix
+  
+  call hilbert_nd_reverse(ix, hkey, ilevel, np)
+
+  call get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel, np)     
+
 end subroutine get_cell_index_from_hilbertkey
 !#########################################################################
 !#########################################################################

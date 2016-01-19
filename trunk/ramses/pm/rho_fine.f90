@@ -771,7 +771,6 @@ contains
     use amr_parameters,  only: static, mass_cut_refine, nvector, ndim, twotondim
     use amr_commons,     only: boxlen, icoarse_max, icoarse_min
     use poisson_commons, only: rho, phi
-    use hilbert,         only: hilbert3d
     implicit none
     integer,  intent(in):: offset, np, grid_level, array_size
     real(dp), intent(in), dimension(1:array_size)         :: mpart

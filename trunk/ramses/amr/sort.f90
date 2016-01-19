@@ -507,16 +507,8 @@ contains
 
     do ilevel=final_level,1,-1
        call lsd_counting_sort_onelevel(offset, np, ilevel, key_level, &
-            part_ind_permutation(1), part_ind_permutation2(1), &
-            part_hkey(1,1)  &
-#if NHILBERT > 1
-            , part_hkey(1,2)&
-#endif
-#if NHILBERT > 2
-            , part_hkey(1,3) &
-#endif
-            )
-            end do
+            part_ind_permutation, part_ind_permutation2, part_hkey)
+    end do
 
 !    do ip = 1, np
 !       part_ind_permutation(offset+ip) = part_ind_permutation(offset+ip) + offset
@@ -530,68 +522,37 @@ contains
   !########################################################################
   !########################################################################
   !########################################################################
-  subroutine lsd_counting_sort_onelevel(offset, np, ilevel, key_level, sigma1, sigma2, hkey1 &
-#if NHILBERT > 1
-       , hkey2 &
-#endif
-#if NHILBERT > 2
-       , hkey3 &
-#endif
-       )
+  subroutine lsd_counting_sort_onelevel(offset, np, ilevel, key_level, sigma1, sigma2, hkey)
     use amr_parameters, only: ndim, twotondim
-    use pm_commons, only: npart
     implicit none    
-    integer,                          intent(in)         :: offset, np, ilevel, key_level
-    integer(kind=8), dimension(1:npart), intent(in), target :: hkey1
-#if NHILBERT > 1
-    integer(kind=8), dimension(1:npart), intent(in), target :: hkey2
-#endif
-#if NHILBERT > 2
-    integer(kind=8), dimension(1:npart), intent(in), target :: hkey3
-#endif
-    integer,         dimension(1:npart), intent(inout)      :: sigma1, sigma2
+    integer,                         intent(in)      :: offset, np, ilevel, key_level
+    integer(kind=8), dimension(:,:), intent(in)      :: hkey
+    integer,         dimension(:),   intent(inout)   :: sigma1, sigma2
 
     ! Update the given permuations sigma1, sigma2 such that sigma1  will 
     ! sort the 3 bits belonging to level ilevel of the input hilbert keys.
     ! For the 2D version, only two bits (corresponding to one level of refinement
     ! are read at the time.
 
-    integer(kind=8),      pointer :: use_key(:)
-    integer,                 save :: ipart, ip, ibit1, ikey
-    integer(kind=8),         save :: ibucket
+    integer :: ipart, ip, ibit1, ikey
+    integer(kind=8) :: ibucket
     
-    integer, dimension(0:twotondim - 1), save :: bucket_offset, bucket_count
+    integer, dimension(0:twotondim - 1) :: bucket_offset, bucket_count
     integer, parameter :: nbucket = twotondim - 1
     integer, parameter :: nbits_read = ndim
+    integer, dimension(1:3), parameter :: bits_per_int = (/ 63, 62, 63 /)
     
     ! get bit and key to read from 
-    if (ndim == 3 .or. ndim == 1)then
-       ibit1 = (key_level - ilevel) * ndim       
-       ikey = ibit1/63
-       ibit1 = mod(ibit1,63)    
-    end if
-    if (ndim == 2)then
-       ibit1 = (key_level - ilevel)*2       
-       ikey = ibit1/62
-       ibit1 = mod(ibit1,62)
-    endif
-
-    ! use a pointer here to define which of the three integer keys                          
-    ! must be accessed.                                                                     
-    if (ikey==0) use_key => hkey1
-#if NHILBERT == 2
-    if (ikey==1) use_key => hkey2
-#endif
-#if NHILBERT == 3 
-    if (ikey==2) use_key => hkey3
-#endif
-
+    ibit1 = (key_level - ilevel) * ndim       
+    ikey = ibit1 / bits_per_int(ndim) + 1
+    ibit1 = mod(ibit1, bits_per_int(ndim))
+    
     ! Count particles per bucket
-    bucket_count=0
+    bucket_count = 0
     do ip = offset + 1, offset + np
        ! This line here is necessary for the sorting of only n_masked particles
        ipart = sigma1(ip)
-       ibucket = ibits(use_key(ipart), ibit1, nbits_read)
+       ibucket = ibits(hkey(ipart, ikey), ibit1, nbits_read)
        bucket_count(ibucket) = bucket_count(ibucket) + 1
     end do
 
@@ -603,9 +564,9 @@ contains
     end do
 
     ! Build up index permutation that will sort array
-    do ip = offset+1,offset+ np
+    do ip = offset + 1, offset + np
        ipart = sigma1(ip)
-       ibucket = ibits(use_key(ipart),ibit1,nbits_read)
+       ibucket = ibits(hkey(ipart, ikey),ibit1,nbits_read)
        bucket_offset(ibucket) = bucket_offset(ibucket) + 1
        sigma2(bucket_offset(ibucket)) = ipart
     end do
