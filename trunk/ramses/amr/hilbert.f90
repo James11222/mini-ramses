@@ -1,13 +1,19 @@
 module hilbert
 
   ! Some parameters used in many of the modules routines
+  integer(kind=4),parameter::twotondim = 2**NDIM
+
+#if NDIM == 3
+  integer, parameter :: big_shift = -60, left_shift = 4, right_shift = -1
+#endif
+
+#if NDIM == 2
+  integer, parameter :: big_shift = -60, left_shift = 4, right_shift = -2
+#endif
   
-  integer(kind=4),parameter::zero=0
-  integer(kind=4),parameter::one=1
-  integer(kind=4),parameter::two=2
-  integer(kind=4),parameter::four=4
-  integer(kind=4),parameter::eight=8
-  integer(kind=8),parameter::longeight=8
+#if NDIM == 1
+  integer, parameter :: big_shift = -62, left_shift = 2, right_shift = -1
+#endif
 
   ! How many levels of refinement can be used per 64bit integer Hilbert key
   integer(kind=4), dimension(1:3), parameter :: levels_per_key = (/63, 31, 21/)
@@ -135,17 +141,15 @@ module hilbert
        & 3, 2, 2, 0, &
        & 2, 3, 3, 1/)
 
-  integer(kind=4),parameter,dimension(0:15)::x_digit_diagram=(/&
+  integer(kind=4),parameter,dimension(0:15, 1:2)::one_digit_diagram=reshape((/&
        & 0, 0, 1, 1, &
        & 0, 1 ,1, 0, &
        & 1, 0, 0, 1, &
-       & 1, 1, 0, 0/)
-
-  integer(kind=4),parameter,dimension(0:15)::y_digit_diagram2d=(/&
+       & 1, 1, 0, 0, &
        & 0, 1, 1, 0, &
        & 0, 0 ,1, 1, &
        & 1, 1, 0, 0, &
-       & 1, 0, 0, 1/)
+       & 1, 0, 0, 1/), (/16,2/))
 #endif
   
   
@@ -619,10 +623,10 @@ contains
     ! Local vars
     integer :: ibit, ip, add_digit, idim, ikey, nkey_local
     integer(kind=4), dimension(1:nvector) :: nstate, sdigit, ind
-    
+
     ! if no keys present yet
     if (initial_level == 0) then
-       cstate(1:npoint)=0
+       cstate(1:npoint) = 0
        hkey(1:npoint, 1:nhilbert) = 0
     end if
 
@@ -630,14 +634,14 @@ contains
     
     do ibit = final_level - initial_level - 1, 0, -1
        
-       do ikey = nkey_local, 1
+       do ikey = nkey_local, 1, -1
           do ip = 1, npoint
-             hkey(ip, ikey) = ISHFT(hkey(ip, ikey), 4)
-             hkey(ip, ikey) = ISHFT(hkey(ip, ikey), -1)
+             hkey(ip, ikey) = ISHFT(hkey(ip, ikey), left_shift)
+             hkey(ip, ikey) = ISHFT(hkey(ip, ikey), right_shift)
           end do
           if (ikey > 1)then
              do ip=1,npoint
-                hkey(ip, ikey) = hkey(ip, ikey) + ISHFT(hkey(ip, ikey - 1),-60)
+                hkey(ip, ikey) = hkey(ip, ikey) + ISHFT(hkey(ip, ikey - 1), big_shift)
              end do
           end if
        end do
@@ -652,7 +656,7 @@ contains
        end do
 
        do ip=1,npoint
-          ind(ip) = cstate(ip)*eight + sdigit(ip)
+          ind(ip) = cstate(ip) * twotondim + sdigit(ip)
        end do
 
        do ip=1,npoint
@@ -711,7 +715,7 @@ contains
 
        ! Compute lookup index in state diagrams
        do ip=1,npoint
-          ind(ip) = cstate(ip)*eight + sdigit(ip)
+          ind(ip) = cstate(ip) * twotondim + sdigit(ip)
        end do
 
        ! save next state
@@ -765,7 +769,6 @@ contains
     ! Local variables
     integer :: ibit, ip, ind_part, idim, np, ioft
     integer(int_pre), dimension(1:nvector, 1:ndim) :: ix
-    integer(kind=8), pointer :: hkey(:,:)
     real(dp) :: ckey_factor
     
     ! Compute particle position to cartesian key factor
@@ -781,9 +784,8 @@ contains
           end do
        end do
 
-       ! Use a pointer to define the necessary array strides in the big particle hilbert key array
-       hkey => part_hkey(ioft + 1: ioft + np, 1:nhilbert)
-       call hilbert_nd(ix, hkey, current_state(ioft + 1: ioft + np), initial_level, final_level, np)
+       ! Passing in array slices is ok (no copying) if the dummy argument has assumed shape and the interface is explicit!
+       call hilbert_nd(ix, part_hkey(ioft + 1: ioft + np, 1:nhilbert), current_state(ioft + 1: ioft + np), initial_level, final_level, np)
     end do
 
   end subroutine hilbert_for_particle

@@ -322,22 +322,19 @@ contains
     implicit none
     logical::gt_keys
 
+    integer(kind=8), intent(in), dimension (:):: key_a, key_b
 #if NHILBERT == 1
-    integer(kind=8), intent(in), dimension(0:0) :: key_a, key_b
-    
-    gt_keys = (key_a(0) > key_b(0))
+    gt_keys = (key_a(1) > key_b(1))
 #endif
 
 #if NHILBERT == 2
-    integer(kind=8), intent(in), dimension (0:1):: key_a, key_b
-
-    if     (key_a(1) > key_b(1)) then
+    if     (key_a(2) > key_b(2)) then
        gt_keys  =  .true.
-    elseif (key_a(1) < key_b(1)) then
+    elseif (key_a(2) < key_b(2)) then
        gt_keys = .false.
-    elseif (key_a(0) > key_b(0)) then
+    elseif (key_a(1) > key_b(1)) then
        gt_keys = .true.
-    elseif (key_a(0) < key_b(0)) then
+    elseif (key_a(1) < key_b(1)) then
        gt_keys = .false.
     else
        gt_keys = .false.
@@ -345,19 +342,17 @@ contains
 #endif
 
 #if NHILBERT == 3
-    integer(kind=8), intent(in), dimension (0:2):: key_a, key_b
-
-    if     (key_a(2) > key_b(2)) then
+    if     (key_a(3) > key_b(3)) then
+       gt_keys = .true.
+    elseif (key_a(3) < key_b(3)) then
+       gt_keys = .false.
+    elseif (key_a(2) > key_b(2)) then
        gt_keys = .true.
     elseif (key_a(2) < key_b(2)) then
        gt_keys = .false.
     elseif (key_a(1) > key_b(1)) then
        gt_keys = .true.
     elseif (key_a(1) < key_b(1)) then
-       gt_keys = .false.
-    elseif (key_a(0) > key_b(0)) then
-       gt_keys = .true.
-    elseif (key_a(0) < key_b(0)) then
        gt_keys = .false.
     else
        gt_keys = .false.
@@ -524,6 +519,7 @@ contains
   !########################################################################
   subroutine lsd_counting_sort_onelevel(offset, np, ilevel, key_level, sigma1, sigma2, hkey)
     use amr_parameters, only: ndim, twotondim
+    use hilbert, only: bits_per_int
     implicit none    
     integer,                         intent(in)      :: offset, np, ilevel, key_level
     integer(kind=8), dimension(:,:), intent(in)      :: hkey
@@ -540,8 +536,7 @@ contains
     integer, dimension(0:twotondim - 1) :: bucket_offset, bucket_count
     integer, parameter :: nbucket = twotondim - 1
     integer, parameter :: nbits_read = ndim
-    integer, dimension(1:3), parameter :: bits_per_int = (/ 63, 62, 63 /)
-    
+
     ! get bit and key to read from 
     ibit1 = (key_level - ilevel) * ndim       
     ikey = ibit1 / bits_per_int(ndim) + 1
@@ -576,7 +571,6 @@ contains
   !########################################################################
   !########################################################################
   !########################################################################
-  
   subroutine apply_particle_permutation(offset, np, key_level)
     use amr_commons,    only: dp, ndim
     use pm_commons

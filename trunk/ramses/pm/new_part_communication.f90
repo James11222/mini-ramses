@@ -13,14 +13,7 @@ module particle_communication
 contains
 
 
-  subroutine build_communicator(communicator, recv_tot, ndata, local_data, local_data_oft, hkey1, &
-#if NHILBERT > 1
-       hkey2, & 
-#endif
-#if NHILBERT > 2
-       hkey3, &
-#endif
-       ilevel)
+  subroutine build_communicator(communicator, recv_tot, ndata, local_data, local_data_oft, hkey, ilevel)
 
     use amr_parameters, only: nlevelmax
     use amr_commons,    only: ncpu, myid, bound_key_level, bound_key
@@ -31,13 +24,7 @@ contains
     integer, intent(inout) ::  recv_tot, local_data, local_data_oft
 
     ! Hilbert keys
-    integer(kind=8), dimension(1:ndata), intent(in) :: hkey1
-#if NHILBERT > 1
-    integer(kind=8), dimension(1:ndata), intent(in) :: hkey2
-#endif
-#if NHILBERT > 2
-    integer(kind=8), dimension(1:ndata), intent(in) :: hkey3
-#endif
+    integer(kind=8), dimension(:,:), intent(in) :: hkey
 
     ! Wrap send/receive counters/offsets in one array to make the passing them
     ! around a little more convenient
@@ -69,7 +56,7 @@ contains
        ! REPLACE this by do while( gt_3_keys(keys..., bound_key_level )):
        ! do while (gt_3keys_individual_input(keys(idata,2),keys(idata,1),keys(idata,0), &
        ! bound_key_level(idata,2),bound_key_level(idata,1),bound_key_level(idata,0)))
-       do while (hkey1(idata) > bound_key_level(receive_cpu, ilevel) ) 
+       do while (hkey(idata, 1) > bound_key_level(receive_cpu, ilevel) ) 
           receive_cpu = receive_cpu + 1
        end do
        communicator(receive_cpu, 1) = communicator(receive_cpu, 1) + 1

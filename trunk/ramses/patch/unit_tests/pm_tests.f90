@@ -1,11 +1,10 @@
 subroutine pm_tests(all_ok)
-  use pm_commons
-  use pm_parameters
-  use amr_parameters
+  use pm_commons, only: xp, vp, mp, idp, levelp, part_hkey, current_state, part_ind_permutation, part_ind_permutation2, npart
+  use amr_parameters, only: boxlen, ndim, nhilbert
   implicit none
   logical::all_ok
   logical::pm_ok=.true.
-  integer, parameter :: size=16
+  integer, parameter :: size = 331
 
 
 
@@ -18,15 +17,12 @@ subroutine pm_tests(all_ok)
   allocate(levelp(size))
   levelp=1
   allocate(idp   (size))
-  allocate(part_hkey(size,0:ndim-1))
+  allocate(part_hkey(size,1:nhilbert))
   allocate(current_state(size))
   allocate(part_ind_permutation(size))
   allocate(part_ind_permutation2(size))
-  allocate(bin_mass(1:2))
-  allocate(bin_count(1:2))
-  allocate(bin_keys(1:2,0:ndim-1))
   npart=size
-  boxlen=3
+  boxlen=1
 
 
 
@@ -48,74 +44,40 @@ contains
 ! =====================================================================================
 ! =====================================================================================
   subroutine sort_particle_tests(all_ok)
-    use amr_commons
-    use amr_parameters
-    use pm_commons
-    use hilbert,       only: hilbert_for_particle
+    use hilbert,       only: hilbert_for_particle, bits_per_int
     use sort,          only: lsd_radix_sort_particles, gt_keys, apply_particle_permutation
     implicit none
+
+
+    logical, intent(inout) :: all_ok
+
+    logical :: ok_test
+    integer, parameter :: offs=117
+    integer :: ilevel, maxlevel, i
+
+    maxlevel = nhilbert * bits_per_int(ndim) / ndim 
+
+    ok_test = .true.
     
-    ! A simple test which transforms integer coordinates into a 3 integer hilbert key
-    ! and the hilbert key back into integer coordinate. Results must be equal to input.
-
-    integer, parameter :: offs=317
-    integer::ilevel,i
-    logical::all_ok
-    real(dp),dimension(1:size, 1:ndim)::xfloat
-
-
-#if NHILBERT == 1
-    do ilevel=1, 21
-#endif
-#if NHILBERT == 2
-    do ilevel=1, 42
-#endif
-#if NHILBERT == 3
-    do ilevel=1, 63
-#endif
-
-       call random_number(xfloat)
-       xp(1:size,1:ndim)=xfloat(1:size,1:ndim)
-    
-       call hilbert_for_particle(0, size,0,ilevel)
-       call lsd_radix_sort_particles(0, size, ilevel, ilevel, .true.)
-       call apply_particle_permutation(0,size,ilevel)
-       
-       do i=1,size-1
-          if (gt_keys(part_hkey(i,1:nhilbert),part_hkey(i+1,1:nhilbert)))then
-             write(*,*)'particle sort test FAILED for level', ilevel, ilevel
-             all_ok=.false.
-          end if
-       end do
-    end do
-
-#if NHILBERT == 1
-    do ilevel=1, 21
-#endif
-#if NHILBERT == 2
-    do ilevel=1, 42
-#endif
-#if NHILBERT == 3
-    do ilevel=1, 63
-#endif
-
-       call random_number(xfloat)
-       xp(1:size,1:ndim)=xfloat(1:size,1:ndim)
-       
-       call hilbert_for_particle(offs, size-offs,0,ilevel)
+    do ilevel = 1, maxlevel
+       call random_number(xp)
+       call hilbert_for_particle(offs, size-offs, 0, ilevel)
        call lsd_radix_sort_particles(offs, size-offs, ilevel, ilevel, .true.)
-       call apply_particle_permutation(offs,size-offs,ilevel)
-       
-       do i=offs+1,size-1
-          if (gt_keys(part_hkey(i,1:nhilbert),part_hkey(i+1,1:nhilbert)))then
+       call apply_particle_permutation(offs, size-offs, ilevel)
+       do i = offs + 1, size - 1
+          if (gt_keys(part_hkey(i, 1:nhilbert),part_hkey(i + 1, 1:nhilbert)))then
              write(*,*)'particle sort test FAILED for level', ilevel, ilevel
+             write(*,*)part_hkey(i, 1:nhilbert)
+             write(*,*)part_hkey(i + 1, 1:nhilbert)
              all_ok=.false.
+             ok_test = .false.
           end if
        end do
     end do
-    
 
+    if (ok_test) write(*,*)'sort particle test passed' 
     
   end subroutine sort_particle_tests
+  
 end subroutine pm_tests
             
