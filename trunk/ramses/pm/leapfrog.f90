@@ -113,7 +113,7 @@ end subroutine update_levelp
 subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_velocity)
   use pm_commons,      only: part_level_offset, xp, &
                              part_hkey, npart
-  use amr_parameters,  only: dp, nvector, ndim, twotondim, poisson, verbose
+  use amr_parameters,  only: dp, nvector, ndim, twotondim, poisson, verbose, nhilbert
   use hydro_commons,   only: uold
   use poisson_commons, only: f
   use amr_commons,     only: dtnew, ncpu, myid, t, son
@@ -150,13 +150,7 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
 #ifndef WITHOUTMPI
   call build_communicator(communicator, npart_recv, &
        nparts, nparts_local, local_oft, &
-       part_hkey(offset + 1 : offset + nparts, 1), & 
-#if NHILBERT > 1
-       part_hkey(offset + 1 : offset + nparts, 2), &
-#endif
-#if NHILBERT > 2
-       part_hkey(offset + 1 : offset + nparts, 3), &
-#endif
+       part_hkey(offset + 1 : offset + nparts, 1:nhilbert), & 
        ilevel)
 
   allocate(xp_remote(1:npart_recv, 1:ndim), ap_remote(1:npart_recv, 1:ndim))

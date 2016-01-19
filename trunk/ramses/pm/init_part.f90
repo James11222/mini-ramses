@@ -70,7 +70,7 @@ subroutine init_part
   allocate(mp    (npartmax))
   allocate(levelp(npartmax))
   allocate(idp   (npartmax))
-  allocate(part_hkey(npartmax,0:2))
+  allocate(part_hkey(npartmax, 1:nhilbert))
   allocate(current_state(npartmax))
   allocate(part_ind_permutation(npartmax))
   allocate(part_ind_permutation2(npartmax))
