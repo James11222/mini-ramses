@@ -154,10 +154,9 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
        ilevel)
 
   allocate(xp_remote(1:npart_recv, 1:ndim), ap_remote(1:npart_recv, 1:ndim))
-  call part_data_to_domain(communicator, xp(offset + 1 : offset + nparts, 1), xp_remote(:, 1))
-  if (ndim > 1) call part_data_to_domain(communicator, xp(offset + 1 : offset + nparts, 2), xp_remote(:, 2))
-  if (ndim > 2) call part_data_to_domain(communicator, xp(offset + 1 : offset + nparts, 3), xp_remote(:, 3))
-
+  do idim = 1, ndim
+     call part_data_to_domain(communicator, xp(offset + 1 : offset + nparts, idim), xp_remote(:, idim))
+  end do
   
   ! Deal with remote particles
   do ioft = 0, npart_recv - 1, nvector
@@ -186,9 +185,10 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
         end do
      endif
   end do
-  call domain_data_to_part(communicator, ap_remote(:,1), ap(offset + 1 : offset + nparts, 1))
-  if (ndim > 1) call domain_data_to_part(communicator, ap_remote(:,2), ap(offset + 1 : offset + nparts, 2))
-  if (ndim > 2) call domain_data_to_part(communicator, ap_remote(:,3), ap(offset + 1 : offset + nparts, 3))
+  do idim = 1, ndim
+     call domain_data_to_part(communicator, ap_remote(:,idim), ap(offset + 1 : offset + nparts, idim))
+  end do
+
   deallocate(xp_remote, ap_remote)
 
 #endif

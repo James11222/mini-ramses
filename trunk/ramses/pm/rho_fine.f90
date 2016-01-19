@@ -687,7 +687,7 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   ! side effect:  - updates rho field on levels ilevel <= part_level   
 
   integer,  dimension(1:ncpu, 1:4)       :: communicator
-  integer :: ip, np, ioft, offset, nparts, ibin, ipart, grid_level, npart_direct
+  integer :: ip, np, ioft, offset, nparts, ibin, ipart, grid_level, npart_direct, idim
   integer :: recv_tot, local_data, local_data_oft
 
   integer(kind=8), allocatable, dimension(:,:) :: part_hkey_direct
@@ -735,9 +735,9 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   allocate(xp_remote(1:recv_tot, 1:ndim))
   allocate(mp_remote(1:recv_tot))
 
-  call part_data_to_domain(communicator, xp_direct(:, 1), xp_remote(:, 1))
-  call part_data_to_domain(communicator, xp_direct(:, 2), xp_remote(:, 2))
-  call part_data_to_domain(communicator, xp_direct(:, 3), xp_remote(:, 3))
+  do idim = 1, ndim
+     call part_data_to_domain(communicator, xp_direct(:, idim), xp_remote(:, idim))
+  end do
   call part_data_to_domain(communicator, mp_direct, mp_remote)
 #endif
   ! Project local direct particles
@@ -1046,7 +1046,7 @@ contains
     integer        , dimension(1:nvector)     , save :: parent_cell_level, parent_cell_index
     integer(kind=8), dimension(1:nvector, 1:nhilbert), save :: bkey
 
-    integer,  save :: ib, nb, ibin, recv_tot, local_bins, local_bins_oft, ioft
+    integer :: ib, nb, ibin, recv_tot, local_bins, local_bins_oft, ioft, ihilbert
     real(dp), save :: vol_loc
 
     vol_loc = (0.5**cell_level * dble(boxlen) )**ndim    
@@ -1062,13 +1062,10 @@ contains
       bin_keys_remote = 0
       bin_count_remote = 0.d0
 
-      call part_data_to_domain(communicator, bin_keys(:, 1), bin_keys_remote(:, 1))
-#if NHILBERT > 1
-      call part_data_to_domain(communicator, bin_keys(:, 2), bin_keys_remote(:, 2))
-#endif
-#if NHILBERT > 2
-      call part_data_to_domain(communicator, bin_keys(:, 3), bin_keys_remote(:, 3))
-#endif
+      do ihilbert = 1, nhilbert
+         call part_data_to_domain(communicator, bin_keys(:, ihilbert), bin_keys_remote(:, ihilbert))
+      end do
+      
       call part_data_to_domain(communicator, bin_mass, bin_mass_remote)
       call part_data_to_domain(communicator, bin_count, bin_count_remote)
 #endif      
