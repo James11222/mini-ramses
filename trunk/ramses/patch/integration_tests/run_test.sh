@@ -22,22 +22,24 @@ if diff particles.txt particles.txt_comp_$ending > /dev/null; then
     echo "=============================="
     echo "NON MPI TEST OK"
     echo "=============================="
+    rm particles.txt
 else
     echo "=============================="
     echo "NON MPI TEST FAILED!!!!!!!!!!"
     echo "=============================="
+    mv particles.txt particles_serial.txt
 fi
-rm particles.txt
-mpirun -np 3 ../../bin/ramses$ending param_file.nml > run_parallel.log
+mpirun -np 15 ../../bin/ramses$ending param_file.nml > run_parallel.log
 if diff particles.txt particles.txt_comp_$ending > /dev/null; then
     echo "=============================="
     echo "MPI TEST OK"
     echo "=============================="
+    rm particles.txt
+    rm update_time.f90
+    rm Makefile
 else
     echo "=============================="
     echo "MPI TEST FAILED!!!!!!!!!!!!!!"
     echo "=============================="
+    mv particles.txt particles_parallel.txt
 fi
-rm particles.txt
-rm update_time.f90
-rm Makefile
