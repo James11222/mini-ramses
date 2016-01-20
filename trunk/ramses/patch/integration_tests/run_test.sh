@@ -18,7 +18,7 @@ make -f ../patch/integration_tests/Makefile
 cd ../patch/integration_tests/
 
 ../../bin/ramses$ending param_file.nml > run_serial.log
-if diff particles.txt particles.txt_comp > /dev/null; then
+if diff particles.txt particles.txt_comp_$ending > /dev/null; then
     echo "=============================="
     echo "NON MPI TEST OK"
     echo "=============================="
@@ -29,7 +29,7 @@ else
 fi
 rm particles.txt
 mpirun -np 3 ../../bin/ramses$ending param_file.nml > run_parallel.log
-if diff particles.txt particles.txt_comp > /dev/null; then
+if diff particles.txt particles.txt_comp_$ending > /dev/null; then
     echo "=============================="
     echo "MPI TEST OK"
     echo "=============================="
