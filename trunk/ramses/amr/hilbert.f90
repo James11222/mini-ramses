@@ -151,7 +151,18 @@ module hilbert
        & 1, 1, 0, 0, &
        & 1, 0, 0, 1/), (/16,2/))
 #endif
+
+#if NDIM==1
+  ! State diagrams for 1D case - a bit silly, but...
+  integer(kind=4),parameter,dimension(0:1)::next_state_diagram=(/0, 0/)
   
+  integer(kind=8),parameter,dimension(0:1)::next_digits_diagram=(/0, 1/)
+
+  integer(kind=4),parameter,dimension(0:1)::next_state_diagram_reverse=(/0, 0/)
+
+  integer(kind=4),parameter,dimension(0:1, 1:1)::one_digit_diagram=reshape((/0, 1/), (/2,1/))
+#endif
+
   
 contains
   

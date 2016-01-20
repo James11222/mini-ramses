@@ -483,11 +483,6 @@ contains
 
     integer, save       :: ilevel, ip
     
-    if (ndim ==1)then
-       print*, 'no 1D particle sorting case yet'
-       stop
-    end if
-
     if (final_level > key_level) then
        write(*,*)'you are trying to sort the hilbert keys to a too high level'
        call clean_stop
