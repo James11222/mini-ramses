@@ -7,7 +7,7 @@ subroutine sort_particles(ilevel, use_histograms)
   use sort,        only: lsd_radix_sort_particles, apply_particle_permutation
   use hilbert,     only: hilbert_for_particle 
 #ifndef WITHOUTMPI
-  use particle_communication, only: build_communicator, communicate_refinements
+  use particle_communication, only: build_communicator
 #endif
   implicit none
 
@@ -23,6 +23,20 @@ subroutine sort_particles(ilevel, use_histograms)
   ! to level ilevel + 1. It then sorts the remaining (true) ilevel particles 
   ! by hilbert key.
 
+  interface
+     subroutine communicate_refinements(communicator, ndata_remote, ndata, ndata_local, ndata_local_oft, &
+          refined, hkeys, ilevel)
+       use amr_commons,   only: ncpu
+       implicit none
+       include 'mpif.h'
+       integer, intent(in) ::  ilevel, ndata
+       integer, intent(in) :: ndata_remote, ndata_local, ndata_local_oft
+       integer(kind=8), dimension(:,:), intent(inout) :: hkeys
+       integer, dimension(1:ncpu, 1:4), intent(in) :: communicator
+       integer, dimension(1:ndata), intent(inout) :: refined
+     end subroutine communicate_refinements
+  end interface
+  
   offset = part_level_offset(ilevel)
   np = npart - part_level_offset(ilevel)
 
@@ -165,146 +179,6 @@ subroutine reshuffle_particles(ilevel, np, ndata, refined, use_histograms)
   call apply_particle_permutation(offset, np, ilevel)
 
 end subroutine reshuffle_particles
-!################################################################
-!################################################################
-!################################################################
-!################################################################
-subroutine get_cell_index_from_hilbertkey(cell_index, cell_levl, hkey, np, ilevel)
-  use amr_parameters, only: int_pre, nvector, nhilbert, ndim
-  use hilbert,     only: hilbert_nd_reverse
-  implicit none
-  integer, intent(in) :: np, ilevel
-  integer(kind=8),dimension(1:nvector, 1:nhilbert), intent(inout) :: hkey
-  integer, dimension(1:nvector), intent(inout) :: cell_levl, cell_index
-
-  integer(int_pre),dimension(1:nvector, 1:ndim) :: ix
-  
-  call hilbert_nd_reverse(ix, hkey, ilevel, np)
-
-  call get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel, np)     
-
-end subroutine get_cell_index_from_hilbertkey
-!#########################################################################
-!#########################################################################
-!#########################################################################
-!#########################################################################
-subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel, n)
-  use amr_commons
-  use hash, only: hash_get
-  use amr_parameters, only: int_pre
-  implicit none
-
-  integer, intent(in) :: n, ilevel
-  integer(int_pre), intent(in), dimension(1:nvector, 1:ndim) :: ix
-  integer, intent(inout), dimension(1:nvector) :: cell_index, cell_levl
-
-  !----------------------------------------------------------------------------
-  !----------------------------------------------------------------------------
-  integer :: i, idim
-  integer(int_pre), dimension(0:ndim) :: hash_key
-  integer, dimension(1:nvector) :: ind, igrid
-!  logical, dimension(1:nvector) :: same, same2
-!  integer, dimension(1:nvector) :: sort_ind
-!  integer, save :: tot = 0, skipped = 0
-!  integer:: dummy
-  
-  if ((nx.eq.1).and.(ny.eq.1).and.(nz.eq.1)) then
-  else if ((nx.eq.3).and.(ny.eq.3).and.(nz.eq.3)) then
-  else
-     write(*,*)"nx=ny=nz != 1,3 is not supported."
-     stop
-  end if
-
-!  tot = tot + n
-  
-  ! Construct ind from last digits
-  do i = 1, n
-     ind(i) = IAND(ix(i, 1), 1_int_pre)
-  end do
-#if NDIM>1
-  do i = 1, n
-     ind(i) = ind(i) + IAND(ix(i, 2), 1_int_pre) * 2
-  end do
-#endif
-#if NDIM>2
-  do i = 1, n
-     ind(i) = ind(i) + IAND(ix(i, 3), 1_int_pre) * 4
-  end do
-#endif
- 
-
-  ! do i = 1, n
-  !    sort_ind(i) = i
-  ! end do
-
-
-  ! do i = 2, n
-  !    j = i
-  !    do while (j > 1 .and. ix(sort_ind(j),1))
-  !       if (j
-  !    end do
-  ! end do
-  
-  
-  ! Check if two cell belong to the same grid -> hash table can be avoided
-  ! TODO: what if one of the values is negative? bitwise exclusive or can be negative and thus smaller than 2... 
-  ! same(1) = .false.
-  ! do i = 2, n   
-  !    same(i) = IEOR(ix(i, 1), ix(i - 1, 1)) < 2
-  ! end do
-  ! do i = 2, n
-  !    same(i) = same(i) .and. IEOR(ix(i, 2), ix(i - 1, 2)) < 2
-  ! end do
-  ! do i = 2, n
-  !    same(i) = same(i) .and. IEOR(ix(i, 3), ix(i - 1, 3)) < 2
-  ! end do
-
-  ! Probe for grid starting from ilevel, if not present, try coarser
-  cell_levl(1:n) = ilevel
-  do i = 1, n
-     
-     ! Check if I can skip accessing the hash table
-     ! Access the hash table only if necessary
-     ! if (same(i)) then
-     !    igrid(i) = igrid(i - 1)
-     !    cell_levl(i) = cell_levl(i - 1)
-     !    skipped = skipped + 1
-     !    cycle
-     ! end if
-     
-     ! Initial hash key
-     hash_key(0) = ilevel
-     do idim = 1, ndim
-        hash_key(idim) = ISHFT(ix(i, idim), -1)
-     end do
-     igrid(i) = hash_get(grid_dict, hash_key(0:ndim))
-     
-     ! If nothing found, try coarser
-     do while (igrid(i) == 0 .and. cell_levl(i) > 2)
-        cell_levl(i) = cell_levl(i) - 1
-        hash_key(0) = cell_levl(i)
-        do idim = 1, ndim
-           hash_key(idim) = ISHFT(hash_key(idim), -1)
-        end do 
-        igrid(i) = hash_get(grid_dict, hash_key(0:ndim))
-     end do
-  end do
-
-  ! Check if all went well
-  ! do i = 1, n
-  !    if (igrid(i) == 0) then
-  !       write(*,*)"Problem in get_cell_index_from_cartesian_hash"
-  !       stop
-  !    end if
-  ! end do
-  
-  do i = 1, n
-     cell_index(i) = ncoarse + igrid(i) + ind(i) * ngridmax 
-  end do
-  
-!  if (mod(skipped,32768)==0) print*, tot, 1.0 * skipped / tot
-
-end subroutine get_cell_index_from_cartesian_hash
 !#########################################################################
 !#########################################################################
 !#########################################################################
@@ -380,8 +254,92 @@ subroutine compute_particle_histogram(offset, np)
   bin_start_offset(nbins+1) = offset + np
 
 end subroutine compute_particle_histogram
+!################################################################
+!################################################################
+!################################################################
+!################################################################
+#ifndef WITHOUTMPI
+subroutine communicate_refinements(communicator, ndata_remote, ndata, ndata_local, ndata_local_oft, &
+     refined, hkeys, ilevel)
+  use amr_parameters, only: nhilbert, nvector
+  use amr_commons,   only: ncpu, myid, bound_key_level, son, nvector, nlevelmax
+  use coordinates,   only: get_cell_index_from_hilbertkey
+  use particle_communication, only: part_data_to_domain, domain_data_to_part
+  implicit none
+  include 'mpif.h'
+  integer, intent(in) ::  ilevel, ndata
+  integer, intent(in) :: ndata_remote, ndata_local, ndata_local_oft
+  integer(kind=8), dimension(:,:), intent(inout) :: hkeys
+  integer, dimension(1:ncpu, 1:4), intent(in) :: communicator
+  integer, dimension(1:ndata), intent(inout) :: refined
+
+  ! This routine sorts particles between ilevel and ilevel + 1
+  ! (formerly known as kill_tree_fine).
+
+  ! The routine can only run after:
+  ! call compute_particle_histogram(ilevel)
+  ! call build_communicator(...)
+
+  ! The "bins" here are the histogram bins and correspond to 
+  ! actual grid cells. "local_... variables" denote properties in the
+  ! MPI process which hosts the particles, while "remote_... variables" 
+  ! are used for properties in the MPI process which hosts the corresponding
+  ! leaf-cell.
 
 
+  integer  :: idata, ioft, nd, i
+  integer, dimension(1:nvector) :: dummy_int
+
+  integer,         allocatable, dimension(:  ) :: remote_refined
+  integer(kind=8), allocatable, dimension(:,:) :: remote_keys
+
+  allocate(remote_refined(1:ndata_remote))
+  allocate(remote_keys(1:ndata_remote, 1:nhilbert))
+  do i = 1, nhilbert
+     call part_data_to_domain(communicator, hkeys(:,i), remote_keys(:,i))
+  end do
+
+
+  ! Probe local cells for refinement (abuse refined to store cell index)
+  do ioft = ndata_local_oft, ndata_local_oft + ndata_local - 1, nvector
+     nd = min(ndata_local_oft + ndata_local - ioft, nvector) 
+     call get_cell_index_from_hilbertkey(refined(ioft + 1: ioft + nd), &
+          dummy_int(1: nd), hkeys(ioft + 1: ioft + nd, 1:nhilbert), nd, ilevel)
+  end do
+
+  ! Mark data corresponding to refined cells
+  do idata = ndata_local_oft + 1, ndata_local_oft + ndata_local
+     if (son(refined(idata)) > 0)then
+        refined(idata) = 1
+     else
+        refined(idata) = 0
+     end if
+  end do
+
+  ! Probe remote cells for refinement (abuse remote_refined to store cell index) 
+  do ioft = 0, ndata_remote - 1 , nvector
+     nd = min(ndata_remote - ioft, nvector) 
+     call get_cell_index_from_hilbertkey(remote_refined(ioft + 1:ioft + nd), &
+          dummy_int(1:nd), remote_keys(ioft + 1:ioft + nd, 1:nhilbert), nd, ilevel)
+  end do
+
+  ! Mark bins corresponding to refined cells
+  do idata = 1, ndata_remote
+     if (son(remote_refined(idata))>0)then
+        remote_refined(idata) = 1
+     else
+        remote_refined(idata) = 0
+     end if
+  end do
+
+  ! Send refinement information back
+  call domain_data_to_part(communicator, remote_refined, refined)
+
+  deallocate(remote_refined)
+  deallocate(remote_keys)
+
+end subroutine communicate_refinements
+#endif
 
 
 

@@ -1031,6 +1031,7 @@ contains
     use amr_commons,     only: ncpu, myid
     use pm_commons,      only: bin_keys, bin_mass, nbins
     use poisson_commons, only: rho, phi
+    use coordinates,     only: get_cell_index_from_hilbertkey
 #ifndef WITHOUTMPI
     use particle_communication, only: build_communicator, part_data_to_domain
 #endif
