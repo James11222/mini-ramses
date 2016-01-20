@@ -28,7 +28,6 @@ subroutine sort_particles(ilevel, use_histograms)
           refined, hkeys, ilevel)
        use amr_commons,   only: ncpu
        implicit none
-       include 'mpif.h'
        integer, intent(in) ::  ilevel, ndata
        integer, intent(in) :: ndata_remote, ndata_local, ndata_local_oft
        integer(kind=8), dimension(:,:), intent(inout) :: hkeys

@@ -7,7 +7,7 @@ module coordinates
 contains
   
   function grid_to_integer_nvector(xgrid, ilevel, n)
-    real(dp),        intent(in), dimension(1:nvector, 1:ndim)  :: xgrid
+    real(dp),        intent(in), dimension(:,:)  :: xgrid
     integer, intent(in) :: ilevel, n
     integer(int_pre), dimension(1:nvector, 1:ndim) :: grid_to_integer_nvector
 
@@ -25,7 +25,7 @@ contains
   end function grid_to_integer_nvector
 
   function grid_to_integer(xgrid, ilevel)
-    real(dp),        intent(in), dimension(1:ndim)  :: xgrid
+    real(dp),        intent(in), dimension(:)  :: xgrid
     integer, intent(in) :: ilevel
     integer(int_pre), dimension(1:ndim) :: grid_to_integer
     
