@@ -142,7 +142,6 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
   integer :: ioft, np, ip, ind, idim, ipart, local_oft, npart_recv, nparts_local
 
   ! TODO: consistent naming (np, nparts, npart) throughout routines
-  ! TODO: try to avoid usage of big ap(1:npartmax) array. For example, sudivide ilevel and call routine
   ! several times and not just once for all parts from offset + 1 to offset_nparts
 
   if(verbose)write(*,'("Entering compute_particle_acceleration, level " I2)')ilevel 
