@@ -1,0 +1,52 @@
+&RUN_PARAMS
+hydro=.false.
+poisson=.true.
+pic=.true.
+ncontrol=1
+nsubcycle=1,1,2,2,2
+nremap=2
+nrestart=0
+nstepmax=10
+/
+
+&AMR_PARAMS
+levelmin=3
+levelmax=6
+ngridtot=5000
+nparttot=1020
+boxlen=60.0
+/
+
+&INIT_PARAMS
+filetype='ascii'
+initfile(1)='halo_ics_small/'
+/
+
+&OUTPUT_PARAMS
+tend=10.0
+/
+
+&BOUNDARY_PARAMS
+nboundary = 6
+bound_type= 2, 2, 2, 2, 2, 2
+ibound_min=-1,+1,-1,-1,-1,-1
+ibound_max=-1,+1,+1,+1,+1,+1
+jbound_min= 0, 0,-1,+1,-1,-1
+jbound_max= 0, 0,-1,+1,+1,+1
+kbound_min= 0, 0, 0, 0,-1,+1
+kbound_max= 0, 0, 0, 0,-1,+1
+/
+
+&POISSON_PARAMS
+gravity_params=35.,10.,0.04,0.15
+gravity_type=0
+epsilon=1d-4
+/
+
+
+&REFINE_PARAMS
+interpol_var=1
+interpol_type=0
+m_refine=10*2.
+/
+
