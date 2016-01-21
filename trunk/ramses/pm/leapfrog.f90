@@ -70,21 +70,31 @@ subroutine drift(ilevel)
   
   ! Update position
   do idim = 1, ndim
-     do ipart = offset + 1, offset + nparts 
-        xp(ipart, idim) = xp(ipart, idim) &
-             + vp(ipart, idim) * dtnew(ilevel)
-     end do
-     
-     ! Take care of boundary conditions
-     ! TODO: non-periodic boundaries!!
-     do ipart = offset + 1, offset + nparts
-        if (xp(ipart, idim) > boxlen)then
-           xp(ipart, idim) = xp(ipart, idim) - boxlen
-        end if
-        if(xp(ipart, idim) < 0.d0)then
-           xp(ipart, idim) = xp(ipart, idim) + boxlen
-        end if
-     end do
+
+     if period(idim)then
+        ! Periodic --> move all 
+        do ipart = offset + 1, offset + nparts 
+           xp(ipart, idim) = xp(ipart, idim) &
+                + vp(ipart, idim) * dtnew(ilevel)
+        end do
+        ! Take care of periodic boundary conditions
+        do ipart = offset + 1, offset + nparts
+           if (xp(ipart, idim) > boxlen)then
+              xp(ipart, idim) = xp(ipart, idim) - boxlen
+           end if
+           if(xp(ipart, idim) < 0.d0)then
+              xp(ipart, idim) = xp(ipart, idim) + boxlen
+           end if
+        end do
+     else
+        ! Non periodic --> move only parts inside box
+        do ipart = offset + 1, offset + nparts
+           if (xp(ipart, idim) > 0.d0 .and. xp(ipart, idim) < boxlen)then
+              xp(ipart, idim) = xp(ipart, idim) &
+                   + vp(ipart, idim) * dtnew(ilevel)
+           end if
+        end do
+     end if
   end do
 end subroutine drift
 !#########################################################################

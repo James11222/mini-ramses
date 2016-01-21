@@ -1015,33 +1015,41 @@ end subroutine kill_grid
 ! end subroutine remove_grid_from_hash_table
   
 subroutine add_grid_to_hash_table(igrid, ilevel)
-  use amr_parameters, only: ndim, ngridmax, int_pre
-  use amr_commons,    only: xg, grid_dict
+  use amr_parameters, only: ndim, ngridmax, int_pre, dp
+  use amr_commons,    only: xg, grid_dict, nx, ny, nz
   use hash,           only: hash_set
   use coordinates,    only: grid_to_integer
   implicit none
 
   integer, intent(in) :: igrid, ilevel
   integer(int_pre), dimension(0:ndim) :: ix
+  real(dp), dimension(1:ndim) :: grid_center
   
   ix(0) = ilevel
-  ix(1:ndim) = grid_to_integer(xg(igrid, 1:ndim), ilevel - 1)
+  grid_center(1) = xg(igrid, 1) - nx / 2
+  if (ndim > 1) grid_center(2) = xg(igrid, 2) - ny / 2
+  if (ndim > 2) grid_center(3) = xg(igrid, 3) - nz / 2
+  ix(1:ndim) = grid_to_integer(grid_center(1:ndim), ilevel - 1)
   call hash_set(grid_dict, ix, igrid)
   
 end subroutine add_grid_to_hash_table
 
 subroutine remove_grid_from_hash_table(igrid, ilevel)
-  use amr_parameters, only: ndim, ngridmax, int_pre
-  use amr_commons,    only: xg, grid_dict
+  use amr_parameters, only: ndim, ngridmax, int_pre, dp
+  use amr_commons,    only: xg, grid_dict, nx, ny, nz
   use hash,           only: hash_free
   use coordinates,    only: grid_to_integer
   implicit none
   
   integer, intent(in) :: igrid, ilevel
   integer(int_pre), dimension(0:ndim) :: ix
-  
+  real(dp), dimension(1:ndim) :: grid_center
+
   ix(0) = ilevel
-  ix(1:ndim) = grid_to_integer(xg(igrid, 1:ndim), ilevel - 1)
+  grid_center(1) = xg(igrid, 1) - nx / 2
+  if (ndim > 1) grid_center(2) = xg(igrid, 2) - ny / 2
+  if (ndim > 2) grid_center(3) = xg(igrid, 3) - nz / 2
+  ix(1:ndim) = grid_to_integer(grid_center(1:ndim), ilevel - 1)
   call hash_free(grid_dict, ix)
   
 end subroutine remove_grid_from_hash_table

@@ -470,7 +470,7 @@ subroutine init_amr
 end subroutine init_amr
 
 subroutine build_grid_dict
-  use amr_commons   , only: headl, numbl, next, ncpu
+  use amr_commons   , only: headl, numbl, next, ncpu, numbb, headb
   use amr_parameters, only: nlevelmax
   implicit none
   
@@ -486,6 +486,18 @@ subroutine build_grid_dict
         igrid = headl(icpu, ilevel)
         ! Loop over grids
         do dummy = 1, numbl(icpu, ilevel)
+           call add_grid_to_hash_table(igrid, ilevel)
+           ! Go to next grid
+           igrid = next(igrid)
+        end do
+     end do
+  end do
+  do ilevel = 1, nlevelmax
+     ! Loop over cpus
+     do icpu = 1, ncpu
+        igrid = headb(icpu, ilevel)
+        ! Loop over grids
+        do dummy = 1, numbb(icpu, ilevel)
            call add_grid_to_hash_table(igrid, ilevel)
            ! Go to next grid
            igrid = next(igrid)

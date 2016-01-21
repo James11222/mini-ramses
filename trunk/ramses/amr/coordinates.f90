@@ -178,6 +178,7 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
      hash_key(0) = ilevel
      do idim = 1, ndim
         hash_key(idim) = ISHFT(ix(i, idim), -1)
+        hash_key(idim) = hash_key(idim) - IBITS(hash_key(idim), 63, 1)
      end do
      igrid(i) = hash_get(grid_dict, hash_key(0:ndim))
      
@@ -187,7 +188,8 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
         hash_key(0) = cell_levl(i)
         do idim = 1, ndim
            hash_key(idim) = ISHFT(hash_key(idim), -1)
-        end do 
+           hash_key(idim) = hash_key(idim) - IBITS(hash_key(idim), 63, 1)
+        end do
         igrid(i) = hash_get(grid_dict, hash_key(0:ndim))
      end do
   end do
