@@ -68,7 +68,7 @@ contains
     end do
     call array_pop(current_state(1:npart), ipart)
 #ifdef OUTPUT_PARTICLE_POTENTIAL
-    call array_pop(ptcl-phi(1:npart), ipart)
+    call array_pop(ptcl_phi(1:npart), ipart)
 #endif
   end subroutine kill_one_particle
 

@@ -337,10 +337,10 @@ end subroutine check_refinements
 !#########################################################################
 subroutine remove_escaped_particles(ilevel)
   use pm_commons,     only: part_hkey, part_ind_permutation, npart, kill_one_particle, &
-                            xp, array_pop, part_level_offset
+                            xp, array_pop, part_level_offset, bin_start_offset
   use pm_parameters,  only: npart
   use sort,           only: ge_keys
-  use amr_commons,    only: myid
+  use amr_commons,    only: myid, nlevelmax
   use amr_parameters, only: nhilbert, boxlen, ndim
   implicit none
   integer, intent(in) :: ilevel
@@ -370,7 +370,6 @@ subroutine remove_escaped_particles(ilevel)
   ipart = offset + 1 
   do ip = 1, np
      if (kill(ipart))then
-        print*, 'destroy particle', ipart
         call kill_one_particle(ipart)
         call array_pop(kill(offset + 1:offset + np), ipart - offset)
      else
@@ -378,6 +377,11 @@ subroutine remove_escaped_particles(ilevel)
      end if
   end do
   deallocate(kill)
+  ! Just make sure that these offsets are recomputed
+  ! before usage - > remove later.
+  part_level_offset(ilevel + 1: nlevelmax + 1) = -999
+  bin_start_offset = -999
+
 end subroutine remove_escaped_particles
 
 
