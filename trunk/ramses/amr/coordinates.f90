@@ -1,13 +1,27 @@
 module coordinates
-  
   use amr_parameters, only: ndim, nvector, dp, int_pre, ngridmax
   use amr_commons, only: ncoarse, twotondim, ind_table, xg
   implicit none
 
+  real(dp), dimension(1:3) :: skip_loc
+  real(dp) :: scale
+  
 contains
+
+  subroutine init_coords
+    use amr_parameters, only: ndim, boxlen
+    use amr_commons,    only: icoarse_max, icoarse_min, jcoarse_min, kcoarse_min 
+    implicit none
+    skip_loc=(/0.0d0,0.0d0,0.0d0/)
+    if(ndim>0)skip_loc(1)=dble(icoarse_min)
+    if(ndim>1)skip_loc(2)=dble(jcoarse_min)
+    if(ndim>2)skip_loc(3)=dble(kcoarse_min)
+    scale  = boxlen / dble(icoarse_max - icoarse_min + 1)
+    
+  end subroutine init_coords
   
   function grid_to_integer_nvector(xgrid, ilevel, n)
-    real(dp),        intent(in), dimension(:,:)  :: xgrid
+    real(dp), intent(in), dimension(:,:)  :: xgrid
     integer, intent(in) :: ilevel, n
     integer(int_pre), dimension(1:nvector, 1:ndim) :: grid_to_integer_nvector
 
@@ -18,7 +32,8 @@ contains
     
     do idim = 1, ndim
        do i = 1, n
-          grid_to_integer_nvector(i, idim) = floor(fact * xgrid(i, idim), kind=dp)
+          grid_to_integer_nvector(i, idim) = &
+               floor(fact * (xgrid(i, idim) - skip_loc(idim)), kind=dp)
        end do
     end do
 
@@ -31,12 +46,11 @@ contains
     
     integer  :: idim       
     do idim = 1, ndim
-          grid_to_integer(idim) = floor(2.0_dp ** ilevel * xgrid(idim), kind=dp)
+       grid_to_integer(idim) = &
+            floor(2.0_dp ** ilevel * (xgrid(idim) - skip_loc(idim)), kind=dp)
     end do
     
   end function grid_to_integer
-
-
 
   subroutine get_cell_cartesian_key(cell_index, ix, ilevel, n)
     implicit none
@@ -58,10 +72,11 @@ contains
     do i = 1, n
        grid_index(i) = cell_index(i) - ncoarse - ind(i) * ngridmax
     end do
-
+    ! Combine to optain cartesian key
     do idim = 1, ndim
        do i = 1, n
-          ix(i, idim) = floor(xg(grid_index(i), idim) * fact - 0.5_dp, int_pre) + ind_table(ind(i), idim)
+          ix(i, idim) = floor((xg(grid_index(i), idim) - skip_loc(idim)) &
+               * fact - 0.5_dp, int_pre) + ind_table(ind(i), idim)
        end do
     end do
     

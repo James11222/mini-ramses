@@ -117,7 +117,8 @@ recursive subroutine amr_step(ilevel,icount)
 
   ! particles must be re-sorted before density is computed
   if(pic .and. (ilevel == levelmin .or. icount > 1))then
-     use_histograms = .true.
+     call remove_escaped_particles(ilevel)
+     use_histograms = .true.     
      do ilev=ilevel, nlevelmax
         call sort_particles(ilev, use_histograms)
      end do

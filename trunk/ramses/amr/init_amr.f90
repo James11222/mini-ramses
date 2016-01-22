@@ -4,6 +4,7 @@ subroutine init_amr
   use pm_commons  
   use poisson_commons
   use hash, only: init_empty_hash
+  use coordinates, only: init_coords
   implicit none
 #ifndef WITHOUTMPI
   include 'mpif.h'  
@@ -29,7 +30,7 @@ subroutine init_amr
   integer:: idomain, ilev
 
   if(verbose.and.myid==1)write(*,*)'Entering init_amr'
-
+  
   ! Constants
   ncoarse=nx*ny*nz
   ncell=ncoarse+twotondim*ngridmax
@@ -41,6 +42,8 @@ subroutine init_amr
   nx_loc=icoarse_max-icoarse_min+1
   scale=boxlen/dble(nx_loc)
 
+  call init_coords
+  
   ! Initial time step for each level
   dtold=0.0D0
   dtnew=0.0D0

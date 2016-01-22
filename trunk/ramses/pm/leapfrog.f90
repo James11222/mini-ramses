@@ -56,46 +56,46 @@ end subroutine kick
 !#########################################################################
 !#########################################################################
 subroutine drift(ilevel)
-  use pm_commons, only: xp, vp, part_level_offset
+  use pm_commons,     only: xp, vp, part_level_offset
   use amr_parameters, only: dp, ndim, nx, ny, nz, boxlen
-  use amr_commons, only: dtnew, period
+  use amr_commons,    only: dtnew, period, icoarse_max, icoarse_min, jcoarse_min, kcoarse_min, &
+                            nx, ny, nz
   implicit none
 
   integer, intent(in) :: ilevel
 
-  integer :: idim, ipart, offset, nparts
-
+  integer :: idim, ipart, offset, nparts, nx_loc
+  real(dp), dimension(1:3) :: skip_loc, xbound
+  real(dp) :: scale
+  
+  xbound(1:3) = (/dble(nx), dble(ny), dble(nz)/)
+  nx_loc = (icoarse_max - icoarse_min + 1)
+  if(ndim > 0) skip_loc(1) = dble(icoarse_min)
+  if(ndim > 1) skip_loc(2) = dble(jcoarse_min)
+  if(ndim > 2) skip_loc(3) = dble(kcoarse_min)
+  scale = boxlen / dble(nx_loc)
+  
   offset = part_level_offset(ilevel)
   nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
   
   ! Update position
   do idim = 1, ndim
-
-     if period(idim)then
-        ! Periodic --> move all 
-        do ipart = offset + 1, offset + nparts 
-           xp(ipart, idim) = xp(ipart, idim) &
-                + vp(ipart, idim) * dtnew(ilevel)
-        end do
-        ! Take care of periodic boundary conditions
-        do ipart = offset + 1, offset + nparts
-           if (xp(ipart, idim) > boxlen)then
-              xp(ipart, idim) = xp(ipart, idim) - boxlen
-           end if
-           if(xp(ipart, idim) < 0.d0)then
-              xp(ipart, idim) = xp(ipart, idim) + boxlen
-           end if
-        end do
-     else
-        ! Non periodic --> move only parts inside box
-        do ipart = offset + 1, offset + nparts
-           if (xp(ipart, idim) > 0.d0 .and. xp(ipart, idim) < boxlen)then
-              xp(ipart, idim) = xp(ipart, idim) &
-                   + vp(ipart, idim) * dtnew(ilevel)
-           end if
-        end do
-     end if
+     do ipart = offset + 1, offset + nparts 
+        xp(ipart, idim) = xp(ipart, idim) &
+             + vp(ipart, idim) * dtnew(ilevel)
+     end do
   end do
+
+  ! Fix periodic boundaries
+  do idim = 1, ndim
+     do ipart = offset + 1, offset + nparts
+        if (xp(ipart, idim) / scale + skip_loc(idim) < 0.0d0) &
+             & xp(ipart, idim) = xp(ipart, idim) + (xbound(idim) - skip_loc(idim)) * scale
+        if (xp(ipart, idim) / scale + skip_loc(idim) >= xbound(idim)) &
+             & xp(ipart,idim) = xp(ipart, idim) - (xbound(idim) - skip_loc(idim)) * scale
+     end do
+  end do
+  
 end subroutine drift
 !#########################################################################
 !#########################################################################
@@ -106,15 +106,13 @@ subroutine update_levelp(ilevel)
   implicit none
 
   integer, intent(in) :: ilevel
-  integer :: ipart, nparts, offset
-
-  offset = part_level_offset(ilevel)
-  nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
+  integer :: np, offset
   
-  do ipart = offset + 1, offset + nparts 
-     levelp(ipart) = ilevel
-  end do
-
+  offset = part_level_offset(ilevel)
+  np = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
+  
+  levelp(offset + 1:offset + np) = ilevel
+  
 end subroutine update_levelp
 !#########################################################################
 !#########################################################################
