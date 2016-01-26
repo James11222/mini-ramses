@@ -1,4 +1,11 @@
 module particle_communication
+  ! TODO: Create communicator to make subroutine calls nicer
+  ! use amr_commons, only: ncpu
+  ! type communicator
+  !    integer         :: ntot, nlocal, local_oft, nrecv
+  !    integer, dimension(1:ncpu, 1:4) :: communicator
+  ! end type communicator
+  
 #ifndef WITHOUTMPI
   
   ! Operator overloading for the communication routines

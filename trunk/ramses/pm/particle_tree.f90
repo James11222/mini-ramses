@@ -1,11 +1,11 @@
 subroutine sort_particles(ilevel, use_histograms)
-  use pm_commons,  only: npart, part_level_offset, &
-                         nbins, bin_keys, part_hkey, &
-                         part_ind_permutation
-  use amr_commons, only: myid, levelmin, nlevelmax, ncpu
-  use amr_parameters, only: dp, nhilbert
-  use sort,        only: lsd_radix_sort_particles, apply_particle_permutation
-  use hilbert,     only: hilbert_for_particle 
+  use pm_commons,     only: npart, part_level_offset, &
+                            nbins, bin_keys, part_hkey
+  use amr_commons,    only: myid, levelmin, ncpu
+  use amr_parameters, only: nhilbert
+  use sort,           only: lsd_radix_sort_particles, apply_particle_permutation
+  use hilbert,        only: hilbert_for_particle 
+  use coordinates,    only: check_refinements
 #ifndef WITHOUTMPI
   use particle_communication, only: build_communicator
 #endif
@@ -13,29 +13,16 @@ subroutine sort_particles(ilevel, use_histograms)
 
   integer, intent(in) :: ilevel
   logical, intent(in) :: use_histograms
+
+  ! This routine moves all particles that sit in refined cells at level ilevel
+  ! to level ilevel + 1. It then sorts the remaining ilevel particles 
+  ! by hilbert key.
   
   integer :: ndata_remote, ndata_local, local_oft
   integer :: ilev, offset, np, ip
   integer, dimension(1:ncpu, 1:4) :: communicator
   integer, allocatable, dimension(:) :: refined
-  
-  ! This routine moves all particles that sit in refined cells at level ilevel
-  ! to level ilevel + 1. It then sorts the remaining (true) ilevel particles 
-  ! by hilbert key.
-
-  interface
-     subroutine check_refinements(communicator, ndata_remote, ndata, ndata_local, ndata_local_oft, &
-          refined, hkeys, ilevel)
-       use amr_commons,   only: ncpu
-       implicit none
-       integer, intent(in) ::  ilevel, ndata
-       integer, intent(in) :: ndata_remote, ndata_local, ndata_local_oft
-       integer(kind=8), dimension(:,:), intent(inout) :: hkeys
-       integer, dimension(1:ncpu, 1:4), intent(in) :: communicator
-       integer, dimension(1:ndata), intent(inout) :: refined
-     end subroutine check_refinements
-  end interface
-  
+    
   offset = part_level_offset(ilevel)
   np = npart - part_level_offset(ilevel)
 
@@ -49,7 +36,7 @@ subroutine sort_particles(ilevel, use_histograms)
      call compute_particle_histogram(offset, np)          
 #ifndef WITHOUTMPI
      call build_communicator(communicator, ndata_remote, &
-          nbins, ndata_local, local_oft, bin_keys(1:nbins, 1:nhilbert), ilevel)
+          nbins, ndata_local, local_oft, bin_keys, ilevel)
 #endif
      
      allocate(refined(1:nbins))     
@@ -87,8 +74,8 @@ subroutine sort_particles(ilevel, use_histograms)
   
 end subroutine sort_particles
 !################################################################
-!################################################################
-!################################################################
+
+
 !################################################################
 subroutine levelsort_particles(ilevel, np, ndata, refined, use_histograms)
   use pm_commons,     only: part_level_offset, part_ind_permutation, part_hkey, &
@@ -102,7 +89,7 @@ subroutine levelsort_particles(ilevel, np, ndata, refined, use_histograms)
   integer, dimension(1:ndata), intent(in) :: refined
   logical, intent(in) :: use_histograms
   
-  ! Reshuffle particles in memory according to their level
+  ! Sort particles in memory according to their level
   ! by applying a couting sort on the particles.
 
   integer  :: offset, ibin, ip, ipart
@@ -121,8 +108,8 @@ subroutine levelsort_particles(ilevel, np, ndata, refined, use_histograms)
      ibin = 1; unrefined = (refined(ibin) == 0)     
      do ip = offset + 1, offset + np  
         ipart = part_ind_permutation(ip)
-        if (gt_keys(part_hkey(ipart,1:nhilbert), bin_keys(ibin,1:nhilbert)))then
-           ibin=ibin+1
+        if (gt_keys(part_hkey(ipart, 1:nhilbert), bin_keys(ibin, 1:nhilbert)))then
+           ibin=ibin + 1
         end if
         if (refined(ibin) == 0) then 
            refined_pos = refined_pos + 1
@@ -133,7 +120,7 @@ subroutine levelsort_particles(ilevel, np, ndata, refined, use_histograms)
   end if
 
   ! Set "level boundary" in particle array and rearrange particles
-  part_level_offset(ilevel+1) = refined_pos
+  part_level_offset(ilevel + 1) = refined_pos
 
   if (use_histograms)then
      ibin = 1; unrefined = (refined(ibin) == 0)
@@ -164,13 +151,13 @@ subroutine levelsort_particles(ilevel, np, ndata, refined, use_histograms)
   end if
   
   part_ind_permutation(offset + 1:offset + np) = &
-       part_ind_permutation2(offset +1:offset + np)
+       part_ind_permutation2(offset + 1:offset + np)
   call apply_particle_permutation(offset, np, ilevel)
 
 end subroutine levelsort_particles
 !#########################################################################
-!#########################################################################
-!#########################################################################
+
+
 !#########################################################################
 subroutine compute_particle_histogram(offset, np)
   use pm_commons, only: part_hkey, bin_keys, bin_count, bin_start_offset, bin_mass, nbins, part_ind_permutation
@@ -179,16 +166,13 @@ subroutine compute_particle_histogram(offset, np)
   implicit none
   integer, intent(in) :: offset, np
 
-  !----------------------------------------------------------------------------
   ! This routine computes a particle histogram for np particles in memory, 
-  ! starting from offset+1 to offset+np.
+  ! starting from offset + 1 to offset + np.
   ! IMPORTANT: There must be a precomputed array part_ind_permutation which sorts
   ! the particles by hilbert key.
-  !----------------------------------------------------------------------------
 
   integer :: ibin, ipart, ip
   integer(kind=8), dimension(1:nhilbert) :: current_bin_key
-
 
   ! if there is nothing to do...
   nbins = 0
@@ -213,7 +197,7 @@ subroutine compute_particle_histogram(offset, np)
      deallocate(bin_mass)
   end if
   if (.not. allocated(bin_keys))then
-     allocate(bin_keys(nbins,1:nhilbert))
+     allocate(bin_keys(nbins, 1:nhilbert))
      allocate(bin_count(nbins))
      allocate(bin_start_offset(nbins+1))
      allocate(bin_mass(nbins))
@@ -245,104 +229,19 @@ subroutine compute_particle_histogram(offset, np)
 
 end subroutine compute_particle_histogram
 !################################################################
-!################################################################
-!################################################################
-!################################################################
-subroutine check_refinements(communicator, ndata_remote, ndata, ndata_local, ndata_local_oft, &
-     refined, hkeys, ilevel)
-  use amr_parameters, only: nhilbert, nvector
-  use amr_commons,   only: ncpu, myid, bound_key_level, son, nvector, nlevelmax
-  use coordinates,   only: get_cell_index_from_hilbertkey
-  use particle_communication, only: part_data_to_domain, domain_data_to_part
-  implicit none
-  integer, intent(in) ::  ilevel, ndata
-  integer, intent(in) :: ndata_remote, ndata_local, ndata_local_oft
-  integer(kind=8), dimension(:,:), intent(inout) :: hkeys
-  integer, dimension(1:ncpu, 1:4), intent(in) :: communicator
-  integer, dimension(1:ndata), intent(inout) :: refined
-
-  ! This routine sorts particles between ilevel and ilevel + 1
-  ! (formerly known as kill_tree_fine).
-
-  ! The routine can only run after:
-  ! call compute_particle_histogram(ilevel)
-  ! call build_communicator(...)
-
-  ! The "bins" here are the histogram bins and correspond to 
-  ! actual grid cells. "local_... variables" denote properties in the
-  ! MPI process which hosts the particles, while "remote_... variables" 
-  ! are used for properties in the MPI process which hosts the corresponding
-  ! leaf-cell.
 
 
-  integer  :: idata, ioft, nd, i
-  integer, dimension(1:nvector) :: dummy_int
 
-  integer,         allocatable, dimension(:  ) :: remote_refined
-  integer(kind=8), allocatable, dimension(:,:) :: remote_keys
 
-#ifndef WITHOUTMPI
-  allocate(remote_refined(1:ndata_remote))
-  allocate(remote_keys(1:ndata_remote, 1:nhilbert))
-  do i = 1, nhilbert
-     call part_data_to_domain(communicator, hkeys(:,i), remote_keys(:,i))
-  end do
-#endif
-
-  ! Probe local cells for refinement (abuse refined to store cell index)
-  do ioft = ndata_local_oft, ndata_local_oft + ndata_local - 1, nvector
-     nd = min(ndata_local_oft + ndata_local - ioft, nvector) 
-     call get_cell_index_from_hilbertkey(refined(ioft + 1: ioft + nd), &
-          dummy_int(1: nd), hkeys(ioft + 1: ioft + nd, 1:nhilbert), nd, ilevel)
-  end do
-
-  ! Mark data corresponding to refined cells
-  do idata = ndata_local_oft + 1, ndata_local_oft + ndata_local
-     if (son(refined(idata)) > 0)then
-        refined(idata) = 1
-     else
-        refined(idata) = 0
-     end if
-  end do
-
-#ifndef WITHOUTMPI
-  ! Probe remote cells for refinement (abuse remote_refined to store cell index) 
-  do ioft = 0, ndata_remote - 1 , nvector
-     nd = min(ndata_remote - ioft, nvector) 
-     call get_cell_index_from_hilbertkey(remote_refined(ioft + 1:ioft + nd), &
-          dummy_int(1:nd), remote_keys(ioft + 1:ioft + nd, 1:nhilbert), nd, ilevel)
-  end do
-#endif
-
-  ! Mark bins corresponding to refined cells
-  do idata = 1, ndata_remote
-     if (son(remote_refined(idata))>0)then
-        remote_refined(idata) = 1
-     else
-        remote_refined(idata) = 0
-     end if
-  end do
-
-#ifndef WITHOUTMPI
-  ! Send refinement information back
-  call domain_data_to_part(communicator, remote_refined, refined)
-
-  deallocate(remote_refined)
-  deallocate(remote_keys)
-#endif
-end subroutine check_refinements
-!#########################################################################
-!#########################################################################
-!#########################################################################
 !#########################################################################
 subroutine remove_escaped_particles(ilevel)
-  use pm_commons,     only: part_hkey, part_ind_permutation, npart, kill_one_particle, &
-                            xp, array_pop, part_level_offset, bin_start_offset
+  use pm_commons,     only: npart, kill_one_particle, &
+                            xp, array_pop, part_level_offset
   use pm_parameters,  only: npart
-  use sort,           only: ge_keys
-  use amr_commons,    only: myid, nlevelmax
-  use amr_parameters, only: nhilbert, boxlen, ndim
+  use amr_commons,    only: nlevelmax
+  use amr_parameters, only: boxlen, ndim
   implicit none
+  
   integer, intent(in) :: ilevel
 
   !----------------------------------------------------------------------------
@@ -360,6 +259,7 @@ subroutine remove_escaped_particles(ilevel)
   allocate(kill(offset + 1:offset + np))
   kill = .false.
 
+  ! Flag particles that have left the box
   do idim = 1, ndim
      do ip = offset + 1, offset + np
         if (xp(ip, idim) >= boxlen) kill(ip) = .true.
@@ -367,6 +267,7 @@ subroutine remove_escaped_particles(ilevel)
      end do
   end do
 
+  ! Kill particles, don't forget to update the "kill" flag too...
   ipart = offset + 1 
   do ip = 1, np
      if (kill(ipart))then
@@ -376,14 +277,15 @@ subroutine remove_escaped_particles(ilevel)
         ipart = ipart + 1
      end if
   end do
+
   deallocate(kill)
-  ! Just make sure that these offsets are recomputed
-  ! before usage - > remove later.
-  part_level_offset(ilevel + 1: nlevelmax + 1) = -999
-  bin_start_offset = -999
+
+  ! Reset offsets for all levels above ilevel to
+  ! the updated number of particles
+  part_level_offset(ilevel + 1: nlevelmax + 1) = npart
 
 end subroutine remove_escaped_particles
-
+!#########################################################################
 
 
 

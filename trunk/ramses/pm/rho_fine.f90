@@ -729,9 +729,8 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   
 #ifndef WITHOUTMPI
   call build_communicator(communicator, recv_tot, npart_direct, local_data, local_data_oft, &
-       part_hkey_direct(1:npart_direct, 1:nhilbert), part_level)
+       part_hkey_direct, part_level)
 
-  deallocate(part_hkey_direct)
   allocate(xp_remote(1:recv_tot, 1:ndim))
   allocate(mp_remote(1:recv_tot))
 
@@ -744,7 +743,7 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   do ioft = local_data_oft, local_data_oft + local_data - 1, nvector
      np = min(nvector, local_data_oft + local_data - ioft)
      do grid_level = part_level, min_grid_level, -1
-        call cic_amr(xp_direct, mp_direct, npart_direct, ioft, np, grid_level)
+        call dump_particles(xp_direct, mp_direct, npart_direct, ioft, np, grid_level)
      end do
   end do
   
@@ -753,14 +752,16 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   do ioft = 0, recv_tot - 1, nvector
      np = min(nvector, recv_tot - ioft)
      do grid_level = part_level, min_grid_level, -1
-        call cic_amr(xp_remote, mp_remote, recv_tot, ioft, np, grid_level)
+        call dump_particles(xp_remote, mp_remote, recv_tot, ioft, np, grid_level)
      end do
   end do
   deallocate(xp_remote, mp_remote)
 #endif
-
+  deallocate(xp_direct, mp_direct, part_hkey_direct)
+  
+  
 contains
-  subroutine cic_amr(xpart, mpart, array_size, offset, np, grid_level)
+  subroutine dump_particles(xpart, mpart, array_size, offset, np, grid_level)
     use amr_parameters,  only: static, mass_cut_refine, nvector, ndim, twotondim
     use amr_commons,     only: boxlen, icoarse_max, icoarse_min
     use poisson_commons, only: rho, phi
@@ -808,7 +809,7 @@ contains
        end do
     end do
     
-  end subroutine cic_amr
+  end subroutine dump_particles
 
 end subroutine rho_direct_particles
 
@@ -886,7 +887,6 @@ contains
     ! This is achieved by looping over the 8 "cic-particles", each time
     ! resorting according to the grid-level hilbert key of the cic-particle positions.
     ! The mass per cell/bin is added to rho for each of the 8 histograms individually.
-    ! not been deposited directly.
     
     ! in:               - offset, nparts, n_masked, grid_level    
     ! "implicit" input: - part_ind_permutation, 
@@ -894,9 +894,9 @@ contains
     ! side effect:      - updates rho field on levels grid_level
     
     
-    integer(kind=4), dimension(1:ndim)   ,          save :: ind
+    integer(kind=4), dimension(1:ndim) :: ind
     integer(kind=4), dimension(1:nvector),          save :: bin_nr
-    real(dp),        dimension(1:nvector),          save :: delta
+    real(dp),        dimension(1:ndim) :: delta
     real(dp),        dimension(1:nvector, 1:ndim),  save :: xpart
     real(dp),        dimension(1:nvector),          save :: mpart
     real(dp), save :: dx, dx_loc, scale, vol_loc
@@ -913,13 +913,14 @@ contains
        ind(1:ndim) = ind_table2(1:ndim, ind_cloud)
         
        ! Compute cloud corner offset from cloud center
-       delta(1:ndim) = ind(1:ndim) - 0.5D0       
+       delta(1:ndim) = (ind(1:ndim) - 0.5D0) * dx_loc
 
        ! Relocate particle positions according to index
+       ! TODO: Fix non-periodic case
        do idim = 1, ndim
           do ip = offset + 1, offset + n_masked
              ipart = part_ind_permutation(ip)
-             xp(ipart,idim) = xp(ipart,idim) + delta(idim) * dx_loc
+             xp(ipart,idim) = xp(ipart,idim) + delta(idim)
              if (xp(ipart, idim) > boxlen) then
                 xp(ipart, idim) = xp(ipart, idim) - boxlen
              end if
@@ -946,11 +947,11 @@ contains
        ! given cloud/cell intersection
        ip_sweep = 0
        ibin = 0
-       do ip = offset+1,offset+n_masked
+       do ip = offset + 1, offset + n_masked
           if (ip > bin_start_offset(ibin+1)) ibin = ibin + 1
           ipart = part_ind_permutation(ip)
           ip_sweep = ip_sweep + 1
-          xpart(ip_sweep,1:ndim) = xp(ipart,1:ndim)
+          xpart(ip_sweep,1:ndim) = xp(ipart, 1:ndim)
           mpart(ip_sweep)        = mp(ipart)
           bin_nr(ip_sweep)       = ibin
           
@@ -964,10 +965,11 @@ contains
        end if
 
        ! Reset particles to original positions
+       ! TODO: Fix non-periodic case
        do idim = 1, ndim
           do ip = offset + 1, offset + n_masked
              ipart = part_ind_permutation(ip)
-             xp(ipart,idim) = xp(ipart,idim) - delta(idim) * dx_loc
+             xp(ipart,idim) = xp(ipart,idim) - delta(idim)
              if (xp(ipart, idim) > boxlen) then
                 xp(ipart, idim) = xp(ipart, idim) - boxlen
              end if
@@ -978,6 +980,7 @@ contains
        end do
 
        ! Dump bin_mass into rho and bin_count into phi
+       ! MPI communication happens here.
        call dump_histograms(grid_level)
 
     end do ! end loop over 8 cic-particles
@@ -1007,16 +1010,16 @@ contains
     pos_to_cart = 2.0**grid_level / dble(boxlen)
     xpart = xpart * pos_to_cart
 
-    ! compute volume of cloud/cell intersection
+    ! Compute volumes of cloud/cell intersection
     vol(1:np) = 1.d0
-    do idim=1, ndim       
-       vol_idim(1:np) = xpart(1:np, idim) - floor(xpart(1:np, idim))
-       if (ind(idim)==0) vol_idim(1:np) = 1.d0 - vol_idim(1:np)
+    do idim = 1, ndim
+       vol_idim(1:np) = xpart(1:np, idim) - floor(xpart(1:np, idim), kind=dp)
+       if (ind(idim) == 0) vol_idim(1:np) = 1.d0 - vol_idim(1:np)
        vol(1:np) = vol(1:np) * vol_idim(1:np)          
     end do
         
-    ! Compute particles per bin
-    do ip=1,np
+    ! Compute particle number fractions per bin
+    do ip = 1, np
        bin_count(bin_nr(ip)) = bin_count(bin_nr(ip)) + vol(ip)
     end do
     
