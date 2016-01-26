@@ -14,8 +14,8 @@ patch -R Makefile < Makefile_diff
 cd ../../bin/
 make clean 
 rm ramses$ending
-make -f ../patch/integration_tests_period/Makefile
-cd ../patch/integration_tests_period/
+make -f ../patch/integration_tests_nonperiod/Makefile
+cd ../patch/integration_tests_nonperiod/
 
 ../../bin/ramses$ending param_file.nml > run_serial.log
 if diff particles.txt particles.txt_comp_$ending > /dev/null; then

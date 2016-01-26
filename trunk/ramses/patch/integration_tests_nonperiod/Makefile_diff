@@ -5,7 +5,7 @@
   NVAR = 5
   NENER = 0
   SOLVER = hydro
-! PATCH = ../patch/integration_tests/
+! PATCH = ../patch/integration_tests_nonperiod/
   EXEC = ramses
   #############################################################################
   GITBRANCH = $(shell git rev-parse --abbrev-ref HEAD)
