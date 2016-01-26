@@ -57,7 +57,6 @@ contains
     
     integer :: ihilbert, idim
 
-    npart = npart - 1
     do idim = 1, ndim
        call array_pop(xp(1:npart, idim), ipart)
        call array_pop(vp(1:npart, idim), ipart)
@@ -72,6 +71,7 @@ contains
 #ifdef OUTPUT_PARTICLE_POTENTIAL
     call array_pop(ptcl_phi(1:npart), ipart)
 #endif
+    npart = npart - 1
   end subroutine kill_one_particle
 
 ! #############################################################
