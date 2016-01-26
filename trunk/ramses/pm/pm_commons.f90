@@ -45,6 +45,8 @@ module pm_commons
   
 contains
 
+! #############################################################
+  
   subroutine kill_one_particle(ipart)
     integer, intent(in) :: ipart
     
@@ -72,6 +74,9 @@ contains
 #endif
   end subroutine kill_one_particle
 
+! #############################################################
+
+! #############################################################
   
   ! TODO: Can this stupid copying be avoided?
   subroutine array_pop_i4(arr, ipop)
@@ -123,5 +128,7 @@ contains
        arr(i) = arr(i + 1)
     end do
   end subroutine array_pop_l
-  
+
+! #############################################################
+
 end module pm_commons
