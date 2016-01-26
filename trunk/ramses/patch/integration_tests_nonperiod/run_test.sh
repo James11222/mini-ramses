@@ -29,7 +29,7 @@ else
     echo "=============================="
     mv particles.txt particles_serial.txt
 fi
-mpirun -np 5 ../../bin/ramses$ending param_file.nml > run_parallel.log
+mpirun -np 3 ../../bin/ramses$ending param_file.nml > run_parallel.log
 if diff particles.txt particles.txt_comp_$ending > /dev/null; then
     echo "=============================="
     echo "MPI TEST OK"
