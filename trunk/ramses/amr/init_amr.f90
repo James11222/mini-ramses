@@ -473,38 +473,32 @@ subroutine init_amr
 end subroutine init_amr
 
 subroutine build_grid_dict
-  use amr_commons   , only: headl, numbl, next, ncpu, numbb, headb
+  use amr_commons   , only: headl, numbl, next, ncpu, numbb, headb, nboundary
   use amr_parameters, only: nlevelmax
   implicit none
   
-  ! Walk the linked list of grids for each level
-  ! and add the cells for each grid to the dictionaries
+  ! Walk the linked list of grids for each level, cpu/boundary
+  ! and add the grids to the dictionary.
 
-  integer :: igrid, dummy, icpu, ilevel  
+  integer :: igrid, icpu, ilevel, ibound, i, ncache, istart
 
-  ! TODO: TAKE CARE OF BOUNARY CELLS FOR NON-PERIODIC BOUNDARIES
   do ilevel = 1, nlevelmax
-     ! Loop over cpus
-     do icpu = 1, ncpu
-        igrid = headl(icpu, ilevel)
-        ! Loop over grids
-        do dummy = 1, numbl(icpu, ilevel)
-           call add_grid_to_hash_table(igrid, ilevel)
-           ! Go to next grid
-           igrid = next(igrid)
-        end do
+     do ibound = 1, nboundary + ncpu
+        if(ibound <= ncpu)then
+           ncache = numbl(ibound, ilevel)
+           istart = headl(ibound, ilevel)
+        else
+           ncache = numbb(ibound - ncpu, ilevel)
+           istart = headb(ibound - ncpu, ilevel)
+        end if
+        if (ncache > 0) then
+           igrid = istart
+           do i = 1, ncache
+              call add_grid_to_hash_table(igrid, ilevel)
+              igrid = next(igrid)
+           end do
+        end if
      end do
   end do
-  do ilevel = 1, nlevelmax
-     ! Loop over cpus
-     do icpu = 1, ncpu
-        igrid = headb(icpu, ilevel)
-        ! Loop over grids
-        do dummy = 1, numbb(icpu, ilevel)
-           call add_grid_to_hash_table(igrid, ilevel)
-           ! Go to next grid
-           igrid = next(igrid)
-        end do
-     end do
-  end do
+  
 end subroutine build_grid_dict
