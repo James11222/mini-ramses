@@ -58,7 +58,7 @@ end subroutine kick
 subroutine drift(ilevel)
   use pm_commons,     only: xp, vp, part_level_offset
   use amr_parameters, only: dp, ndim, nx, ny, nz, boxlen
-  use amr_commons,    only: dtnew, period, icoarse_max, icoarse_min, jcoarse_min, kcoarse_min, &
+  use amr_commons,    only: dtnew, icoarse_max, icoarse_min, jcoarse_min, kcoarse_min, &
                             nx, ny, nz
   implicit none
 
