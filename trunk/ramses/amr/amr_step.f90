@@ -89,7 +89,7 @@ recursive subroutine amr_step(ilevel,icount)
 
   call cmp_particle_boundary_key
 
-  if (ilevel==levelmin)then
+  if (ilevel==levelmin .and. myid == 1)then
      call hash_stats(grid_dict)
   endif
   !------------------------
