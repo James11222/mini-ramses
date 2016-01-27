@@ -15,7 +15,14 @@
 
 module hash
   use amr_parameters, only: ndim, int_pre
-
+  implicit none
+  
+  ! General module parameters
+  integer, parameter :: key_length = (ndim + 1) * int_pre
+  integer, dimension(0:3), parameter :: constants = (/5, -1640531527, 97, 1003313/)
+  
+  ! Define a bucket as a derived type (sequence statement!) for better
+  ! cache efficiency.
   type bucket
      sequence
 #ifndef UNSAFE_HASH
@@ -25,79 +32,138 @@ module hash
 #endif 
      integer :: value
      integer :: next_ibucket
-  end type bucket
+  end type bucket     
 
+  ! The actual hash table. Contains a procedure pointer to the desired
+  ! hash function which is set at initialization of the hash table.
   type hash_table
      type(bucket), allocatable, dimension(:)  :: data
      integer         :: total_size, head_free, nfree_chain, nfree
      integer(kind=8) :: size
      integer(kind=8) :: bitmask
      integer, allocatable, dimension(:) :: next_free
-  end type hash_table
+     procedure(hfunc), nopass, pointer :: hash_func => null()
+  end type hash_table  
 
-  integer, parameter :: key_length = ndim * int_pre
-  integer, dimension(0:3), parameter :: constants = (/5, -1640531527, 97, 1003313/)
+  ! Interface to a general hash function - necessary for the procedure
+  ! pointer used above.
+  abstract interface
+     pure function hfunc(key)
+       use amr_parameters, only: int_pre, ndim
+       integer(int_pre), dimension(0:ndim), intent(in) :: key
+       integer(kind=8)                                 :: hfunc
+     end function hfunc
+  end interface
+
 contains
 
+  ! Note: All these functions and subroutines could actually be contained in the
+  ! hash_table type to optain a more object oriented fashion (Fortran 2003 standard).
+  
   ! ============================================================================= 
-  pure function hash_func(htable, key)
-    type(hash_table),                    intent(in) :: htable
+  pure function simple_hash_func(key)
     integer(int_pre), dimension(0:ndim), intent(in) :: key
-    integer(kind=8)                                 :: hash_func
+    integer(kind=8)                                 :: simple_hash_func
+    
+    simple_hash_func = dot_product(key(0:ndim), constants(0:ndim))
+  end function simple_hash_func
+  ! =============================================================================
+  
+  ! ============================================================================= 
+  pure function murmur3_hash_func(key)
+    integer(int_pre), dimension(0:ndim), intent(in) :: key
+    integer(kind=8)                                 :: murmur3_hash_func
     integer(kind=4), parameter :: seed=42
+
+    ! Murmur3 hash adapted for a key which is a multiple of 32 bits
     
-    !    ! Explicit interface for the c subroutine
-    !    interface
-    !        pure subroutine murmurhash3_x64_128(key, key_length, seed, hash_func)
-    !          use amr_parameters, only: int_pre, ndim
-    !          integer(int_pre) , dimension(0:ndim), intent(in) :: key
-    !          integer(kind=8), intent(inout)                      :: hash_func
-    !          integer, intent(in) :: seed, key_length
-    !        end subroutine murmurhash3_x64_128
-    !     end interface
-    ! 
-    !    call murmurhash3_x64_128(key, key_length, seed, hash_func)    
+    ! Explicit interface for the c subroutine (needed because the interface must
+    ! be known at compilation time of the module)
+    interface
+       pure subroutine murmurhash3_x64_128(key, key_length, seed, hash_func)
+         use amr_parameters, only: int_pre, ndim
+         integer(int_pre) , dimension(0:ndim), intent(in) :: key
+         integer, intent(in)                              :: seed, key_length
+         integer(kind=8), intent(inout)                   :: hash_func
+       end subroutine murmurhash3_x64_128
+    end interface
     
-    hash_func = dot_product(key(0:ndim), constants(0:ndim))
-  end function hash_func
+    call murmurhash3_x64_128(key, key_length, seed, murmur3_hash_func)    
+    
+  end function murmur3_hash_func
   ! =============================================================================
 
   ! =============================================================================
-  subroutine init_empty_hash(htable, req_size)
+  subroutine init_empty_hash(htable, req_size, hash_type)
     implicit none
     type(hash_table), intent(inout) :: htable
     integer         , intent(in)    :: req_size
-
+    character(6)    , intent(in)    :: hash_type
+    
     ! Allocate all hash table arrays and variables.
     ! Chose size (excluding the chaining space) as the smallest
     ! power of two >= the required_size.
-
+    
+    if (hash_type == 'simple') then
+       htable%hash_func => simple_hash_func
+    else if (hash_type == 'murmur') then
+       if (ndim .ne. 3)then
+          print*, 'murmur3 hash currently only in 3d'
+          stop
+       end if
+       htable%hash_func => murmur3_hash_func
+    else
+       htable%hash_func => simple_hash_func
+    end if
+    
     htable%size = 2
     do while (htable%size < req_size)
        htable%size = htable%size * 2
     end do
 
-    ! Allocate and initialize arrays
-    htable%total_size = htable%size / 4 + htable%size
-    htable%nfree = htable%size
-    htable%bitmask = htable%size - 1
-    allocate(htable%data(1: htable%total_size))
-
-    ! allocate linked list of free slots in the chaning part of the array
-    allocate(htable%next_free (htable%size + 1: htable%total_size))
-    call reset_entire_hash(htable)
+    call reset_entire_hash(htable, .false.)
 
   end subroutine init_empty_hash
   ! =============================================================================
 
   ! =============================================================================
-  subroutine reset_entire_hash(htable)
+  subroutine reset_entire_hash(htable, resize)
     implicit none
+    logical, intent(in)             :: resize
     type(hash_table), intent(inout) :: htable
-
-    ! Subroutine to reset the entire hash table
-    integer :: i
     
+    ! Subroutine to reset the entire hash table
+    ! IMPORTANT: The new size of the hash table is adapted based on the
+    ! load factor before resetting the hash table.
+
+    integer :: i
+    real :: load_factor
+
+    if (resize) then
+       load_factor = (htable%size - htable%nfree) * 1.0 / htable%size    
+       if (load_factor > 0.6) then
+          htable%size = htable%size * 2
+          deallocate(htable%data, htable%next_free)
+       else if (load_factor < 0.2 .and. htable%size > 2)then
+          htable%size = htable%size / 2
+          deallocate(htable%data, htable%next_free)
+       end if
+    end if
+    
+
+    ! Compute sizes and allocate arrays
+    htable%total_size = htable%size / 4 + htable%size
+    htable%nfree = htable%size
+    htable%nfree_chain = htable%total_size - htable%size
+    htable%head_free = htable%size + 1
+    htable%bitmask = htable%size - 1
+
+    if (.not. allocated(htable%data))then
+       allocate(htable%data(1: htable%total_size))
+       allocate(htable%next_free (htable%size + 1: htable%total_size))
+    end if
+
+    ! Initialize data
     do i = 1, htable%total_size
        call reset_bucket(htable%data(i))
     end do
@@ -105,9 +171,7 @@ contains
        htable%next_free(i) = i + 1
     end do
     htable%next_free(htable%total_size) = 0
-    htable%nfree = htable%size
-    htable%head_free = htable%size + 1
-    htable%nfree_chain = htable%total_size - htable%size
+
   end subroutine reset_entire_hash
   ! =============================================================================
   
@@ -142,11 +206,11 @@ contains
        write(*,*) "trying to insert 0 (0 is used to indicate absence of a value) "
        stop
     end if
-    
+
     ! Compute ibucket
-    full_hash = hash_func(htable, key)
+    full_hash = htable%hash_func(key)
     ibucket = IAND(full_hash, htable%bitmask) + 1
-    
+
     if (htable%data(ibucket)%next_ibucket < 0) then          
 
        ! Bucket is empty, simply insert value       
@@ -170,6 +234,7 @@ contains
           if (htable%data(ibucket)%full_hash == full_hash)then
 #endif
              write(*,*) "trying to insert already existing key: ",key
+             write(*,*) "existing key: ", htable%data(ibucket)%key(0:ndim)
              stop
           end if
           ibucket = htable%data(ibucket)%next_ibucket
@@ -217,7 +282,7 @@ contains
     ! hash table value for a given key. If no entry exists, return 0
     integer(kind=8) :: ibucket, full_hash
     
-    full_hash = hash_func(htable, key)
+    full_hash = htable%hash_func(key)
     ibucket = IAND(full_hash, htable%bitmask) + 1
 
 #ifndef UNSAFE_HASH
@@ -258,7 +323,7 @@ contains
 
     integer(kind=8) :: ibucket, previous_ibucket, full_hash
 
-    full_hash = hash_func(htable, key)
+    full_hash = htable%hash_func(key)
     ibucket = IAND(full_hash, htable%bitmask) + 1
 
     ! No collision case

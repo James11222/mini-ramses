@@ -396,9 +396,10 @@ subroutine cmp_new_cpu_map
                     isub=(dom(ncell_loc)-1)/ncpu+1
                     ncell_sub(isub)=ncell_sub(isub)+1
                     flag1(ncell)=8*10 ! Magic number
-                    if(pic)then
-                       flag1(ncell)=flag1(ncell)+numbp(ind_grid(i))
-                    endif
+                    ! REMOVE THE COST WEIGHTING CONTRIBUTION OF THE PARTICLES
+                    ! if(pic)then
+                    !    flag1(ncell)=flag1(ncell)+numbp(ind_grid(i))
+                    ! endif
                     wflag = flag1(ncell)*niter_cost(ilevel)
                     if (wflag > 2147483647) then 
                        write(*,*) ' wrong type for flag1 --> change to integer kind=8: ',wflag
@@ -1367,7 +1368,7 @@ subroutine defrag
 
   ngrid_current=ngrid2
 
-  call reset_entire_hash(grid_dict)
+  call reset_entire_hash(grid_dict, .true.)
   call build_grid_dict
 end subroutine defrag
 !#########################################################################

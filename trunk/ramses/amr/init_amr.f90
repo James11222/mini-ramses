@@ -28,7 +28,7 @@ subroutine init_amr
   character(LEN=5)::nchar
   real(dp),allocatable,dimension(:)::bxmin,bxmax
   integer:: idomain, ilev
-
+  
   if(verbose.and.myid==1)write(*,*)'Entering init_amr'
   
   ! Constants
@@ -55,8 +55,9 @@ subroutine init_amr
   flag1=0; flag2=0; son=0
 
   ! Allocate hash table
-  !  call init_empty_hash(cell_dict, floor(ncell * 1.5))
-  call init_empty_hash(grid_dict, floor(ngridmax * 1.5))
+  ! Oversize hash table for better performance
+  ! (hash still relatively cheap in memory)
+  call init_empty_hash(grid_dict, floor(ngridmax * 1.5), 'simple')
   
   ! Allocate MPI cell-based arrays
   allocate(cpu_map    (1:ncell)) ! Cpu map
