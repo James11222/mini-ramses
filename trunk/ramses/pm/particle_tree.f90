@@ -277,6 +277,130 @@ end subroutine remove_escaped_particles
 !#########################################################################
 
 
+!#########################################################################
+subroutine balance_particles(ilevel)
+  use pm_commons,     only: npart, kill_one_particle, &
+       xp, vp, mp, idp, levelp, part_hkey, part_level_offset, npartmax, &
+       current_state, part_ind_permutation, part_ind_permutation2
+  use pm_parameters,  only: npart
+  use amr_parameters, only: ndim, dp, nhilbert, id_pre
+  use amr_commons,    only: myid
+  use particle_communication, only: hilbert_comm, build_dummy_communicator, part_data_to_domain
+  use sort,           only: lsd_radix_sort_particles, apply_particle_permutation
+  implicit none
+  
+  integer, intent(in) :: ilevel
+
+  !----------------------------------------------------------------------------
+
+  !----------------------------------------------------------------------------
+
+  type(hilbert_comm) :: comm
+  integer :: np, offset, ioft, i1oft, i1oft_new, npart_new, delta_npart, i, idim, ihilbert, irecv
+
+  real(dp),allocatable,dimension(:,:)       ::xp_recv
+  real(dp),allocatable,dimension(:,:)       ::vp_recv
+  real(dp),allocatable,dimension(:)         ::mp_recv
+
+  integer(kind=8),allocatable,dimension(:,:) :: part_hkey_recv
+  integer ,       allocatable,dimension(:)   :: levelp_recv  
+  integer(id_pre),allocatable,dimension(:)   :: idp_recv
+
+  integer :: i1, i2, j1, j2
+
+#ifndef WITHOUTMPI
+  
+  ioft = part_level_offset(ilevel)
+  i1oft = part_level_offset(ilevel + 1)
+  np = i1oft - ioft
+
+  call build_dummy_communicator(comm, np)
+
+  ! Compute the delta in number of particles 
+  delta_npart = comm%nlocal - comm%ndata + comm%nrecv
+  npart_new = npart + delta_npart
+  
+  ! Check if there is enough space
+  if (npart_new > npartmax)then
+     write(*,*) 'too many particles'
+     call clean_stop
+  end if
+
+
+  allocate(xp_recv(1:comm%nrecv, 1:ndim))
+  allocate(vp_recv(1:comm%nrecv, 1:ndim))
+  allocate(mp_recv(1:comm%nrecv))
+  allocate(part_hkey_recv(1:comm%nrecv, 1:nhilbert))
+  allocate(levelp_recv(1:comm%nrecv))
+  allocate(idp_recv(1:comm%nrecv))
+
+  do idim = 1, ndim
+     call part_data_to_domain(comm, xp(ioft + 1: ioft + np, idim), xp_recv(:, idim))
+     call part_data_to_domain(comm, vp(ioft + 1: ioft + np, idim), vp_recv(:, idim))
+  end do
+  call part_data_to_domain(comm, mp(ioft + 1: ioft + np), mp_recv)
+  call part_data_to_domain(comm, idp(ioft + 1: ioft + np), idp_recv)
+  call part_data_to_domain(comm, levelp(ioft + 1: ioft + np), levelp_recv)
+  do ihilbert = 1, nhilbert
+     call part_data_to_domain(comm, part_hkey(ioft + 1: ioft + np, ihilbert), part_hkey_recv(:, ihilbert))
+  end do
+
+
+  ! Make/remove space by moving all higher level particles to the right/left
+  i1oft_new = i1oft + delta_npart
+  xp(i1oft_new + 1:npart_new, 1:ndim) = xp(i1oft + 1: npart, 1:ndim)
+  vp(i1oft_new + 1:npart_new, 1:ndim) = vp(i1oft + 1: npart, 1:ndim)
+  mp(i1oft_new + 1:npart_new) = mp(i1oft + 1: npart)
+  idp(i1oft_new + 1:npart_new) = idp(i1oft + 1: npart)
+  levelp(i1oft_new + 1:npart_new) = levelp(i1oft + 1: npart)
+  part_hkey(i1oft_new + 1:npart_new, 1:nhilbert) = part_hkey(i1oft + 1: npart, 1:nhilbert)
+
+
+  ! Move particles that stay to the left by their local offset
+  i1 = ioft                  + 1; i2 = ioft                  + comm%nlocal
+  j1 = ioft + comm%local_oft + 1; j2 = ioft + comm%local_oft + comm%nlocal
+
+  xp(i1:i2, 1:ndim) = xp(j1:j2, 1:ndim)
+  vp(i1:i2, 1:ndim) = vp(j1:j2, 1:ndim)
+  mp(i1:i2) = mp(j1:j2)
+  idp(i1:i2) = idp(j1:j2)
+  levelp(i1:i2) = levelp(j1:j2)
+  part_hkey(i1:i2, 1:nhilbert) = part_hkey(j1:j2, 1:nhilbert)
+
+  ! Fill in received particles
+  i1 = ioft + comm%nlocal + 1; i2 = ioft + comm%nlocal + comm%nrecv
+  
+  xp(i1:i2, 1:ndim) = xp_recv
+  vp(i1:i2, 1:ndim) = vp_recv
+  mp(i1:i2) = mp_recv
+  idp(i1:i2) = idp_recv
+  levelp(i1:i2) = levelp_recv
+  part_hkey(i1:i2, 1:nhilbert) = part_hkey_recv
+
+  part_ind_permutation = -99999
+  part_ind_permutation2 = -99999
+  current_state = -99999999
+  
+  deallocate(xp_recv, vp_recv, mp_recv, part_hkey_recv, levelp_recv, idp_recv)
+
+  ! Update total number of particles and level offset for ilevel + 1
+  part_level_offset(ilevel + 1) = i1oft_new
+  npart = npart_new
+
+  ! Resort particles
+  call lsd_radix_sort_particles(ioft, np + delta_npart, ilevel, ilevel, .true.)
+  call apply_particle_permutation(ioft, np + delta_npart, ilevel)
+
+#else
+  return
+#endif
+
+
+  
+end subroutine balance_particles
+!#########################################################################
+
+
 
 
 

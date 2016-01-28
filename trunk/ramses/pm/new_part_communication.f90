@@ -109,6 +109,99 @@ contains
   end subroutine build_communicator
   !################################################################
 
+    subroutine build_dummy_communicator(comm, n)
+    use amr_commons,    only: ncpu, myid, nlevelmax
+    implicit none
+#ifndef WITHOUTMPI    
+    include 'mpif.h'
+#endif
+    type(hilbert_comm), intent(inout) :: comm
+    integer, intent(in) :: n
+    
+
+    
+    integer :: receive_cpu, idata, info, icpu, idest, isource, i, iglobal, npart_tot
+    integer :: countrecv, countsend  
+    integer, dimension(MPI_STATUS_SIZE,2*ncpu) :: statuses
+    integer, dimension(2*ncpu)                 :: reqsend, reqrecv
+
+    allocate(comm%send_count(1:ncpu))
+    allocate(comm%recv_count(1:ncpu))
+    allocate(comm%send_oft(1:ncpu))
+    allocate(comm%recv_oft(1:ncpu))
+
+    if (nlevelmax > 20)then 
+       print*, 'problem here with precision'
+       stop
+    end if
+
+    comm%ndata = n
+    comm%send_count = 0; comm%recv_count = 0
+
+#ifndef WITHOUTMPI
+
+    ! Abuse send/recv offsets
+    comm%send_oft = 0
+    comm%send_oft(myid) = n
+    call MPI_ALLREDUCE(comm%send_oft, comm%recv_oft, ncpu, MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD, info)
+
+    npart_tot = sum(comm%recv_oft)
+    
+    ! "Prefix sum"
+    ! TODO: Fix case where number of particles is bigger what can be stored as a 32-bit integer
+    comm%send_oft(1) = 0
+    do icpu = 1, ncpu - 1
+       comm%send_oft(icpu + 1) = comm%send_oft(icpu) + comm%recv_oft(icpu)
+    end do
+
+    do i = 1, n
+       iglobal = comm%send_oft(myid) + i
+       receive_cpu = int((iglobal - 1.0) / (1.d0 * npart_tot) *  ncpu) + 1
+       comm%send_count(receive_cpu) = comm%send_count(receive_cpu) + 1
+    end do
+        
+    ! Send 1 integer to every other process (including itself - a bit silly, but who cares...)
+    ! Store results in  receive counter
+    countrecv = 0; countsend = 0  
+    do isource = 1, ncpu        
+       countrecv = countrecv + 1
+       call MPI_IRECV(comm%recv_count(isource), 1, MPI_INTEGER, isource - 1, &
+            1234, MPI_COMM_WORLD, reqrecv(countrecv), info)
+    end do
+    do idest = 1, ncpu
+       countsend = countsend + 1
+       call MPI_ISEND(comm%send_count(idest), 1, MPI_INTEGER, idest - 1, 1234, &
+            MPI_COMM_WORLD, reqsend(countsend), info)
+    end do
+
+    call MPI_WAITALL(ncpu, reqrecv, statuses, info)
+    call MPI_WAITALL(ncpu, reqsend, statuses, info)
+#endif
+    
+    ! "Prefix sum" to compute send offsets
+    comm%send_oft(1) = 0
+    do icpu = 1, ncpu - 1
+       comm%send_oft(icpu + 1) = comm%send_oft(icpu) + comm%send_count(icpu)
+    end do
+
+    ! No information is sent to itself, store the number of local data
+    comm%nlocal = comm%send_count(myid)
+    comm%local_oft = comm%send_oft(myid)
+    comm%send_count(myid) = 0
+    comm%recv_count(myid) = 0
+
+    ! "Prefix sum" to compute recv offsets
+    comm%recv_oft(1) = 0
+    do icpu = 1, ncpu - 1
+       comm%recv_oft(icpu + 1) = comm%recv_oft(icpu) + comm%recv_count(icpu)
+    end do
+
+    ! Total number of received data
+    comm%nrecv = sum(comm%recv_count(:))
+
+  end subroutine build_dummy_communicator
+  !################################################################
+
 #ifndef WITHOUTMPI      
   !################################################################
   subroutine part_data_to_domain_i4(comm, send_data, recv_data)

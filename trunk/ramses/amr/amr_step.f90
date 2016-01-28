@@ -121,6 +121,9 @@ recursive subroutine amr_step(ilevel,icount)
      use_histograms = .true.     
      do ilev=ilevel, nlevelmax
         call sort_particles(ilev, use_histograms)
+        if(MOD(nstep_coarse,nremap) == 0 .and. ilevel == levelmin)then
+           call balance_particles(ilev)
+        end if
      end do
   end if
 
