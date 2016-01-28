@@ -7,7 +7,7 @@ subroutine sort_particles(ilevel, use_histograms)
   use hilbert,        only: hilbert_for_particle 
   use coordinates,    only: check_refinements
 #ifndef WITHOUTMPI
-  use particle_communication, only: build_communicator
+  use particle_communication, only: hilbert_comm, build_communicator
 #endif
   implicit none
 
@@ -18,14 +18,15 @@ subroutine sort_particles(ilevel, use_histograms)
   ! to level ilevel + 1. It then sorts the remaining ilevel particles 
   ! by hilbert key.
   
-  integer :: ndata_remote, ndata_local, local_oft
-  integer :: ilev, offset, np, ip
-  integer, dimension(1:ncpu, 1:4) :: communicator
+  integer :: ilev, offset, np, ip, ndata
   integer, allocatable, dimension(:) :: refined
-    
+  integer(kind=8), pointer :: hkeys(:,:)
+  
   offset = part_level_offset(ilevel)
   np = npart - part_level_offset(ilevel)
 
+  if (np == 0)return
+  
   ! Compute hilbert keys (probably move outside of this routine)
   call hilbert_for_particle(offset, np, 0, ilevel)
   
@@ -33,35 +34,23 @@ subroutine sort_particles(ilevel, use_histograms)
   call lsd_radix_sort_particles(offset, np, ilevel, ilevel, .true.)
   
   if (use_histograms)then
-     call compute_particle_histogram(offset, np)          
-#ifndef WITHOUTMPI
-     call build_communicator(communicator, ndata_remote, &
-          nbins, ndata_local, local_oft, bin_keys, ilevel)
-#endif
-     
-     allocate(refined(1:nbins))     
-     call check_refinements(communicator, ndata_remote, nbins, ndata_local, &
-          local_oft, refined, bin_keys(1:nbins, 1:nhilbert), ilevel)
-     call levelsort_particles(ilevel, np, nbins, refined, use_histograms)
+     call compute_particle_histogram(offset, np)
+     ndata = nbins
+     hkeys => bin_keys
   else
-
      ! Need to apply particle permutation here already to have parts sorted
      ! in memory. Using the index insidet build_communicator and
      ! communicate_refinements is possible but will let the code deviate more
      ! from the histogrammed case.
      call apply_particle_permutation(offset, np, ilevel) 
-#ifndef WITHOUTMPI
-     call build_communicator(communicator, ndata_remote, np, ndata_local, local_oft, &
-          part_hkey(offset + 1: offset + np, 1:nhilbert), ilevel)
-#endif
-     
-     allocate(refined(1:np))
-     call check_refinements(communicator, ndata_remote, &
-          np, ndata_local, local_oft, refined, part_hkey(offset + 1: offset + np, 1:nhilbert), ilevel)
+     ndata = np
+     hkeys => part_hkey(offset + 1:offset + np, 1:nhilbert)
+  end if  
 
-     call levelsort_particles(ilevel, np, np, refined, use_histograms)
-  end if
-
+  allocate(refined(1:ndata))
+  call check_refinements(refined, hkeys, ilevel)
+  call levelsort_particles(ilevel, np, ndata, refined, use_histograms)
+  
   ! Compute NEW number of particles in ilevel
   np = part_level_offset(ilevel + 1) - part_level_offset(ilevel)  
 

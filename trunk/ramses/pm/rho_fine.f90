@@ -665,12 +665,12 @@ end subroutine cic_cell
 !##############################################################################
 subroutine rho_direct_particles(part_level, min_grid_level)
   use amr_parameters, only: dp, levelmin, nvector, ndim, nhilbert
-  use amr_commons,    only: ncpu, myid
+  use amr_commons,    only: ncpu, myid, bound_key_level
   use pm_parameters,  only: n_dump_parts_direct
   use pm_commons,     only: part_level_offset, bin_start_offset, bin_count, &
                             xp, mp, idp, nbins, part_hkey
 #ifndef WITHOUTMPI
-  use particle_communication, only: build_communicator, part_data_to_domain
+  use particle_communication, only: hilbert_comm, build_communicator, part_data_to_domain
 #endif
   implicit none
   integer, intent(in) :: part_level, min_grid_level
@@ -686,9 +686,8 @@ subroutine rho_direct_particles(part_level, min_grid_level)
   ! out:          - none  
   ! side effect:  - updates rho field on levels ilevel <= part_level   
 
-  integer,  dimension(1:ncpu, 1:4)       :: communicator
+  type(hilbert_comm) :: comm
   integer :: ip, np, ioft, offset, nparts, ibin, ipart, grid_level, npart_direct, idim
-  integer :: recv_tot, local_data, local_data_oft
 
   integer(kind=8), allocatable, dimension(:,:) :: part_hkey_direct
   real(dp), allocatable, dimension(:,:) :: xp_direct, xp_remote
@@ -707,7 +706,6 @@ subroutine rho_direct_particles(part_level, min_grid_level)
      end if
   end do
 
-  
   allocate(part_hkey_direct(1:npart_direct, 1:nhilbert))
   allocate(xp_direct(1:npart_direct, 1:ndim))
   allocate(mp_direct(1:npart_direct))
@@ -726,33 +724,31 @@ subroutine rho_direct_particles(part_level, min_grid_level)
      end if
   end do
 
-  
+  call build_communicator(comm, part_hkey_direct, bound_key_level(:, part_level))  
+
 #ifndef WITHOUTMPI
-  call build_communicator(communicator, recv_tot, npart_direct, local_data, local_data_oft, &
-       part_hkey_direct, part_level)
-
-  allocate(xp_remote(1:recv_tot, 1:ndim))
-  allocate(mp_remote(1:recv_tot))
-
+  allocate(xp_remote(1:comm%nrecv, 1:ndim))
+  allocate(mp_remote(1:comm%nrecv))
   do idim = 1, ndim
-     call part_data_to_domain(communicator, xp_direct(:, idim), xp_remote(:, idim))
+     call part_data_to_domain(comm, xp_direct(:, idim), xp_remote(:, idim))
   end do
-  call part_data_to_domain(communicator, mp_direct, mp_remote)
+  call part_data_to_domain(comm, mp_direct, mp_remote)
 #endif
+
   ! Project local direct particles
-  do ioft = local_data_oft, local_data_oft + local_data - 1, nvector
-     np = min(nvector, local_data_oft + local_data - ioft)
+  do ioft = comm%local_oft, comm%local_oft + comm%nlocal - 1, nvector
+     np = min(nvector, comm%local_oft + comm%nlocal - ioft)
      do grid_level = part_level, min_grid_level, -1
-        call dump_particles(xp_direct, mp_direct, npart_direct, ioft, np, grid_level)
+        call dump_particles(xp_direct, mp_direct, comm%ndata, ioft, np, grid_level)
      end do
   end do
   
 #ifndef WITHOUTMPI
   ! Project remote direct particles
-  do ioft = 0, recv_tot - 1, nvector
-     np = min(nvector, recv_tot - ioft)
+  do ioft = 0, comm%nrecv - 1, nvector
+     np = min(nvector, comm%nrecv - ioft)
      do grid_level = part_level, min_grid_level, -1
-        call dump_particles(xp_remote, mp_remote, recv_tot, ioft, np, grid_level)
+        call dump_particles(xp_remote, mp_remote, comm%nrecv, ioft, np, grid_level)
      end do
   end do
   deallocate(xp_remote, mp_remote)
@@ -992,7 +988,7 @@ contains
   subroutine cic_histogram(xpart, mpart, bin_nr, np, grid_level, ind)
     use amr_parameters,  only: ndim, nvector
     use amr_commons,     only: boxlen, icoarse_max
-    use pm_commons,      only: bin_keys, bin_mass, nbins, bin_count
+    use pm_commons,      only: bin_keys, bin_mass, bin_count
     implicit none
     integer,  intent(in)                                  :: np, grid_level
     integer,  intent(in),    dimension(1:ndim)            :: ind
@@ -1029,81 +1025,71 @@ contains
     end do
   end subroutine cic_histogram
 
-  subroutine dump_histograms(cell_level)
+  subroutine dump_histograms(grid_level)
     use amr_parameters,  only: nvector, dp, nhilbert, ndim
-    use amr_commons,     only: ncpu, myid
-    use pm_commons,      only: bin_keys, bin_mass, nbins
+    use amr_commons,     only: ncpu, myid, bound_key_level
+    use pm_commons,      only: bin_keys, bin_mass
     use poisson_commons, only: rho, phi
     use coordinates,     only: get_cell_index_from_hilbertkey
 #ifndef WITHOUTMPI
-    use particle_communication, only: build_communicator, part_data_to_domain
+    use particle_communication, only: hilbert_comm, build_communicator, part_data_to_domain
 #endif
     implicit none
-    integer, intent(in) :: cell_level
+    integer, intent(in) :: grid_level
 
 
-    integer,  dimension(1:ncpu, 1:4)             :: communicator
+    type(hilbert_comm):: comm
     integer(kind=8), allocatable, dimension(:,:) :: bin_keys_remote
     real(dp), allocatable, dimension(:)          :: bin_mass_remote
     real(dp), allocatable, dimension(:)          :: bin_count_remote
 
-    integer        , dimension(1:nvector)     , save :: parent_cell_level, parent_cell_index
+    integer        , dimension(1:nvector) :: cell_level, cell_index
     integer(kind=8), dimension(1:nvector, 1:nhilbert), save :: bkey
 
-    integer :: ib, nb, ibin, recv_tot, local_bins, local_bins_oft, ioft, ihilbert
-    real(dp), save :: vol_loc
+    integer :: ib, nb, ibin, ioft, ihilbert
+    real(dp) :: vol_loc
 
-    vol_loc = (0.5**cell_level * dble(boxlen) )**ndim    
+    vol_loc = (0.5**grid_level * dble(boxlen) )**ndim    
 
+    call build_communicator(comm, bin_keys, bound_key_level(:, grid_level))
 #ifndef WITHOUTMPI
-    call build_communicator(communicator, recv_tot, nbins, local_bins, local_bins_oft, bin_keys, cell_level)
-
-      allocate(bin_keys_remote(1:recv_tot, 1:nhilbert))
-      allocate(bin_mass_remote(1:recv_tot))
-      allocate(bin_count_remote(1:recv_tot))
-
-      bin_mass_remote = 0.d0
-      bin_keys_remote = 0
-      bin_count_remote = 0.d0
+      allocate(bin_keys_remote(1:comm%nrecv, 1:nhilbert))
+      allocate(bin_mass_remote(1:comm%nrecv))
+      allocate(bin_count_remote(1:comm%nrecv))
 
       do ihilbert = 1, nhilbert
-         call part_data_to_domain(communicator, bin_keys(:, ihilbert), bin_keys_remote(:, ihilbert))
+         call part_data_to_domain(comm, bin_keys(:, ihilbert), bin_keys_remote(:, ihilbert))
       end do
       
-      call part_data_to_domain(communicator, bin_mass, bin_mass_remote)
-      call part_data_to_domain(communicator, bin_count, bin_count_remote)
+      call part_data_to_domain(comm, bin_mass, bin_mass_remote)
+      call part_data_to_domain(comm, bin_count, bin_count_remote)
 #endif      
-      ! go through bins in sweeps and add mass to corresponding cell
-      do ioft = local_bins_oft, local_bins_oft + local_bins - 1, nvector
-         nb = min(nvector, local_bins_oft + local_bins - ioft)
-         call get_cell_index_from_hilbertkey(parent_cell_index(1:nb), &
-              parent_cell_level(1:nb), &
-              bin_keys(ioft + 1 : ioft + nb, 1:nhilbert), &
-              nb, cell_level)    
+      ! Go through bins in sweeps and add mass to corresponding cell
+      do ioft = comm%local_oft, comm%local_oft + comm%nlocal - 1, nvector
+         nb = min(nvector, comm%local_oft + comm%nlocal - ioft)
+
+         call get_cell_index_from_hilbertkey(cell_index(1:nb), cell_level(1:nb), &
+              bin_keys(ioft + 1 : ioft + nb, 1:nhilbert), nb, grid_level)    
          do ib = 1, nb
             ! Don't add mass to coarser levels             
-            if (parent_cell_level(ib) == cell_level) then
-               rho(parent_cell_index(ib)) = rho(parent_cell_index(ib)) + &
-                    bin_mass(ioft + ib) / vol_loc             
-               phi(parent_cell_index(ib)) = phi(parent_cell_index(ib)) + &
-                    bin_count(ioft + ib)
+            if (cell_level(ib) == grid_level) then
+               rho(cell_index(ib)) = rho(cell_index(ib)) + bin_mass(ioft + ib) / vol_loc             
+               phi(cell_index(ib)) = phi(cell_index(ib)) + bin_count(ioft + ib)
             end if
          end do
       end do
+
 #ifndef WITHOUTMPI
-      ! go through remote bins in sweeps and add mass to corresponding cell
-      do ioft = 0, recv_tot - 1, nvector
-         nb = min(nvector, recv_tot - ioft)
-         call get_cell_index_from_hilbertkey(parent_cell_index(1:nb), &
-              parent_cell_level(1:nb), bin_keys_remote(ioft + 1 : ioft + nb, 1:nhilbert), nb, cell_level)
-         
+      ! Go through remote bins in sweeps and add mass to corresponding cell
+      do ioft = 0, comm%nrecv - 1, nvector
+         nb = min(nvector, comm%nrecv - ioft)
+         call get_cell_index_from_hilbertkey(cell_index(1:nb), &
+              cell_level(1:nb), bin_keys_remote(ioft + 1 : ioft + nb, 1:nhilbert), nb, grid_level)         
          do ib = 1, nb
             ! Don't add mass to coarser levels             
-            if (parent_cell_level(ib) == cell_level) then
-               rho(parent_cell_index(ib)) = rho(parent_cell_index(ib)) + &
-                    bin_mass_remote(ioft + ib) / vol_loc
-               phi(parent_cell_index(ib)) = phi(parent_cell_index(ib)) + & 
-                    bin_count_remote(ioft + ib) 
+            if (cell_level(ib) == grid_level) then
+               rho(cell_index(ib)) = rho(cell_index(ib)) + bin_mass_remote(ioft + ib) / vol_loc
+               phi(cell_index(ib)) = phi(cell_index(ib)) + bin_count_remote(ioft + ib) 
             end if
          end do
       end do

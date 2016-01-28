@@ -124,10 +124,10 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
   use amr_parameters,  only: dp, nvector, ndim, twotondim, poisson, verbose, nhilbert
   use hydro_commons,   only: uold
   use poisson_commons, only: f
-  use amr_commons,     only: dtnew, ncpu, myid, t, son
+  use amr_commons,     only: dtnew, ncpu, myid, t, son, bound_key_level
   use pm_parameters,   only: npartmax
 #ifndef WITHOUTMPI
-  use particle_communication, only: build_communicator, part_data_to_domain, domain_data_to_part
+  use particle_communication, only: hilbert_comm, build_communicator, part_data_to_domain, domain_data_to_part
 #endif
   use hilbert,     only: hilbert_for_particle 
   implicit none
@@ -136,64 +136,56 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
   integer :: info
 #endif
 
-
-
   integer, intent(in) :: ilevel, offset, nparts
   logical, intent(in) :: read_gas_velocity
   real(dp), intent(inout), dimension(offset + 1 : offset + nparts, 1:ndim) :: ap
   
   real(dp), allocatable, dimension(:,:) :: xp_remote, ap_remote
-  integer,  dimension(1:ncpu, 1:4)       :: communicator
+  type(hilbert_comm) :: comm
   integer,  dimension(1:nvector, 1:twotondim), save :: cell_index
   real(dp), dimension(1:nvector, 1:twotondim), save :: vol
   
-  integer :: ioft, np, ip, ind, idim, ipart, local_oft, npart_recv, nparts_local
-
-  ! TODO: consistent naming (np, nparts, npart) throughout routines
-  ! several times and not just once for all parts from offset + 1 to offset_nparts
+  integer :: ioft, np, ip, ind, idim
 
   if(verbose)write(*,'("Entering compute_particle_acceleration, level " I2)')ilevel 
 
 #ifndef WITHOUTMPI
-  call build_communicator(communicator, npart_recv, &
-       nparts, nparts_local, local_oft, &
-       part_hkey(offset + 1 : offset + nparts, 1:nhilbert), & 
-       ilevel)
+  call build_communicator(comm, part_hkey(offset + 1:offset + nparts, 1:nhilbert), bound_key_level(:, ilevel))
 
-  allocate(xp_remote(1:npart_recv, 1:ndim), ap_remote(1:npart_recv, 1:ndim))
+  allocate(xp_remote(comm%nrecv, 1:ndim), ap_remote(comm%nrecv, 1:ndim))
   do idim = 1, ndim
-     call part_data_to_domain(communicator, xp(offset + 1 : offset + nparts, idim), xp_remote(:, idim))
+     call part_data_to_domain(comm, xp(offset + 1: offset + nparts, idim), xp_remote(:, idim))
   end do
   
   ! Deal with remote particles
-  do ioft = 0, npart_recv - 1, nvector
-     np = min(nvector, npart_recv - ioft)
+  do ioft = 0, comm%nrecv - 1, nvector
+     np = min(nvector, comm%nrecv - ioft)
      
-     call cic(xp_remote, npart_recv, cell_index, vol, ioft, np, ilevel, 2)
+     call cic(xp_remote, comm%nrecv, cell_index, vol, ioft, np, ilevel, 2)
 
      ap_remote(ioft + 1: ioft + np, 1: ndim) = 0.0D0
      if(read_gas_velocity)then
         do idim = 1, ndim
            do ind = 1, twotondim              
               do ip = 1, np
-                 ap_remote(ioft + ip, idim) = ap_remote(ioft + ip, idim) + uold(cell_index(ip,ind),idim+1) * vol(ip,ind)
+                 ap_remote(ioft + ip, idim) = ap_remote(ioft + ip, idim) + uold(cell_index(ip, ind), idim + 1) * vol(ip, ind)
               end do
            end do
         end do
      endif
      
      if(poisson)then
-        do idim = 1,ndim
-           do ind = 1,twotondim
-              do ip = 1,np
-                 ap_remote(ioft + ip, idim) = ap_remote(ioft + ip, idim) + f(cell_index(ip,ind),idim) * vol(ip,ind)
+        do idim = 1, ndim
+           do ind = 1, twotondim
+              do ip = 1, np
+                 ap_remote(ioft + ip, idim) = ap_remote(ioft + ip, idim) + f(cell_index(ip, ind), idim) * vol(ip, ind)
               end do
            end do
         end do
      endif
   end do
   do idim = 1, ndim
-     call domain_data_to_part(communicator, ap_remote(:,idim), ap(offset + 1 : offset + nparts, idim))
+     call domain_data_to_part(comm, ap_remote(:,idim), ap(offset + 1 : offset + nparts, idim))
   end do
 
   deallocate(xp_remote, ap_remote)
@@ -201,8 +193,8 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
 #endif
   
   ! Deal with local particles
-  do ioft = offset + local_oft, offset + local_oft + nparts_local - 1, nvector
-     np = min(nvector, offset + local_oft + nparts_local - ioft)
+  do ioft = offset + comm%local_oft, offset + comm%local_oft + comm%nlocal - 1, nvector
+     np = min(nvector, offset + comm%local_oft + comm%nlocal - ioft)
 
      call cic(xp, npartmax, cell_index, vol, ioft, np, ilevel, 2)
      
@@ -211,7 +203,7 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
         do idim = 1, ndim
            do ind = 1, twotondim              
               do ip = 1, np
-                 ap(ioft + ip, idim) = ap(ioft + ip, idim) + uold(cell_index(ip,ind),idim+1) * vol(ip,ind)
+                 ap(ioft + ip, idim) = ap(ioft + ip, idim) + uold(cell_index(ip, ind),idim + 1) * vol(ip, ind)
               end do
            end do
         end do
@@ -221,7 +213,7 @@ subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_ve
         do idim = 1,ndim
            do ind = 1,twotondim
               do ip = 1,np
-                  ap(ioft + ip, idim) =  ap(ioft + ip, idim) + f(cell_index(ip,ind),idim) * vol(ip,ind)
+                  ap(ioft + ip, idim) =  ap(ioft + ip, idim) + f(cell_index(ip, ind), idim) * vol(ip, ind)
                end do
            end do
         end do
