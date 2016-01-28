@@ -11,7 +11,7 @@ module pm_commons
   integer(kind=4),allocatable,dimension(:  ), target :: current_state
   integer(kind=4),allocatable,dimension(:)  ::part_ind_permutation, part_ind_permutation2
   ! Particle histogram related variables and arrays
-  integer(kind=8),allocatable,dimension(:,:)::bin_keys,particle_histogram_keys
+  integer(kind=8),allocatable,dimension(:,:), target ::bin_keys,particle_histogram_keys
   real(dp),allocatable,dimension(:)         ::bin_mass,particle_histogram_mass, bin_count
   integer                                   ::nbins
 
@@ -57,7 +57,6 @@ contains
     
     integer :: ihilbert, idim
 
-    npart = npart - 1
     do idim = 1, ndim
        call array_pop(xp(1:npart, idim), ipart)
        call array_pop(vp(1:npart, idim), ipart)
@@ -72,6 +71,7 @@ contains
 #ifdef OUTPUT_PARTICLE_POTENTIAL
     call array_pop(ptcl_phi(1:npart), ipart)
 #endif
+    npart = npart - 1
   end subroutine kill_one_particle
 
 ! #############################################################

@@ -226,60 +226,46 @@ subroutine get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel,
 end subroutine get_cell_index_from_cartesian_hash
 
 !################################################################
-subroutine check_refinements(communicator, ndata_remote, ndata, ndata_local, ndata_local_oft, &
-     refined, hkeys, ilevel)
-  use amr_parameters, only: nhilbert, nvector
-  use amr_commons,    only: son
-  use particle_communication, only: part_data_to_domain, domain_data_to_part
+subroutine check_refinements(refined, hkeys, ilevel)
+  use amr_parameters,         only: nhilbert, nvector
+  use amr_commons,            only: son, bound_key_level
+  use particle_communication, only: hilbert_comm, build_communicator, &
+                                    part_data_to_domain, domain_data_to_part
   implicit none
-  integer, intent(in) ::  ilevel, ndata
-  integer, intent(in) :: ndata_remote, ndata_local, ndata_local_oft
+
+  integer,                         intent(in) :: ilevel
   integer(kind=8), dimension(:,:), intent(in) :: hkeys
-  integer, dimension(:,:), intent(in) :: communicator
-  integer, dimension(:), intent(inout) :: refined
+  integer,        dimension(:), intent(inout) :: refined
 
-  ! This routine checks for ndata hilbert keys in level ilevel
-  ! if they sit in a refined cell.
-
-
-  
-  ! This routine sorts particles between ilevel and ilevel + 1
-  ! (equivalent to kill_tree_fine).
-
-  ! The routine can only run after:
-  ! call compute_particle_histogram(ilevel)
-  ! call build_communicator(...)
-
-  ! The "bins" here are the histogram bins and correspond to 
-  ! actual grid cells. "local_... variables" denote properties in the
-  ! MPI process which hosts the particles, while "remote_... variables" 
-  ! are used for properties in the MPI process which hosts the corresponding
-  ! leaf-cell.
-
+  ! This routine checks for the provided hilbert keys if they correspond to 
+  ! refined cells at level ilevel.
 
   integer  :: idata, ioft, nd, ihilbert
   integer, dimension(1:nvector) :: dummy_int
-
+  type(hilbert_comm) :: comm
+  
   integer,         allocatable, dimension(:  ) :: remote_refined
   integer(kind=8), allocatable, dimension(:,:) :: remote_keys
 
+  call build_communicator(comm, hkeys, bound_key_level(:, ilevel))
+  
 #ifndef WITHOUTMPI
-  allocate(remote_refined(1:ndata_remote))
-  allocate(remote_keys(1:ndata_remote, 1:nhilbert))
+  allocate(remote_refined(1:comm%nrecv))
+  allocate(remote_keys(1:comm%nrecv, 1:nhilbert))
   do ihilbert = 1, nhilbert
-     call part_data_to_domain(communicator, hkeys(:, ihilbert), remote_keys(:, ihilbert))
+     call part_data_to_domain(comm, hkeys(:, ihilbert), remote_keys(:, ihilbert))
   end do
 #endif
-
+  
   ! Probe local cells for refinement (abuse refined to store cell index)
-  do ioft = ndata_local_oft, ndata_local_oft + ndata_local - 1, nvector
-     nd = min(ndata_local_oft + ndata_local - ioft, nvector) 
-     call get_cell_index_from_hilbertkey(refined(ioft + 1: ioft + nd), &
+  do ioft = comm%local_oft, comm%local_oft + comm%nlocal - 1, nvector
+     nd = min(comm%local_oft + comm%nlocal - ioft, nvector) 
+     call get_cell_index_from_hilbertkey(refined(ioft + 1:ioft + nd), &
           dummy_int(1:nd), hkeys(ioft + 1:ioft + nd, 1:nhilbert), nd, ilevel)
   end do
 
   ! Mark data corresponding to refined cells
-  do idata = ndata_local_oft + 1, ndata_local_oft + ndata_local
+  do idata = comm%local_oft + 1, comm%local_oft + comm%nlocal
      if (son(refined(idata)) > 0)then
         refined(idata) = 1
      else
@@ -289,15 +275,15 @@ subroutine check_refinements(communicator, ndata_remote, ndata, ndata_local, nda
 
 #ifndef WITHOUTMPI
   ! Probe remote cells for refinement (abuse remote_refined to store cell index) 
-  do ioft = 0, ndata_remote - 1 , nvector
-     nd = min(ndata_remote - ioft, nvector) 
+  do ioft = 0, comm%nrecv - 1 , nvector
+     nd = min(comm%nrecv - ioft, nvector) 
      call get_cell_index_from_hilbertkey(remote_refined(ioft + 1:ioft + nd), &
           dummy_int(1:nd), remote_keys(ioft + 1:ioft + nd, 1:nhilbert), nd, ilevel)
   end do
 #endif
 
   ! Mark bins corresponding to refined cells
-  do idata = 1, ndata_remote
+  do idata = 1, comm%nrecv
      if (son(remote_refined(idata))>0)then
         remote_refined(idata) = 1
      else
@@ -307,8 +293,7 @@ subroutine check_refinements(communicator, ndata_remote, ndata, ndata_local, nda
 
 #ifndef WITHOUTMPI
   ! Send refinement information back
-  call domain_data_to_part(communicator, remote_refined, refined)
-
+  call domain_data_to_part(comm, remote_refined, refined)
   deallocate(remote_refined)
   deallocate(remote_keys)
 #endif

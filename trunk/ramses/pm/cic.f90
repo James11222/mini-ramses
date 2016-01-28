@@ -1,6 +1,6 @@
 recursive subroutine cic(xpart, array_size, cell_index, vol, offset, np, cic_level, level_boundary_case)
    use amr_parameters,  only: static, dp, twotondim, int_pre, ndim
-   use amr_commons,     only: boxlen, nvector, ind_table2
+   use amr_commons,     only: boxlen, nvector, ind_table2, periodic
    use coordinates,     only: get_cell_index_from_cartesian_hash
    implicit none
 
@@ -88,17 +88,33 @@ recursive subroutine cic(xpart, array_size, cell_index, vol, offset, np, cic_lev
       ! Compute cloud corner offset from cloud center
       delta(1:ndim) = ind(1:ndim) - 0.5D0       
       
-
-      ! TODO: Non-periodic boundaries...
       do idim = 1, ndim
          do ip = 1, np
             ix(ip, idim) = floor(xpart_grid(ip,idim) + delta(idim), kind=int_pre)
          end do
       end do
+
+      ! Check for periodic boundaries - maybe set CIC volumes which leak out of the box to zero?
       do idim = 1, ndim
-         do ip = 1, np
-            ix(ip, idim) = IAND(ix(ip, idim) + grid_size, grid_size_one)
-         end do
+         ! Choose fast-track if both sides are periodic - is it really worth it?
+         if (periodic(0, idim) .and. periodic(1, idim)) then
+            do ip = 1, np
+               ix(ip, idim) = IAND(ix(ip, idim) + grid_size, grid_size_one)
+            end do
+         else
+            ! Check lower boundary
+            if (periodic(0, idim)) then
+               do ip = 1, np
+                  if (ix(ip, idim) < 0) ix(ip, idim) = ix(ip, idim) + grid_size
+               end do
+            end if
+            ! Check upper boundary
+            if (periodic(1, idim)) then
+               do ip = 1, np
+                  if (ix(ip, idim) >= grid_size) ix(ip, idim) = ix(ip, idim) - grid_size
+               end do
+            end if
+         end if
       end do
       
 

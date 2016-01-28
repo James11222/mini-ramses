@@ -9,7 +9,7 @@ subroutine read_hydro_params(nml_ok)
   !--------------------------------------------------
   ! Local variables  
   !--------------------------------------------------
-  integer::i,idim,nboundary_true=0
+  integer::i,idim,nboundary_true=0, iface
   integer ,dimension(1:MAXBOUND)::bound_type
   real(dp)::scale,ek_bound
 
@@ -223,5 +223,12 @@ subroutine read_hydro_params(nml_ok)
      jeans_refine(i)=-1.0
   end do
 
+  ! Build a logical array that will tell for each surface whether it's periodic or not.
+  periodic = .true.
+  do i = 1, nboundary
+     iface = mod(boundary_type(i), 10) - 1
+     periodic(mod(iface, 2), iface / 2 + 1) = .false.
+  end do
+  
 end subroutine read_hydro_params
 

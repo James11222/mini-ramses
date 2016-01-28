@@ -26,7 +26,7 @@ subroutine part_to_ascii
 #endif
 
   do i = 1, ncpu * npartmax
-     do j = 1, npartmax
+     do j = 1, npart
         if (idp(j) == i)then
            open(12, file="particles.txt", status="old", position="append", action="write", form="formatted")
            write(12, '(A,X,I10,3(X,E16.8E2))'),"xp:", i, xp(j, :)
