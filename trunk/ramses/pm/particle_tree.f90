@@ -319,7 +319,7 @@ subroutine balance_particles(ilevel)
   ! Compute the delta in number of particles 
   delta_npart = comm%nlocal - comm%ndata + comm%nrecv
   npart_new = npart + delta_npart
-  
+
   ! Check if there is enough space
   if (npart_new > npartmax)then
      write(*,*) 'too many particles'
@@ -348,39 +348,45 @@ subroutine balance_particles(ilevel)
 
   ! Make/remove space by moving all higher level particles to the right/left
   i1oft_new = i1oft + delta_npart
-  xp(i1oft_new + 1:npart_new, 1:ndim) = xp(i1oft + 1: npart, 1:ndim)
-  vp(i1oft_new + 1:npart_new, 1:ndim) = vp(i1oft + 1: npart, 1:ndim)
-  mp(i1oft_new + 1:npart_new) = mp(i1oft + 1: npart)
-  idp(i1oft_new + 1:npart_new) = idp(i1oft + 1: npart)
-  levelp(i1oft_new + 1:npart_new) = levelp(i1oft + 1: npart)
-  part_hkey(i1oft_new + 1:npart_new, 1:nhilbert) = part_hkey(i1oft + 1: npart, 1:nhilbert)
-
-
+  if (delta_npart > 0)then
+     do i = npart, i1oft + 1, -1 
+        xp(i + delta_npart, 1:ndim) = xp(i, 1:ndim)
+        vp(i + delta_npart, 1:ndim) = vp(i, 1:ndim)
+        mp(i + delta_npart) = mp(i)
+        idp(i + delta_npart) = idp(i)
+        levelp(i + delta_npart) = levelp(i)
+        part_hkey(i + delta_npart, 1:nhilbert) = part_hkey(i, 1:nhilbert)
+     end do
+  else
+     do i = i1oft + 1, npart 
+        xp(i + delta_npart, 1:ndim) = xp(i, 1:ndim)
+        vp(i + delta_npart, 1:ndim) = vp(i, 1:ndim)
+        mp(i + delta_npart) = mp(i)
+        idp(i + delta_npart) = idp(i)
+        levelp(i + delta_npart) = levelp(i)
+        part_hkey(i + delta_npart, 1:nhilbert) = part_hkey(i, 1:nhilbert)
+     end do
+  end if
+        
   ! Move particles that stay to the left by their local offset
-  i1 = ioft                  + 1; i2 = ioft                  + comm%nlocal
-  j1 = ioft + comm%local_oft + 1; j2 = ioft + comm%local_oft + comm%nlocal
-
-  xp(i1:i2, 1:ndim) = xp(j1:j2, 1:ndim)
-  vp(i1:i2, 1:ndim) = vp(j1:j2, 1:ndim)
-  mp(i1:i2) = mp(j1:j2)
-  idp(i1:i2) = idp(j1:j2)
-  levelp(i1:i2) = levelp(j1:j2)
-  part_hkey(i1:i2, 1:nhilbert) = part_hkey(j1:j2, 1:nhilbert)
-
+  do i = ioft + 1, ioft + comm%nlocal
+     xp(i, 1:ndim) = xp(i + comm%local_oft, 1:ndim)
+     vp(i, 1:ndim) = vp(i + comm%local_oft, 1:ndim)
+     mp(i) = mp(i + comm%local_oft)
+     idp(i) = idp(i + comm%local_oft)
+     levelp(i) = levelp(i + comm%local_oft)
+     part_hkey(i, 1:nhilbert) = part_hkey(i + comm%local_oft, 1:nhilbert)
+  end do
+  
   ! Fill in received particles
-  i1 = ioft + comm%nlocal + 1; i2 = ioft + comm%nlocal + comm%nrecv
-  
-  xp(i1:i2, 1:ndim) = xp_recv
-  vp(i1:i2, 1:ndim) = vp_recv
-  mp(i1:i2) = mp_recv
-  idp(i1:i2) = idp_recv
-  levelp(i1:i2) = levelp_recv
-  part_hkey(i1:i2, 1:nhilbert) = part_hkey_recv
-
-  part_ind_permutation = -99999
-  part_ind_permutation2 = -99999
-  current_state = -99999999
-  
+  do i = 1, comm%nrecv
+     xp(ioft + comm%nlocal + i, 1:ndim) = xp_recv(i, 1:ndim)
+     vp(ioft + comm%nlocal + i, 1:ndim) = vp_recv(i, 1:ndim)
+     mp(ioft + comm%nlocal + i) = mp_recv(i)
+     idp(ioft + comm%nlocal + i) = idp_recv(i)
+     levelp(ioft + comm%nlocal + i) = levelp_recv(i)
+     part_hkey(ioft + comm%nlocal + i, 1:nhilbert) = part_hkey_recv(i, 1:nhilbert)
+  end do
   deallocate(xp_recv, vp_recv, mp_recv, part_hkey_recv, levelp_recv, idp_recv)
 
   ! Update total number of particles and level offset for ilevel + 1
