@@ -284,7 +284,7 @@ subroutine balance_particles(ilevel)
        current_state, part_ind_permutation, part_ind_permutation2
   use pm_parameters,  only: npart
   use amr_parameters, only: ndim, dp, nhilbert, id_pre
-  use amr_commons,    only: myid
+  use amr_commons,    only: myid, nlevelmax
   use particle_communication, only: hilbert_comm, build_dummy_communicator, part_data_to_domain
   use sort,           only: lsd_radix_sort_particles, apply_particle_permutation
   implicit none
@@ -319,7 +319,8 @@ subroutine balance_particles(ilevel)
   ! Compute the delta in number of particles 
   delta_npart = comm%nlocal - comm%ndata + comm%nrecv
   npart_new = npart + delta_npart
-
+  i1oft_new = i1oft + delta_npart
+  
   ! Check if there is enough space
   if (npart_new > npartmax)then
      write(*,*) 'too many particles'
@@ -345,9 +346,9 @@ subroutine balance_particles(ilevel)
      call part_data_to_domain(comm, part_hkey(ioft + 1: ioft + np, ihilbert), part_hkey_recv(:, ihilbert))
   end do
 
-
-  ! Make/remove space by moving all higher level particles to the right/left
-  i1oft_new = i1oft + delta_npart
+  
+  ! Make space by moving all higher level particles to the right/left
+  ! Important: Removing excess space can only be done after communication!
   if (delta_npart > 0)then
      do i = npart, i1oft + 1, -1 
         xp(i + delta_npart, 1:ndim) = xp(i, 1:ndim)
@@ -357,17 +358,8 @@ subroutine balance_particles(ilevel)
         levelp(i + delta_npart) = levelp(i)
         part_hkey(i + delta_npart, 1:nhilbert) = part_hkey(i, 1:nhilbert)
      end do
-  else
-     do i = i1oft + 1, npart 
-        xp(i + delta_npart, 1:ndim) = xp(i, 1:ndim)
-        vp(i + delta_npart, 1:ndim) = vp(i, 1:ndim)
-        mp(i + delta_npart) = mp(i)
-        idp(i + delta_npart) = idp(i)
-        levelp(i + delta_npart) = levelp(i)
-        part_hkey(i + delta_npart, 1:nhilbert) = part_hkey(i, 1:nhilbert)
-     end do
   end if
-        
+
   ! Move particles that stay to the left by their local offset
   do i = ioft + 1, ioft + comm%nlocal
      xp(i, 1:ndim) = xp(i + comm%local_oft, 1:ndim)
@@ -389,10 +381,24 @@ subroutine balance_particles(ilevel)
   end do
   deallocate(xp_recv, vp_recv, mp_recv, part_hkey_recv, levelp_recv, idp_recv)
 
+  ! Move higher level particles to the left
+  if (delta_npart < 0)then
+     do i = i1oft + 1, npart
+        xp(i + delta_npart, 1:ndim) = xp(i, 1:ndim)
+        vp(i + delta_npart, 1:ndim) = vp(i, 1:ndim)
+        mp(i + delta_npart) = mp(i)
+        idp(i + delta_npart) = idp(i)
+        levelp(i + delta_npart) = levelp(i)
+        part_hkey(i + delta_npart, 1:nhilbert) = part_hkey(i, 1:nhilbert)
+     end do
+  end if
+
+  
   ! Update total number of particles and level offset for ilevel + 1
   part_level_offset(ilevel + 1) = i1oft_new
   npart = npart_new
-
+  if (ilevel < nlevelmax)part_level_offset(ilevel + 2 : nlevelmax + 1) = npart
+  
   ! Resort particles
   call lsd_radix_sort_particles(ioft, np + delta_npart, ilevel, ilevel, .true.)
   call apply_particle_permutation(ioft, np + delta_npart, ilevel)
@@ -401,8 +407,6 @@ subroutine balance_particles(ilevel)
   return
 #endif
 
-
-  
 end subroutine balance_particles
 !#########################################################################
 
