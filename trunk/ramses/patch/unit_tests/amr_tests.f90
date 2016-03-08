@@ -91,7 +91,8 @@ subroutine hash_tests(all_ok, verbose)
   real,dimension(0:ndim,1:3000)::key_float
   integer,dimension(1:3000)::val
   integer(int_pre),dimension(0:ndim,1:3000)::key
-
+  character(6) :: hash_type = 'simple'
+  
   ok=.true.
  
   call random_number(key_float)
@@ -102,7 +103,7 @@ subroutine hash_tests(all_ok, verbose)
      val(i)=int(val_float(i)*2000,kind=4) + 1
   end do
 
-  call init_empty_hash(htable,3000)
+  call init_empty_hash(htable,3000, hash_type)
 
   if(verbose) call hash_stats(htable)
 
