@@ -621,7 +621,7 @@ contains
   !================================================================
   !================================================================
   !================================================================
-  subroutine hilbert_nd(ix, hkey, cstate, initial_level, final_level, npoint)
+  subroutine hilbert(ix, hkey, cstate, initial_level, final_level, npoint)
     use amr_parameters, only: nvector, int_pre, nhilbert, ndim
     implicit none
     integer, intent(in) :: initial_level, final_level, npoint
@@ -682,12 +682,12 @@ contains
           cstate(ip) = nstate(ip)
        end do
     enddo
-  end subroutine hilbert_nd
+  end subroutine hilbert
   !================================================================
   !================================================================
   !================================================================
   !================================================================
-  subroutine hilbert_nd_reverse(ix, hkey, key_level, npoint)
+  subroutine hilbert_reverse(ix, hkey, key_level, npoint)
     use amr_parameters, only: nvector, int_pre, ndim
     implicit none
 
@@ -746,7 +746,7 @@ contains
        end do
     enddo
 
-  end subroutine hilbert_nd_reverse
+  end subroutine hilbert_reverse
 
   !================================================================
   !================================================================
@@ -800,5 +800,97 @@ contains
     end do
 
   end subroutine hilbert_for_particle
+
+
+  function ge_keys(key_a, key_b)
+    implicit none
+    logical::ge_keys
+
+#if NHILBERT == 1
+    integer(kind=8), intent(in), dimension(0:0) :: key_a, key_b
+
+    ge_keys = (key_a(0) >= key_b(0))
+#endif
+  
+#if NHILBERT == 2
+    integer(kind=8), intent(in), dimension (0:1):: key_a, key_b
+    if     (key_a(1) > key_b(1)) then
+       ge_keys  =  .true.
+    elseif (key_a(1) < key_b(1)) then
+       ge_keys = .false.
+    elseif (key_a(0) > key_b(0)) then
+       ge_keys = .true.
+    elseif (key_a(0) < key_b(0)) then
+       ge_keys = .false.
+    else
+       ge_keys = .true.
+    end if
+#endif
+    
+#if NHILBERT == 3  
+    integer(kind=8), intent(in), dimension (0:2):: key_a, key_b
+
+    if     (key_a(2) > key_b(2)) then
+       ge_keys = .true.
+    elseif (key_a(2) < key_b(2)) then
+       ge_keys = .false.
+    elseif (key_a(1) > key_b(1)) then
+       ge_keys = .true.
+    elseif (key_a(1) < key_b(1)) then
+       ge_keys = .false.
+    elseif (key_a(0) > key_b(0)) then
+       ge_keys = .true.
+    elseif (key_a(0) < key_b(0)) then
+       ge_keys = .false.
+    else
+       ge_keys = .true.
+    end if
+#endif
+
+  end function ge_keys
+ 
+  function gt_keys(key_a, key_b)
+    implicit none
+    logical::gt_keys
+
+    integer(kind=8), intent(in), dimension (:):: key_a, key_b
+#if NHILBERT == 1
+    gt_keys = (key_a(1) > key_b(1))
+#endif
+
+#if NHILBERT == 2
+    if     (key_a(2) > key_b(2)) then
+       gt_keys  =  .true.
+    elseif (key_a(2) < key_b(2)) then
+       gt_keys = .false.
+    elseif (key_a(1) > key_b(1)) then
+       gt_keys = .true.
+    elseif (key_a(1) < key_b(1)) then
+       gt_keys = .false.
+    else
+       gt_keys = .false.
+    end if
+#endif
+
+#if NHILBERT == 3
+    if     (key_a(3) > key_b(3)) then
+       gt_keys = .true.
+    elseif (key_a(3) < key_b(3)) then
+       gt_keys = .false.
+    elseif (key_a(2) > key_b(2)) then
+       gt_keys = .true.
+    elseif (key_a(2) < key_b(2)) then
+       gt_keys = .false.
+    elseif (key_a(1) > key_b(1)) then
+       gt_keys = .true.
+    elseif (key_a(1) < key_b(1)) then
+       gt_keys = .false.
+    else
+       gt_keys = .false.
+    end if
+#endif
+  end function gt_keys
+
+
   
 end module hilbert
