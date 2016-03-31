@@ -88,7 +88,7 @@ contains
 !################################################################
 subroutine get_cell_index_from_hilbertkey(cell_index, cell_levl, hkey, np, ilevel)
   use amr_parameters, only: int_pre, nvector, nhilbert, ndim
-  use hilbert,     only: hilbert_nd_reverse
+  use hilbert,     only: hilbert_reverse
   implicit none
   integer, intent(in) :: np, ilevel
   integer(kind=8),dimension(:,:), intent(in) :: hkey
@@ -96,7 +96,7 @@ subroutine get_cell_index_from_hilbertkey(cell_index, cell_levl, hkey, np, ileve
 
   integer(int_pre),dimension(1:nvector, 1:ndim) :: ix
   
-  call hilbert_nd_reverse(ix, hkey, ilevel, np)
+  call hilbert_reverse(ix, hkey, ilevel, np)
 
   call get_cell_index_from_cartesian_hash(cell_index, cell_levl, ix, ilevel, np)     
 

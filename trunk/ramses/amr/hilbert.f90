@@ -796,7 +796,7 @@ contains
        end do
 
        ! Passing in array slices is ok (no copying) if the dummy argument has assumed shape and the interface is explicit!
-       call hilbert_nd(ix, part_hkey(ioft + 1: ioft + np, 1:nhilbert), current_state(ioft + 1: ioft + np), initial_level, final_level, np)
+       call hilbert(ix, part_hkey(ioft + 1: ioft + np, 1:nhilbert), current_state(ioft + 1: ioft + np), initial_level, final_level, np)
     end do
 
   end subroutine hilbert_for_particle
