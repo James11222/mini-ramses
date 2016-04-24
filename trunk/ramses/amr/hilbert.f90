@@ -361,266 +361,6 @@ contains
   !================================================================
   !================================================================
   !================================================================
-!   subroutine hilbert3d(x,y,z,order,bit_length,npoint)
-!     use amr_parameters, ONLY: qdp,nvector
-!     implicit none
-! #ifndef WITHOUTMPI
-!     include 'mpif.h'
-! #endif
-!     integer     ,INTENT(IN)                     ::bit_length,npoint
-!     integer     ,INTENT(IN) ,dimension(1:nvector)::x,y,z
-!     real(qdp),INTENT(OUT),dimension(1:nvector)::order
-
-!     integer::i,ip,info
-!     integer(kind=8)::testint
-!     integer(kind=8),dimension(1:nvector)::hkey
-!     integer(kind=4),dimension(1:nvector)::cstate,nstate,hdigit,sdigit,ind
-
-
-!     if(bit_length>bit_size(bit_length))then
-!        write(*,*)'Maximum bit length=',bit_size(bit_length)
-!        write(*,*)'stop in hilbert3d'
-!        call clean_stop
-!     endif
-
-
-! #ifdef QUADHILBERT
-!     call MPI_ABORT(MPI_COMM_WORLD,1,info)
-! #endif
-
-!     ! build Hilbert ordering using state diagram
-!     cstate=0
-!     hkey=0
-!     do i=bit_length-1,0,-1
-!        do ip=1,npoint
-!           hkey(ip)=hkey(ip)*longeight
-!        end do
-
-!        sdigit=0
-!        do ip=1,npoint
-!           if(btest(x(ip),i))sdigit(ip)=sdigit(ip)+four
-!           if(btest(y(ip),i))sdigit(ip)=sdigit(ip)+two
-!           if(btest(z(ip),i))sdigit(ip)=sdigit(ip)+one
-!        end do
-
-!        do ip=1,npoint
-!           ind(ip)=cstate(ip)*eight+sdigit(ip)
-!        end do
-
-!        do ip=1,npoint
-!           nstate(ip)=next_state_diagram3d(ind(ip))
-!        end do
-
-!        do ip=1,npoint
-!           hkey(ip)=hkey(ip)+three_digit_diagram(ind(ip))
-!        end do
-
-!        do ip=1,npoint
-!           cstate(ip)=nstate(ip)
-!        end do
-!     enddo
-
-!     do ip=1,npoint
-!        order(ip)=real(hkey(ip),kind=8)             
-!     end do
-
-!   end subroutine hilbert3d
-  !================================================================
-  !================================================================
-  !================================================================
-  !================================================================
-!   subroutine hilbert3d_nonvec(x,y,z,order,bit_length,npoint)
-!     use amr_parameters, ONLY: qdp,nvector
-!     implicit none
-! #ifndef WITHOUTMPI
-!     include 'mpif.h'
-! #endif
-!     integer  , INTENT(IN)                       :: bit_length,npoint
-!     integer  , INTENT(IN) ,dimension(1:nvector) :: x,y,z
-!     real(qdp), INTENT(OUT), dimension(1:nvector) :: order
-
-
-
-!     integer(kind=4)::i,ip,xx,yy,zz,info
-!     integer(kind=8)::hkey
-!     integer(kind=4)::cstate,nstate,sdigit,ind
-!     if(bit_length>bit_size(bit_length))then
-!        write(*,*)'Maximum bit length=',bit_size(bit_length)
-!        write(*,*)'stop in hilbert3d'
-!        call clean_stop
-!     endif
-
-! #ifdef QUADHILBERT
-! #ifndef WITHOUTMPI
-!     call MPI_ABORT(MPI_COMM_WORLD,1,info)
-! #else
-!     stop
-! #endif
-! #endif
-
-
-!     do ip=1,npoint  
-!        ! build Hilbert ordering using state diagram
-!        xx=x(ip); yy=y(ip); zz=z(ip)
-!        cstate=0
-!        hkey=0
-!        do i=bit_length-1,0,-1
-!           hkey=hkey*longeight
-!           sdigit=zero
-!           if(btest(xx,i))sdigit=sdigit+four
-!           if(btest(yy,i))sdigit=sdigit+two
-!           if(btest(zz,i))sdigit=sdigit+one
-!           ind=cstate*eight+sdigit
-!           nstate=next_state_diagram3d(ind)
-!           hkey=hkey+three_digit_diagram(ind)
-!           cstate=nstate        
-!        enddo
-!        order(ip)=real(hkey,kind=8)             
-!     end do
-
-!   end subroutine hilbert3d_nonvec
-  !================================================================
-  !================================================================
-  !================================================================
-  !================================================================
-  ! subroutine hilbert2d(ix, iy, hkey1, hkey0, cstate, &
-  !      initial_level, final_level, npoint)
-  !   use amr_parameters, only: qdp, nvector
-  !   implicit none
-  !   integer        , intent(in)                          :: initial_level, final_level, npoint
-  !   integer(kind=8), intent(in),    dimension(1:nvector) :: ix, iy
-  !   integer(kind=4), intent(inout), dimension(1:nvector) :: cstate
-  !   integer(kind=8), intent(inout), dimension(1:nvector) :: hkey1, hkey0
-    
-  !   ! Compute nvector 2-integer hilbert keys from the cartesian keys ix, iy
-    
-  !   ! Local vars
-  !   integer :: ibit, ip
-  !   integer(kind=4),dimension(1:nvector) :: nstate, sdigit, ind
-    
-  !   ! if no keys present yet
-  !   if (initial_level==0) then
-  !      cstate(1:npoint)=0
-  !      hkey0(1:npoint)=0; hkey1(1:npoint)=0
-  !   end if
-
-  !   do ibit=final_level-initial_level-1,0,-1
-
-  !      ! Use only 62 out of the 64 bits for 2d case 
-  !      ! (no unsigned in in fortran...)
-  !      if (final_level > 31)then
-  !         do ip=1,npoint
-  !            hkey1(ip) = ISHFT(hkey1(ip),4)
-  !            hkey1(ip) = ISHFT(hkey1(ip),-2)
-  !         end do
-  !         do ip=1,npoint
-  !            hkey1(ip) = hkey1(ip) + ISHFT(hkey0(ip),-60)
-  !         end do
-  !      end if
-
-  !      do ip=1,npoint
-  !         hkey0(ip) = ISHFT(hkey0(ip),4)
-  !         hkey0(ip) = ISHFT(hkey0(ip),-2)
-  !      end do
-
-  !      sdigit=0
-  !      do ip=1,npoint
-  !         if(btest(ix(ip),ibit)) sdigit(ip) = sdigit(ip)+two
-  !         if(btest(iy(ip),ibit)) sdigit(ip) = sdigit(ip)+one
-  !      end do
-
-  !      do ip=1,npoint
-  !         ind(ip) = cstate(ip)*four + sdigit(ip)
-  !      end do
-
-  !      do ip=1,npoint
-  !         nstate(ip) = next_state_diagram(ind(ip))
-  !      end do
-
-  !      do ip=1,npoint
-  !         hkey0(ip) = hkey0(ip) + two_digit_diagram(ind(ip))
-  !      end do
-
-  !      do ip=1,npoint
-  !         cstate(ip) = nstate(ip)
-  !      end do
-  !   enddo
-  ! end subroutine hilbert2d
-  ! !================================================================
-  ! !================================================================
-  ! !================================================================
-  ! !================================================================
-  ! subroutine hilbert2d_reverse(ix, iy, hkey1, hkey0, key_level, npoint)
-  !   use amr_parameters, only: nvector
-  !   implicit none
-
-  !   ! Inpu/Output variables:
-  !   integer        , intent(in)                                :: key_level, npoint
-  !   integer(kind=8), intent(out), dimension(1:nvector)         :: ix, iy
-  !   integer(kind=8), intent(in),  dimension(1:nvector), target :: hkey0, hkey1
-
-  !   ! Descripton:
-  !   ! Compute nvector cartesian keys from the corresponding 2-integer hilbert keys.
-
-  !   ! pointer to one of the two hkey arrays
-  !   integer(kind=8), pointer              :: use_key(:)   
-  !   integer                               :: ip, ibit1, ikey, ilevel
-  !   integer(kind=4), dimension(1:nvector) :: cstate, nstate, ind
-  !   integer(kind=8), dimension(1:nvector) :: sdigit
-
-  !   ! Build the cartesian key using the state diagrams
-  !   cstate=0
-  !   ix=0; iy=0
-
-  !   do ilevel=1,key_level
-  !      ibit1 = (key_level-ilevel)*2
-  !      ikey = ibit1/62
-
-  !      ! use a pointer here to define which of the three integer keys 
-  !      ! must be accessed.
-  !      if (ikey==0) use_key => hkey0
-  !      if (ikey==1) use_key => hkey1
-
-  !      ibit1 = mod(ibit1,62)
-
-  !      ! leftshift the cartesian keys by one position
-  !      do ip=1,npoint
-  !         ix(ip)=ISHFT(ix(ip),1)
-  !         iy(ip)=ISHFT(iy(ip),1)
-  !      end do
-
-  !      ! read the next two bits from the hilbert key
-  !      do ip=1,npoint
-  !         sdigit(ip) = ibits(use_key(ip),ibit1,2)
-  !      end do
-
-  !      ! Compute lookup index in (flat) state diagrams
-  !      do ip=1,npoint
-  !         ind(ip) = cstate(ip)*four + sdigit(ip)
-  !      end do
-
-  !      ! save next state
-  !      do ip=1,npoint
-  !         nstate(ip) = next_state_diagram_reverse(ind(ip))
-  !      end do
-
-  !      ! add one integer key digit each
-  !      do ip=1,npoint
-  !         ix(ip) = ix(ip)+x_digit_diagram2d(ind(ip))
-  !      end do
-  !      do ip=1,npoint
-  !         iy(ip) = iy(ip)+y_digit_diagram2d(ind(ip))
-  !      end do
-  !      do ip=1,npoint
-  !         cstate(ip) = nstate(ip)
-  !      end do
-  !   enddo
-
-  ! end subroutine hilbert2d_reverse
-  !================================================================
-  !================================================================
-  !================================================================
-  !================================================================
   subroutine hilbert(ix, hkey, cstate, initial_level, final_level, npoint)
     use amr_parameters, only: nvector, int_pre, nhilbert, ndim
     implicit none
@@ -804,23 +544,21 @@ contains
 
   function ge_keys(key_a, key_b)
     implicit none
-    logical::ge_keys
+    integer(kind=8), intent(in), dimension (:) :: key_a, key_b
+    logical :: ge_keys
 
 #if NHILBERT == 1
-    integer(kind=8), intent(in), dimension(0:0) :: key_a, key_b
-
-    ge_keys = (key_a(0) >= key_b(0))
+    ge_keys = (key_a(1) >= key_b(1))
 #endif
   
 #if NHILBERT == 2
-    integer(kind=8), intent(in), dimension (0:1):: key_a, key_b
-    if     (key_a(1) > key_b(1)) then
+    if     (key_a(2) > key_b(2)) then
        ge_keys  =  .true.
-    elseif (key_a(1) < key_b(1)) then
+    elseif (key_a(2) < key_b(2)) then
        ge_keys = .false.
-    elseif (key_a(0) > key_b(0)) then
+    elseif (key_a(1) > key_b(1)) then
        ge_keys = .true.
-    elseif (key_a(0) < key_b(0)) then
+    elseif (key_a(1) < key_b(1)) then
        ge_keys = .false.
     else
        ge_keys = .true.
@@ -828,19 +566,17 @@ contains
 #endif
     
 #if NHILBERT == 3  
-    integer(kind=8), intent(in), dimension (0:2):: key_a, key_b
-
-    if     (key_a(2) > key_b(2)) then
+    if     (key_a(3) > key_b(3)) then
+       ge_keys = .true.
+    elseif (key_a(3) < key_b(3)) then
+       ge_keys = .false.
+    elseif (key_a(2) > key_b(2)) then
        ge_keys = .true.
     elseif (key_a(2) < key_b(2)) then
        ge_keys = .false.
     elseif (key_a(1) > key_b(1)) then
        ge_keys = .true.
     elseif (key_a(1) < key_b(1)) then
-       ge_keys = .false.
-    elseif (key_a(0) > key_b(0)) then
-       ge_keys = .true.
-    elseif (key_a(0) < key_b(0)) then
        ge_keys = .false.
     else
        ge_keys = .true.
@@ -851,9 +587,9 @@ contains
  
   function gt_keys(key_a, key_b)
     implicit none
+    integer(kind=8), intent(in), dimension (:):: key_a, key_b
     logical::gt_keys
 
-    integer(kind=8), intent(in), dimension (:):: key_a, key_b
 #if NHILBERT == 1
     gt_keys = (key_a(1) > key_b(1))
 #endif
