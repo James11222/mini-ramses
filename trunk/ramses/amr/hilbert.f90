@@ -361,7 +361,7 @@ contains
   !================================================================
   !================================================================
   !================================================================
-  subroutine hilbert(ix, hkey, cstate, initial_level, final_level, npoint)
+  subroutine hilbert_key(ix, hkey, cstate, initial_level, final_level, npoint)
     use amr_parameters, only: nvector, int_pre, nhilbert, ndim
     implicit none
     integer, intent(in) :: initial_level, final_level, npoint
@@ -422,7 +422,7 @@ contains
           cstate(ip) = nstate(ip)
        end do
     enddo
-  end subroutine hilbert
+  end subroutine hilbert_key
   !================================================================
   !================================================================
   !================================================================
@@ -536,7 +536,7 @@ contains
        end do
 
        ! Passing in array slices is ok (no copying) if the dummy argument has assumed shape and the interface is explicit!
-       call hilbert(ix, part_hkey(ioft + 1: ioft + np, 1:nhilbert), current_state(ioft + 1: ioft + np), initial_level, final_level, np)
+       call hilbert_key(ix, part_hkey(ioft + 1: ioft + np, 1:nhilbert), current_state(ioft + 1: ioft + np), initial_level, final_level, np)
     end do
 
   end subroutine hilbert_for_particle

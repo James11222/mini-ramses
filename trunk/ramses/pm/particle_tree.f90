@@ -69,7 +69,8 @@ end subroutine sort_particles
 subroutine levelsort_particles(ilevel, np, ndata, refined, use_histograms)
   use pm_commons,     only: part_level_offset, part_ind_permutation, part_hkey, &
                             bin_keys, part_ind_permutation2
-  use sort,           only: gt_keys, apply_particle_permutation
+  use sort,           only: apply_particle_permutation
+  use hilbert,        only: gt_keys
   use amr_parameters, only: nlevelmax, nhilbert
   implicit none
 
@@ -151,7 +152,7 @@ end subroutine levelsort_particles
 subroutine compute_particle_histogram(offset, np)
   use pm_commons, only: part_hkey, bin_keys, bin_count, bin_start_offset, bin_mass, nbins, part_ind_permutation
   use amr_parameters, only: nhilbert
-  use sort,        only: gt_keys
+  use hilbert,        only: gt_keys
   implicit none
   integer, intent(in) :: offset, np
 
@@ -532,7 +533,7 @@ end subroutine get_cell_index_from_cartesian
 subroutine check_sorted(offset, np)
   use amr_parameters, only: nhilbert
   use pm_commons,   only : part_hkey, part_ind_permutation
-  use sort,         only : ge_keys
+  use hilbert,      only : ge_keys
   use amr_commons,  only : myid
   implicit none
   integer, intent(in) :: offset, np
