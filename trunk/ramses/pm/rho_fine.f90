@@ -15,7 +15,7 @@ subroutine rho_fine(ilevel)
   !------------------------------------------------------------------
   ! ADD NEW DESCRIPTION HERE!
   !------------------------------------------------------------------
-  integer :: particle_level
+  integer :: particle_level, offset
   integer::iskip,icpu,ind,i,info,nx_loc,ibound,idim,icell, ncell, ilev
   real(dp)::dx,d_scale,scale,dx_loc,scalar
   real(dp)::d0,m_refine_loc,dx_min,vol_min,mstar,msnk,nISM,nCOM
@@ -23,6 +23,17 @@ subroutine rho_fine(ilevel)
   real(kind=8),dimension(2)::totals_in,totals_out
   logical::multigrid=.false., ok, first
   real(kind=8),dimension(1:ndim+1)::multipole_in,multipole_out
+
+  interface
+     subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
+       use amr_parameters, only: ndim, dp, int_pre
+       use amr_commons,    only: ncpu, ind_table2, boxlen
+       implicit none
+       integer, intent(in) :: grid_level, nparts, nbits_patch
+       real(dp), dimension(:, :), intent(inout) :: xpart
+       real(dp), dimension(:), intent(in) :: mpart
+     end subroutine mass_deposit
+  end interface
 
   if(.not. poisson)return
   if(numbtot(1,ilevel)==0)return
@@ -105,10 +116,8 @@ subroutine rho_fine(ilevel)
   ! Compute density due to current level particles
 
   if(pic)then
-     do particle_level = ilevel, nlevelmax
-        call rho_direct_particles(particle_level, ilevel)        
-!        call rho_histogram_particles(particle_level, ilevel)
-     end do
+     offset = part_level_offset(ilevel)
+     call mass_deposit(xp(offset + 1: npart, 1:ndim), mp(offset + 1: npart), npart - offset, ilevel, 2)        
   end if
 
   do particle_level = ilevel, nlevelmax
@@ -663,445 +672,234 @@ end subroutine cic_cell
 !##############################################################################
 !##############################################################################
 !##############################################################################
-subroutine rho_direct_particles(part_level, min_grid_level)
-  use amr_parameters, only: dp, levelmin, nvector, ndim, nhilbert
-  use amr_commons,    only: ncpu, myid, bound_key_level
-  use pm_parameters,  only: n_dump_parts_direct
-  use pm_commons,     only: part_level_offset, bin_start_offset, bin_count, &
-                            xp, mp, idp, nbins, part_hkey
-#ifndef WITHOUTMPI
-  use particle_communication, only: hilbert_comm, build_communicator, part_data_to_domain
-#endif
+subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
+  use amr_parameters, only: ndim, dp, int_pre
+  use amr_commons,    only: ncpu, ind_table2, boxlen
   implicit none
-  integer, intent(in) :: part_level, min_grid_level
+  integer, intent(in) :: grid_level, nparts, nbits_patch
+  real(dp), dimension(:, :), intent(inout) :: xpart
+  real(dp), dimension(:), intent(in) :: mpart
   
-  ! This routine deposits all particles that sit at level part_level to 
-  ! the grid at level min_grid_level <= grid_level <= part_level.
+  ! This routine deposits the input particles to the AMR grid at
+  ! level grid_level. It uses a regular cartesian grid patch as
+  ! a "3d-histogram" before accessing the hash table.
+
+  logical :: evaluate_patch
+  integer :: ip, idim, patch_size, ip_offset
+  integer, dimension(1:ndim) :: grid_offset
+  integer(int_pre), dimension(1: ndim) :: ix_next, ix_current
+  real(dp) :: part_to_grid
+  real(dp), allocatable, dimension(:,:,:) :: rho_tmp
+  real(dp), dimension(1:ndim) :: dx
+
+  ! Move cic to separate module later to make interface block unnecessary!
+  interface
+     subroutine cic_deposit(xpart, mpart, np, rho_tmp, grid_oft, dx)
+       use amr_parameters, only: dp, ndim, int_pre
+       use amr_commons, only: ind_table2
+       implicit none
+       ! Assumed-shape arrays for explicit interfaces...
+       real(dp), dimension(-1:, -1:, -1:), intent(inout) :: rho_tmp
+       real(dp), dimension(:, :), intent(inout) :: xpart
+       real(dp), dimension(:), intent(in) :: mpart
+       integer, intent(in) :: np
+       integer, dimension(1: ndim), intent(in) :: grid_oft
+       real(dp), dimension(1: ndim), intent(in) :: dx
+     end subroutine cic_deposit
+     subroutine deposit_rho_tmp(rho_tmp, grid_offset, patch_size, ilevel)
+       use amr_parameters,  only: ndim, dp, int_pre
+       use amr_commons,     only: ind_table2, grid_dict, ncoarse, ngridmax
+       use poisson_commons, only: rho
+       use hash,            only: hash_get
+       implicit none
+       
+       real(dp), dimension(-2:, -2:, -2:), intent(inout) :: rho_tmp
+       integer, dimension(1:ndim) :: grid_offset
+       integer :: ilevel, patch_size
+     end subroutine deposit_rho_tmp
+  end interface
+
   
-  ! in:           - particle_level
-  !               - offset, nparts for local particles 
-  !               - mask array which marks particles which are "histogrammed"
-  !               - starting offset, number of particles
-  !               - current level  
-  ! out:          - none  
-  ! side effect:  - updates rho field on levels ilevel <= part_level   
+  ! Place a warning sign to make sure the current limitations on this routine are known.
+  if (ncpu > 1)then
+     print*, 'particle patch deposition is not yet implemented for MPI'
+     stop
+  end if
 
-  type(hilbert_comm) :: comm
-  integer :: ip, np, ioft, offset, nparts, ibin, ipart, grid_level, npart_direct, idim
-
-  integer(kind=8), allocatable, dimension(:,:) :: part_hkey_direct
-  real(dp), allocatable, dimension(:,:) :: xp_direct, xp_remote
-  real(dp), allocatable, dimension(:)   :: mp_direct, mp_remote
+  patch_size = 2 ** nbits_patch
+  dx = boxlen * 0.5d0 ** grid_level
+  part_to_grid = 2.d0 ** grid_level / boxlen
   
-  offset = part_level_offset(part_level)
-  nparts = part_level_offset(part_level+1) - part_level_offset(part_level)
+  ! Allocate two cell-thick boundaries to make the depostion onto the AMR grid
+  ! simpler.
+  allocate(rho_tmp(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1))
+  rho_tmp = 0.d0
 
-  call compute_particle_histogram(offset, nparts)
-
-  ! Count direct particles
-  npart_direct = 0
-  do ibin = 1, nbins
-     if (bin_count(ibin) < n_dump_parts_direct + 0.5) then
-        npart_direct = npart_direct + bin_count(ibin)
-     end if
-  end do
-
-  allocate(part_hkey_direct(1:npart_direct, 1:nhilbert))
-  allocate(xp_direct(1:npart_direct, 1:ndim))
-  allocate(mp_direct(1:npart_direct))
-
-  ! Fill direct particle arrays
-  ip = 0
-  ibin = 0
-  do ipart = offset + 1, offset + nparts
-     if (ipart > bin_start_offset(ibin+1)) ibin = ibin + 1
-     ! a bit of a hacky comparison between a float and an integer 
-     if (bin_count(ibin) < n_dump_parts_direct + 0.5) then
-        ip = ip + 1
-        part_hkey_direct(ip, 1:nhilbert) = part_hkey(ipart, 1:nhilbert)
-        xp_direct(ip, 1:ndim)     = xp(ipart, 1:ndim)
-        mp_direct(ip)             = mp(ipart)
-     end if
-  end do
-
-  call build_communicator(comm, part_hkey_direct, bound_key_level(:, part_level))  
-
-#ifndef WITHOUTMPI
-  allocate(xp_remote(1:comm%nrecv, 1:ndim))
-  allocate(mp_remote(1:comm%nrecv))
+  ip_offset = 0 
   do idim = 1, ndim
-     call part_data_to_domain(comm, xp_direct(:, idim), xp_remote(:, idim))
+     ix_next(idim) = xpart(1, idim) * part_to_grid
   end do
-  call part_data_to_domain(comm, mp_direct, mp_remote)
-#endif
-
-  ! Project local direct particles
-  do ioft = comm%local_oft, comm%local_oft + comm%nlocal - 1, nvector
-     np = min(nvector, comm%local_oft + comm%nlocal - ioft)
-     do grid_level = part_level, min_grid_level, -1
-        call dump_particles(xp_direct, mp_direct, comm%ndata, ioft, np, grid_level)
+  
+  do ip = 1, nparts
+     do idim = 1, ndim
+        ix_current(idim) = ix_next(idim)
      end do
-  end do
-  
-#ifndef WITHOUTMPI
-  ! Project remote direct particles
-  do ioft = 0, comm%nrecv - 1, nvector
-     np = min(nvector, comm%nrecv - ioft)
-     do grid_level = part_level, min_grid_level, -1
-        call dump_particles(xp_remote, mp_remote, comm%nrecv, ioft, np, grid_level)
-     end do
-  end do
-  deallocate(xp_remote, mp_remote)
-#endif
-  deallocate(xp_direct, mp_direct, part_hkey_direct)
-  
-  
-contains
-  subroutine dump_particles(xpart, mpart, array_size, offset, np, grid_level)
-    use amr_parameters,  only: static, mass_cut_refine, nvector, ndim, twotondim
-    use amr_commons,     only: boxlen, icoarse_max, icoarse_min
-    use poisson_commons, only: rho, phi
-    implicit none
-    integer,  intent(in):: offset, np, grid_level, array_size
-    real(dp), intent(in), dimension(1:array_size)         :: mpart
-    real(dp), intent(in), dimension(1:array_size, 1:ndim) :: xpart
 
-    ! This routine deposits nvector particles (local or remote) onto the grid (local)
-    ! at level grid_level.
-
-    ! in:           - particle masses
-    !               - particle positions
-    !               - number of particles
-    !               - grid_level 
-    
-    ! out:          - "corrupted" particle positions -> do not reuse xpart outside of 
-    !                 this subroutine  
-    
-    ! side effect:  - updates rho field on level grid_level
-
-    integer(kind=4), dimension(1:nvector, 1:twotondim), save :: cell_index
-    real(dp),        dimension(1:nvector, 1:twotondim), save :: vol
-    integer  :: ind_cloud, ip, nx_loc
-    real(dp) :: one_over_vol_loc, dx_loc
-
-    
-    nx_loc = (icoarse_max - icoarse_min + 1)
-    dx_loc = 0.5D0**grid_level * boxlen / dble(nx_loc)
-    one_over_vol_loc = 1.d0 / dx_loc**ndim    
-
-    call cic(xpart, array_size, cell_index, vol, offset, np, grid_level, 1)
-    
-    ! Loop cloud/cell intersections
-    do ind_cloud = 1, twotondim
-
-       ! Add to number density which is stored in phi
-       do ip=1,np
-             phi(cell_index(ip, ind_cloud)) = phi(cell_index(ip, ind_cloud)) + vol(ip, ind_cloud)
-       end do
-       ! Add to mass density rho
-       do ip = 1, np
-          rho(cell_index(ip, ind_cloud)) = rho(cell_index(ip, ind_cloud)) + &
-               mpart(offset + ip) * vol(ip, ind_cloud) * one_over_vol_loc
-       end do
-    end do
-    
-  end subroutine dump_particles
-
-end subroutine rho_direct_particles
-
-!##############################################################################
-!##############################################################################
-!##############################################################################
-!##############################################################################
-subroutine rho_histogram_particles(part_level, min_grid_level)
-  use amr_parameters, only: dp, levelmin, icoarse_min, icoarse_max, boxlen
-  use pm_parameters,  only: n_dump_parts_direct
-  use pm_commons,     only: part_ind_permutation, part_level_offset, bin_start_offset, &
-       bin_count, mp
-  use amr_commons,    only: myid
-  implicit none
-  integer, intent(in) :: part_level, min_grid_level
-  ! """
-  ! This routine deposits the mass of all those part_level particles which have 
-  ! not been deposited directly.
-  ! General strategy: 'Non-direct' particles are masked and a permutation is
-  ! created which allows to access the masked particles in a row.
-  ! For the masked particles do cic at all grid_level <= particle_level
-
-  ! in:               - particle_level
-  ! 'implicit' input: - part_ind_permutation 
-  ! out:              - none                                                       
-  ! side effect:      - updates rho field on levels ilevel <= part_level   
-
-  ! highest level subroutine contains:
-  ! - subroutine rho_particle_histogram_onelevel(offset, nparts, n_masked, grid_level)
-  ! - subroutine cic_histogram(xpart, mpart, bin_nr, np, grid_level, ind_cloud) 
-  ! - subroutine dump_histograms(cell_level)
-  ! """
-  
-  
-  integer  :: ip, offset, nparts, ibin, ipart, grid_level, n_masked
-  offset = part_level_offset(part_level)
-  nparts = part_level_offset(part_level+1) - part_level_offset(part_level)
-
-  call compute_particle_histogram(offset, nparts)
-
-  ! Count number of "masked" particles and compute permuation such
-  ! that masked particles are accessed first inside the level.
-  n_masked = 0
-  ibin = 0
-  do ipart = offset + 1, offset + nparts
-     if (ipart > bin_start_offset(ibin+1)) ibin = ibin + 1
-     if (bin_count(ibin) > n_dump_parts_direct + 0.5) then
-        n_masked = n_masked + 1
-        part_ind_permutation(offset + n_masked) = ipart
+     ! If current particle is last particle, evaluate!
+     if (ip == nparts) then
+        evaluate_patch = .true.        
+     else
+        do idim = 1, ndim
+           ix_next(idim) = xpart(ip + 1, idim) * part_to_grid             
+        end do
+ 
+        ! Check if current and next key are in same patch 
+        ! (i.e. each integer key ix differs only by last n bits from the current)         
+        evaluate_patch = .false.
+        do idim = 1, ndim
+           evaluate_patch = evaluate_patch .or. (IOR(ix_current(idim), ix_next(idim)) < patch_size)
+        end do
+     end if
+     
+     if (evaluate_patch)then
+        do idim = 1, ndim
+           grid_offset(idim) = ISHFT(ISHFT(ix_current(idim), -nbits_patch), nbits_patch)
+        end do
+        call cic_deposit(xpart(ip_offset + 1: ip, 1:ndim), mpart(ip_offset + 1: ip), &
+             ip - ip_offset, rho_tmp(-1: patch_size, -1: patch_size, -1: patch_size), grid_offset, dx)
+        call deposit_rho_tmp(rho_tmp, grid_offset, patch_size, grid_level)
+        ip_offset = ip
      end if
   end do
-  
-  ! outer loop here over grid levels
-!  if (n_masked > 0)then
-     do grid_level = min_grid_level, part_level
-        call rho_particle_histogram_onelevel(offset, nparts, n_masked, grid_level)
+  deallocate(rho_tmp)
+end subroutine mass_deposit
+
+subroutine cic_deposit(xpart, mpart, np, rho_tmp, grid_oft, dx)
+  use amr_parameters, only: dp, ndim, int_pre
+  use amr_commons, only: ind_table2
+  implicit none
+  ! Assumed-shape arrays for explicit interfaces...
+  real(dp), dimension(-1:, -1:, -1:), intent(inout) :: rho_tmp
+  real(dp), dimension(:, :), intent(inout) :: xpart
+  real(dp), dimension(:), intent(in) :: mpart
+  integer, intent(in) :: np
+  integer, dimension(1: ndim), intent(in) :: grid_oft
+  real(dp), dimension(1: ndim), intent(in) :: dx
+
+  ! .....
+
+  integer :: i, idim, icloud
+  integer, dimension(1:ndim) :: ix, ind 
+  real(dp), dimension(1:ndim) :: one_over_dx
+  real(dp), dimension(0:1, 1:ndim) :: cloud_boundary
+  real(dp), dimension(1:ndim) :: delta
+  real(dp) :: vol, cell_volume, one_over_cell_volume
+
+  ! A bit of premature optimization ;)
+  one_over_cell_volume = 1.0D0 / (dx(1) * dx(2) * dx(3))
+  do idim = 1, 3
+     one_over_dx(idim) = 1.0D0 / dx(idim)
+  end do
+ 
+  ! Scale to grid-spacing coordinates
+  do idim = 1, 3
+     do i = 1, np
+        xpart(i, idim) = xpart(i, idim) * one_over_dx(idim) - grid_oft(idim)
      end do
-!  end if
+  end do
 
+  do i = 1, np
+     do idim = 1, 3
+        cloud_boundary(1,idim) = xpart(i, idim) + 0.5D0
+        ! upper/rigt/front boundary rel to nearest integer
+        cloud_boundary(1,idim) = cloud_boundary(1,idim) - floor(cloud_boundary(1,idim), kind=8)       
+        ! lower/left/back boundary rel to nearest integer 
+        cloud_boundary(0,idim) = 1.0D0 - cloud_boundary(1,idim)
+     end do
+
+     do icloud = 0, 7
+        ind(1:3) = ind_table2(1:3, icloud)
+
+        ! Compute cloud volume
+        vol = cloud_boundary(ind(1),1) * &
+             cloud_boundary(ind(2),2) * &
+             cloud_boundary(ind(3),3)
+
+        ! Compute cell index of each cic-cloud corner.
+        do idim = 1, 3
+           ix(idim) = floor(xpart(i, idim) + ind(idim) - 0.5D0, kind=4)
+        end do
+
+        rho_tmp(ix(1), ix(2), ix(3)) = rho_tmp(ix(1), ix(2), ix(3)) + mpart(i) * vol * one_over_cell_volume
+     end do
+  end do
+
+  ! Scale back to input particle coordinates
+  do idim = 1, 3
+     do i = 1, np
+        xpart(i, idim) = (xpart(i, idim) + grid_oft(idim)) * dx(idim)
+     end do
+  end do
+
+end subroutine cic_deposit
+
+
+
+subroutine deposit_rho_tmp(rho_tmp, grid_offset, patch_size, ilevel)
+  use amr_parameters,  only: ndim, dp, int_pre
+  use amr_commons,     only: ind_table2, grid_dict, ncoarse, ngridmax
+  use poisson_commons, only: rho
+  use hash,            only: hash_get
+  implicit none
   
-contains
+  real(dp), dimension(-2:, -2:, -2:), intent(inout) :: rho_tmp
+  integer, dimension(1:ndim) :: grid_offset
+  integer :: ilevel, patch_size
+
+  ! Take a temporary regular grid patch of a given size at a given
+  ! level with a given grid offset and add the content of it to the
+  ! permanent rho in memory.
+
+  integer(int_pre), dimension(0:ndim) :: hash_key
+  integer(int_pre), dimension(1:ndim) :: ix
+  integer(int_pre) :: key_space_size, bitmask
+  integer :: grid_index, i, j, k, icell, idim
   
-  subroutine rho_particle_histogram_onelevel(offset, nparts, n_masked, grid_level)
-    use amr_parameters,  only: ndim, nvector, twotondim
-    use amr_commons,     only: myid, ind_table2
-    use pm_commons,      only: xp, part_ind_permutation, part_ind_permutation2, nbins, bin_start_offset, &
-                               bin_count, bin_mass, idp
-    use hilbert,         only: hilbert_for_particle
-    use sort,            only: lsd_radix_sort_particles
-    use poisson_commons, only: rho
-    implicit none
-    integer, intent(in) :: grid_level, nparts, n_masked, offset
+  key_space_size = 2 ** (ilevel - 1)
+  bitmask = key_space_size - 1
+  hash_key(0) = ilevel
 
-    ! This routine performs the cic for the masked particles at level grid_level.
-    ! This is achieved by looping over the 8 "cic-particles", each time
-    ! resorting according to the grid-level hilbert key of the cic-particle positions.
-    ! The mass per cell/bin is added to rho for each of the 8 histograms individually.
-    
-    ! in:               - offset, nparts, n_masked, grid_level    
-    ! "implicit" input: - part_ind_permutation, 
-    ! out:              - none                                                       
-    ! side effect:      - updates rho field on levels grid_level
-    
-    
-    integer(kind=4), dimension(1:ndim) :: ind
-    integer(kind=4), dimension(1:nvector),          save :: bin_nr
-    real(dp),        dimension(1:ndim) :: delta
-    real(dp),        dimension(1:nvector, 1:ndim),  save :: xpart
-    real(dp),        dimension(1:nvector),          save :: mpart
-    real(dp), save :: dx, dx_loc, scale, vol_loc
-    integer,  save :: nx_loc, idim, ind_cloud, ip_sweep
-
-    nx_loc = (icoarse_max - icoarse_min+1)
-    scale = boxlen / dble(nx_loc)
-    dx = 0.5D0**grid_level
-    dx_loc = dx * scale
-    vol_loc = dx_loc**ndim
-
-  ! Loop over CIC cloud / cell intersections
-    do ind_cloud = 0, twotondim - 1
-       ind(1:ndim) = ind_table2(1:ndim, ind_cloud)
-        
-       ! Compute cloud corner offset from cloud center
-       delta(1:ndim) = (ind(1:ndim) - 0.5D0) * dx_loc
-
-       ! Relocate particle positions according to index
-       ! TODO: Fix non-periodic case
-       do idim = 1, ndim
-          do ip = offset + 1, offset + n_masked
-             ipart = part_ind_permutation(ip)
-             xp(ipart,idim) = xp(ipart,idim) + delta(idim)
-             if (xp(ipart, idim) > boxlen) then
-                xp(ipart, idim) = xp(ipart, idim) - boxlen
-             end if
-             if (xp(ipart, idim) < 0.0_dp) then
-                xp(ipart, idim) = xp(ipart, idim) + boxlen
-             end if
-          end do
-       end do
-
-       ! Recompute hilbert key for all parts, also the 
-       ! "unmasked ones" - > if too slow, try do it only for the masked ones
-       call hilbert_for_particle(offset, nparts, 0, grid_level)
-
-       ! Sort hilbert keys
-       call lsd_radix_sort_particles(offset, n_masked, grid_level, grid_level, .false.)
-
-       ! Compute "reduced" histogram
-       call compute_particle_histogram(offset, n_masked)
-       ! Reset bin count as it is computed using cic later
-       bin_count = 0.d0; bin_mass = 0.d0;
-       
-       
-       ! Loop masked, sorted parts in sweeps and dump the mass for the
-       ! given cloud/cell intersection
-       ip_sweep = 0
-       ibin = 0
-       do ip = offset + 1, offset + n_masked
-          if (ip > bin_start_offset(ibin+1)) ibin = ibin + 1
-          ipart = part_ind_permutation(ip)
-          ip_sweep = ip_sweep + 1
-          xpart(ip_sweep,1:ndim) = xp(ipart, 1:ndim)
-          mpart(ip_sweep)        = mp(ipart)
-          bin_nr(ip_sweep)       = ibin
-          
-          if (ip_sweep == nvector) then
-             call cic_histogram(xpart, mpart, bin_nr, ip_sweep, grid_level, ind)
-             ip_sweep = 0
-          end if
-       end do
-       if (ip_sweep > 0) then
-          call cic_histogram(xpart, mpart, bin_nr, ip_sweep, grid_level, ind)
-       end if
-
-       ! Reset particles to original positions
-       ! TODO: Fix non-periodic case
-       do idim = 1, ndim
-          do ip = offset + 1, offset + n_masked
-             ipart = part_ind_permutation(ip)
-             xp(ipart,idim) = xp(ipart,idim) - delta(idim)
-             if (xp(ipart, idim) > boxlen) then
-                xp(ipart, idim) = xp(ipart, idim) - boxlen
-             end if
-             if (xp(ipart, idim) < 0.0_dp) then
-                xp(ipart, idim) = xp(ipart, idim) + boxlen
-             end if
-          end do
-       end do
-
-       ! Dump bin_mass into rho and bin_count into phi
-       ! MPI communication happens here.
-       call dump_histograms(grid_level)
-
-    end do ! end loop over 8 cic-particles
-    ! fix hilber keys for particles!
-    call hilbert_for_particle(offset, nparts, 0, grid_level)
-    
-  end subroutine rho_particle_histogram_onelevel
+  ! Transform grid offset to ilevel - 1 grid
+  grid_offset(1:ndim) = grid_offset(1:ndim) / 2
   
-  subroutine cic_histogram(xpart, mpart, bin_nr, np, grid_level, ind)
-    use amr_parameters,  only: ndim, nvector
-    use amr_commons,     only: boxlen, icoarse_max
-    use pm_commons,      only: bin_keys, bin_mass, bin_count
-    implicit none
-    integer,  intent(in)                                  :: np, grid_level
-    integer,  intent(in),    dimension(1:ndim)            :: ind
-    integer,  intent(in),    dimension(1:nvector)         :: bin_nr
-    real(dp), intent(in),    dimension(1:nvector)         :: mpart
-    real(dp), intent(inout), dimension(1:nvector, 1:ndim) :: xpart
+  ! Loop over all octs in the grid patch
+  do i = -1, patch_size(1) / 2
+     do j = -1, patch_size(2) / 2
+        do k = -1, patch_size(3) / 2
 
+           ! Construct the hash key
+           hash_key(1: ndim) = grid_offset(1: ndim) + (/ i, j, k /)
+           ! Take care of periodic boundaries!
+           do idim = 1, ndim
+              hash_key(idim) = IAND(key_space_size + hash_key(idim), bitmask)
+           end do
 
-    real(dp), dimension(1:nvector),save :: vol, vol_idim
-    integer,  save :: idim, ip
-    real(dp), save :: pos_to_cart
+           ! Dump the actual mass onto the grid
+           grid_index = hash_get(grid_dict, hash_key)
+           do icell = 0, 7
+              ix(1:3) = ind_table2(1:3, icell) + 2 * hash_key(1:3)
+              rho(ncoarse + icell * ngridmax + grid_index) = &
+                   rho(ncoarse + icell * ngridmax + grid_index) + rho_tmp(ix(1), ix(2), ix(3))              
+           end do              
+        end do
+     end do
+  end do
+end subroutine deposit_rho_tmp
 
-    ! Convert particle coordinates in code units
-    ! into "cartesian" coordinates at grid_level
-    pos_to_cart = 2.0**grid_level / dble(boxlen)
-    xpart = xpart * pos_to_cart
-
-    ! Compute volumes of cloud/cell intersection
-    vol(1:np) = 1.d0
-    do idim = 1, ndim
-       vol_idim(1:np) = xpart(1:np, idim) - floor(xpart(1:np, idim), kind=dp)
-       if (ind(idim) == 0) vol_idim(1:np) = 1.d0 - vol_idim(1:np)
-       vol(1:np) = vol(1:np) * vol_idim(1:np)          
-    end do
-        
-    ! Compute particle number fractions per bin
-    do ip = 1, np
-       bin_count(bin_nr(ip)) = bin_count(bin_nr(ip)) + vol(ip)
-    end do
-    
-    ! Compute mass per bin
-    do ip = 1, np
-       bin_mass(bin_nr(ip)) = bin_mass(bin_nr(ip)) + vol(ip) * mpart(ip)
-    end do
-  end subroutine cic_histogram
-
-  subroutine dump_histograms(grid_level)
-    use amr_parameters,  only: nvector, dp, nhilbert, ndim
-    use amr_commons,     only: ncpu, myid, bound_key_level
-    use pm_commons,      only: bin_keys, bin_mass
-    use poisson_commons, only: rho, phi
-    use coordinates,     only: get_cell_index_from_hilbertkey
-#ifndef WITHOUTMPI
-    use particle_communication, only: hilbert_comm, build_communicator, part_data_to_domain
-#endif
-    implicit none
-    integer, intent(in) :: grid_level
-
-
-    type(hilbert_comm):: comm
-    integer(kind=8), allocatable, dimension(:,:) :: bin_keys_remote
-    real(dp), allocatable, dimension(:)          :: bin_mass_remote
-    real(dp), allocatable, dimension(:)          :: bin_count_remote
-
-    integer        , dimension(1:nvector) :: cell_level, cell_index
-    integer(kind=8), dimension(1:nvector, 1:nhilbert), save :: bkey
-
-    integer :: ib, nb, ibin, ioft, ihilbert
-    real(dp) :: vol_loc
-
-    vol_loc = (0.5**grid_level * dble(boxlen) )**ndim    
-
-    call build_communicator(comm, bin_keys, bound_key_level(:, grid_level))
-#ifndef WITHOUTMPI
-      allocate(bin_keys_remote(1:comm%nrecv, 1:nhilbert))
-      allocate(bin_mass_remote(1:comm%nrecv))
-      allocate(bin_count_remote(1:comm%nrecv))
-
-      do ihilbert = 1, nhilbert
-         call part_data_to_domain(comm, bin_keys(:, ihilbert), bin_keys_remote(:, ihilbert))
-      end do
-      
-      call part_data_to_domain(comm, bin_mass, bin_mass_remote)
-      call part_data_to_domain(comm, bin_count, bin_count_remote)
-#endif      
-      ! Go through bins in sweeps and add mass to corresponding cell
-      do ioft = comm%local_oft, comm%local_oft + comm%nlocal - 1, nvector
-         nb = min(nvector, comm%local_oft + comm%nlocal - ioft)
-
-         call get_cell_index_from_hilbertkey(cell_index(1:nb), cell_level(1:nb), &
-              bin_keys(ioft + 1 : ioft + nb, 1:nhilbert), nb, grid_level)    
-         do ib = 1, nb
-            ! Don't add mass to coarser levels             
-            if (cell_level(ib) == grid_level) then
-               rho(cell_index(ib)) = rho(cell_index(ib)) + bin_mass(ioft + ib) / vol_loc             
-               phi(cell_index(ib)) = phi(cell_index(ib)) + bin_count(ioft + ib)
-            end if
-         end do
-      end do
-
-#ifndef WITHOUTMPI
-      ! Go through remote bins in sweeps and add mass to corresponding cell
-      do ioft = 0, comm%nrecv - 1, nvector
-         nb = min(nvector, comm%nrecv - ioft)
-         call get_cell_index_from_hilbertkey(cell_index(1:nb), &
-              cell_level(1:nb), bin_keys_remote(ioft + 1 : ioft + nb, 1:nhilbert), nb, grid_level)         
-         do ib = 1, nb
-            ! Don't add mass to coarser levels             
-            if (cell_level(ib) == grid_level) then
-               rho(cell_index(ib)) = rho(cell_index(ib)) + bin_mass_remote(ioft + ib) / vol_loc
-               phi(cell_index(ib)) = phi(cell_index(ib)) + bin_count_remote(ioft + ib) 
-            end if
-         end do
-      end do
-      
-      
-      deallocate(bin_mass_remote, bin_keys_remote, bin_count_remote)
-#endif      
-    end subroutine dump_histograms
-
-    
-end subroutine rho_histogram_particles
-
+!##############################################################################
+!##############################################################################
+!##############################################################################
+!##############################################################################
 subroutine add_particle_multipole
   use amr_parameters, only: ndim
   use amr_commons, only: myid
@@ -1125,3 +923,4 @@ subroutine add_particle_multipole
   end do
        
 end subroutine add_particle_multipole
+
