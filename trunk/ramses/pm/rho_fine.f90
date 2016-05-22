@@ -689,7 +689,7 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
   integer, dimension(1:ndim) :: grid_offset
   integer(int_pre), dimension(1: ndim) :: ix_next, ix_current
   real(dp) :: part_to_grid
-  real(dp), allocatable, dimension(:,:,:) :: rho_tmp
+  real(dp), allocatable, dimension(:,:,:,:) :: rho_tmp
   real(dp), dimension(1:ndim) :: dx
 
   ! Move cic to separate module later to make interface block unnecessary!
@@ -699,7 +699,7 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
        use amr_commons, only: ind_table2
        implicit none
        ! Assumed-shape arrays for explicit interfaces...
-       real(dp), dimension(-1:, -1:, -1:), intent(inout) :: rho_tmp
+       real(dp), dimension(-1:, -1:, -1:, 1:), intent(inout) :: rho_tmp
        real(dp), dimension(:, :), intent(inout) :: xpart
        real(dp), dimension(:), intent(in) :: mpart
        integer, intent(in) :: np
@@ -713,7 +713,7 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
        use hash,            only: hash_get
        implicit none
        
-       real(dp), dimension(-2:, -2:, -2:), intent(inout) :: rho_tmp
+       real(dp), dimension(-2:, -2:, -2:, 1:), intent(inout) :: rho_tmp
        integer, dimension(1:ndim) :: grid_offset
        integer :: ilevel, patch_size
      end subroutine deposit_rho_tmp
@@ -732,18 +732,16 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
   
   ! Allocate two cell-thick boundaries to make the depostion onto the AMR grid
   ! simpler.
-  allocate(rho_tmp(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1))
+  allocate(rho_tmp(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1, 1:2))
   rho_tmp = 0.d0
-
+  
   ip_offset = 0 
   do idim = 1, ndim
      ix_next(idim) = xpart(1, idim) * part_to_grid
   end do
   
   do ip = 1, nparts
-     do idim = 1, ndim
-        ix_current(idim) = ix_next(idim)
-     end do
+        ix_current(1: ndim) = ix_next(1: ndim)
 
      ! If current particle is last particle, evaluate!
      if (ip == nparts) then
@@ -757,7 +755,7 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
         ! (i.e. each integer key ix differs only by last n bits from the current)         
         evaluate_patch = .false.
         do idim = 1, ndim
-           evaluate_patch = evaluate_patch .or. (IOR(ix_current(idim), ix_next(idim)) < patch_size)
+           evaluate_patch = evaluate_patch .or. (IEOR(ix_current(idim), ix_next(idim)) > patch_size - 1)
         end do
      end if
      
@@ -766,9 +764,10 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
            grid_offset(idim) = ISHFT(ISHFT(ix_current(idim), -nbits_patch), nbits_patch)
         end do
         call cic_deposit(xpart(ip_offset + 1: ip, 1:ndim), mpart(ip_offset + 1: ip), &
-             ip - ip_offset, rho_tmp(-1: patch_size, -1: patch_size, -1: patch_size), grid_offset, dx)
+             ip - ip_offset, rho_tmp(-1: patch_size, -1: patch_size, -1: patch_size, 1:2), grid_offset, dx)
         call deposit_rho_tmp(rho_tmp, grid_offset, patch_size, grid_level)
         ip_offset = ip
+        rho_tmp = 0.d0
      end if
   end do
   deallocate(rho_tmp)
@@ -779,7 +778,7 @@ subroutine cic_deposit(xpart, mpart, np, rho_tmp, grid_oft, dx)
   use amr_commons, only: ind_table2
   implicit none
   ! Assumed-shape arrays for explicit interfaces...
-  real(dp), dimension(-1:, -1:, -1:), intent(inout) :: rho_tmp
+  real(dp), dimension(-1:, -1:, -1:, 1:), intent(inout) :: rho_tmp
   real(dp), dimension(:, :), intent(inout) :: xpart
   real(dp), dimension(:), intent(in) :: mpart
   integer, intent(in) :: np
@@ -830,7 +829,8 @@ subroutine cic_deposit(xpart, mpart, np, rho_tmp, grid_oft, dx)
            ix(idim) = floor(xpart(i, idim) + ind(idim) - 0.5D0, kind=4)
         end do
 
-        rho_tmp(ix(1), ix(2), ix(3)) = rho_tmp(ix(1), ix(2), ix(3)) + mpart(i) * vol * one_over_cell_volume
+        rho_tmp(ix(1), ix(2), ix(3), 1) = rho_tmp(ix(1), ix(2), ix(3), 1) + mpart(i) * vol * one_over_cell_volume
+        rho_tmp(ix(1), ix(2), ix(3), 2) = rho_tmp(ix(1), ix(2), ix(3), 2) + vol
      end do
   end do
 
@@ -848,11 +848,11 @@ end subroutine cic_deposit
 subroutine deposit_rho_tmp(rho_tmp, grid_offset, patch_size, ilevel)
   use amr_parameters,  only: ndim, dp, int_pre
   use amr_commons,     only: ind_table2, grid_dict, ncoarse, ngridmax
-  use poisson_commons, only: rho
+  use poisson_commons, only: rho, phi
   use hash,            only: hash_get
   implicit none
   
-  real(dp), dimension(-2:, -2:, -2:), intent(inout) :: rho_tmp
+  real(dp), dimension(-2:, -2:, -2:, 1:), intent(inout) :: rho_tmp
   integer, dimension(1:ndim) :: grid_offset
   integer :: ilevel, patch_size
 
@@ -873,9 +873,9 @@ subroutine deposit_rho_tmp(rho_tmp, grid_offset, patch_size, ilevel)
   grid_offset(1:ndim) = grid_offset(1:ndim) / 2
   
   ! Loop over all octs in the grid patch
-  do i = -1, patch_size(1) / 2
-     do j = -1, patch_size(2) / 2
-        do k = -1, patch_size(3) / 2
+  do i = -1, patch_size / 2
+     do j = -1, patch_size / 2
+        do k = -1, patch_size / 2
 
            ! Construct the hash key
            hash_key(1: ndim) = grid_offset(1: ndim) + (/ i, j, k /)
@@ -886,11 +886,15 @@ subroutine deposit_rho_tmp(rho_tmp, grid_offset, patch_size, ilevel)
 
            ! Dump the actual mass onto the grid
            grid_index = hash_get(grid_dict, hash_key)
-           do icell = 0, 7
-              ix(1:3) = ind_table2(1:3, icell) + 2 * hash_key(1:3)
-              rho(ncoarse + icell * ngridmax + grid_index) = &
-                   rho(ncoarse + icell * ngridmax + grid_index) + rho_tmp(ix(1), ix(2), ix(3))              
-           end do              
+           if (grid_index > 0) then
+              do icell = 0, 7
+                 ix(1:3) = ind_table2(1:3, icell) + 2 * (/ i, j, k /)
+                 rho(ncoarse + icell * ngridmax + grid_index) = &
+                      rho(ncoarse + icell * ngridmax + grid_index) + rho_tmp(ix(1), ix(2), ix(3), 1)
+                 phi(ncoarse + icell * ngridmax + grid_index) = &
+                      phi(ncoarse + icell * ngridmax + grid_index) + rho_tmp(ix(1), ix(2), ix(3), 2)
+              end do
+           end if
         end do
      end do
   end do
