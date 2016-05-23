@@ -15,7 +15,7 @@ subroutine rho_fine(ilevel)
   !------------------------------------------------------------------
   ! ADD NEW DESCRIPTION HERE!
   !------------------------------------------------------------------
-  integer :: particle_level, offset
+  integer :: particle_level, offset, grid_level, part_level, np
   integer::iskip,icpu,ind,i,info,nx_loc,ibound,idim,icell, ncell, ilev
   real(dp)::dx,d_scale,scale,dx_loc,scalar
   real(dp)::d0,m_refine_loc,dx_min,vol_min,mstar,msnk,nISM,nCOM
@@ -116,8 +116,10 @@ subroutine rho_fine(ilevel)
   ! Compute density due to current level particles
 
   if(pic)then
-     offset = part_level_offset(ilevel)
-     call mass_deposit(xp(offset + 1: npart, 1:ndim), mp(offset + 1: npart), npart - offset, ilevel, 2)        
+     do grid_level = ilevel, nlevelmax
+        offset = part_level_offset(grid_level)
+        call mass_deposit(xp(offset + 1: npart, 1:ndim), mp(offset + 1: npart), npart - offset, grid_level, 3)
+     end do
   end if
 
   do particle_level = ilevel, nlevelmax
@@ -719,6 +721,7 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
      end subroutine deposit_rho_tmp
   end interface
 
+  if (nparts==0)return
   
   ! Place a warning sign to make sure the current limitations on this routine are known.
   if (ncpu > 1)then
@@ -733,7 +736,6 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
   ! Allocate two cell-thick boundaries to make the depostion onto the AMR grid
   ! simpler.
   allocate(rho_tmp(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1, 1:2))
-  rho_tmp = 0.d0
   
   ip_offset = 0 
   do idim = 1, ndim
@@ -763,11 +765,11 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
         do idim = 1, ndim
            grid_offset(idim) = ISHFT(ISHFT(ix_current(idim), -nbits_patch), nbits_patch)
         end do
+        rho_tmp = 0.d0
         call cic_deposit(xpart(ip_offset + 1: ip, 1:ndim), mpart(ip_offset + 1: ip), &
              ip - ip_offset, rho_tmp(-1: patch_size, -1: patch_size, -1: patch_size, 1:2), grid_offset, dx)
         call deposit_rho_tmp(rho_tmp, grid_offset, patch_size, grid_level)
         ip_offset = ip
-        rho_tmp = 0.d0
      end if
   end do
   deallocate(rho_tmp)
@@ -803,7 +805,7 @@ subroutine cic_deposit(xpart, mpart, np, rho_tmp, grid_oft, dx)
   ! Scale to grid-spacing coordinates
   do idim = 1, 3
      do i = 1, np
-        xpart(i, idim) = xpart(i, idim) * one_over_dx(idim) - grid_oft(idim)
+        xpart(i, idim) = xpart(i, idim) * one_over_dx(idim) - real(grid_oft(idim), kind=dp)
      end do
   end do
 
@@ -826,7 +828,7 @@ subroutine cic_deposit(xpart, mpart, np, rho_tmp, grid_oft, dx)
 
         ! Compute cell index of each cic-cloud corner.
         do idim = 1, 3
-           ix(idim) = floor(xpart(i, idim) + ind(idim) - 0.5D0, kind=4)
+           ix(idim) = floor(xpart(i, idim) + ind(idim) - 0.5D0, kind=int_pre)
         end do
 
         rho_tmp(ix(1), ix(2), ix(3), 1) = rho_tmp(ix(1), ix(2), ix(3), 1) + mpart(i) * vol * one_over_cell_volume
@@ -837,7 +839,7 @@ subroutine cic_deposit(xpart, mpart, np, rho_tmp, grid_oft, dx)
   ! Scale back to input particle coordinates
   do idim = 1, 3
      do i = 1, np
-        xpart(i, idim) = (xpart(i, idim) + grid_oft(idim)) * dx(idim)
+        xpart(i, idim) = (xpart(i, idim) + real(grid_oft(idim), kind=dp)) * dx(idim)
      end do
   end do
 

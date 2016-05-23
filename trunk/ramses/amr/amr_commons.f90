@@ -126,12 +126,12 @@ module amr_commons
   
   integer, dimension(1:3, 0:7), parameter :: ind_table2 = reshape((/&
        0,0,0, &
-       0,0,1, &
-       0,1,0, &
-       0,1,1, &
        1,0,0, &
-       1,0,1, &
+       0,1,0, &
        1,1,0, &
+       0,0,1, &
+       1,0,1, &
+       0,1,1, &
        1,1,1 /), (/3,8/) )
 #endif
 #if NDIM == 2
