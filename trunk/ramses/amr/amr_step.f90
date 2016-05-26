@@ -14,13 +14,27 @@ recursive subroutine amr_step(ilevel,icount)
   ! Each routine is called using a specific order, don't change it,   !
   ! unless you check all consequences first                           !
   !-------------------------------------------------------------------!
-  integer::i,idim,ivar,info, ilev, j
+  integer::i,idim,ivar,info, ilev, j, offset, nparts
   logical::ok_defrag
   logical,save::first_step=.true., use_histograms
   real(dp)::told,tnew,dthilbert,dtrho
   real(dp), dimension(1:nvector, 1:3)::pos
   integer, dimension(1:nvector)::cell_level, cell_index, cc
   integer::k, nmax
+
+  interface
+     subroutine kick_part(xpart, vpart, levelp, nparts, grid_level, nbits_patch, previous_timestep)
+       use amr_parameters, only: ndim, dp, int_pre
+       use amr_commons,    only: ncpu, ind_table2, boxlen
+       implicit none
+       integer, intent(in) :: grid_level, nparts
+       integer, value, intent(in) :: nbits_patch
+       integer, dimension(:), intent(inout) :: levelp
+       real(dp), dimension(:, :), intent(inout) :: xpart, vpart
+       logical, intent(in), value :: previous_timestep
+     end subroutine kick_part
+  end interface
+
   if(numbtot(1,ilevel)==0)return
 
   if(verbose)write(*,999)icount,ilevel
@@ -295,7 +309,12 @@ recursive subroutine amr_step(ilevel,icount)
 
      ! Synchronize remaining particles for gravity
      if(pic)then
-        call kick(ilevel, .true.)
+        offset = part_level_offset(ilevel)
+        nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
+        call kick_part(xp(offset + 1: offset + nparts, 1:ndim), &
+             vp(offset + 1: offset + nparts, 1:ndim), &
+             levelp(offset + 1: offset + nparts), nparts, ilevel, 3, .true.)
+        !        call kick(ilevel, .true.)
         call update_levelp(ilevel)
      end if
      ! do i=1,npartmax
@@ -373,7 +392,12 @@ recursive subroutine amr_step(ilevel,icount)
   end if
 
   if(pic)then
-     call kick(ilevel, .false.) 
+     offset = part_level_offset(ilevel)
+     nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
+     call kick_part(xp(offset + 1: offset + nparts, 1:ndim), &
+          vp(offset + 1: offset + nparts, 1:ndim), &
+          levelp(offset + 1: offset + nparts), nparts, ilevel, 3, .false.)
+     
      if (.not. static) call drift(ilevel)
   end if
 

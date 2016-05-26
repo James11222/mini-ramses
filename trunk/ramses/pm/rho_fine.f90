@@ -677,6 +677,7 @@ end subroutine cic_cell
 subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
   use amr_parameters, only: ndim, dp, int_pre
   use amr_commons,    only: ncpu, ind_table2, boxlen
+  use pm_utils,       only: patched_particle_loop
   implicit none
   integer, intent(in) :: grid_level, nparts, nbits_patch
   real(dp), dimension(:, :), intent(inout) :: xpart
@@ -686,42 +687,10 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
   ! level grid_level. It uses a regular cartesian grid patch as
   ! a "3d-histogram" before accessing the hash table.
 
-  logical :: evaluate_patch
-  integer :: ip, idim, patch_size, ip_offset
-  integer, dimension(1:ndim) :: grid_offset
-  integer(int_pre), dimension(1: ndim) :: ix_next, ix_current
-  real(dp) :: part_to_grid
-  real(dp), allocatable, dimension(:,:,:,:) :: rho_tmp
-  real(dp), dimension(1:ndim) :: dx
+  integer :: patch_size
+  real(dp), allocatable, dimension(:,:,:,:), target :: rho_tmp_data
+  real(dp) :: dx
 
-  ! Move cic to separate module later to make interface block unnecessary!
-  interface
-     subroutine cic_deposit(xpart, mpart, np, rho_tmp, grid_oft, dx)
-       use amr_parameters, only: dp, ndim, int_pre
-       use amr_commons, only: ind_table2
-       implicit none
-       ! Assumed-shape arrays for explicit interfaces...
-       real(dp), dimension(-1:, -1:, -1:, 1:), intent(inout) :: rho_tmp
-       real(dp), dimension(:, :), intent(inout) :: xpart
-       real(dp), dimension(:), intent(in) :: mpart
-       integer, intent(in) :: np
-       integer, dimension(1: ndim), intent(in) :: grid_oft
-       real(dp), dimension(1: ndim), intent(in) :: dx
-     end subroutine cic_deposit
-     subroutine deposit_rho_tmp(rho_tmp, grid_offset, patch_size, ilevel)
-       use amr_parameters,  only: ndim, dp, int_pre
-       use amr_commons,     only: ind_table2, grid_dict, ncoarse, ngridmax
-       use poisson_commons, only: rho
-       use hash,            only: hash_get
-       implicit none
-       
-       real(dp), dimension(-2:, -2:, -2:, 1:), intent(inout) :: rho_tmp
-       integer, dimension(1:ndim) :: grid_offset
-       integer :: ilevel, patch_size
-     end subroutine deposit_rho_tmp
-  end interface
-
-  if (nparts==0)return
   
   ! Place a warning sign to make sure the current limitations on this routine are known.
   if (ncpu > 1)then
@@ -729,178 +698,63 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
      stop
   end if
 
+  if (nparts == 0) return  
   patch_size = 2 ** nbits_patch
   dx = boxlen * 0.5d0 ** grid_level
-  part_to_grid = 2.d0 ** grid_level / boxlen
   
   ! Allocate two cell-thick boundaries to make the depostion onto the AMR grid
   ! simpler.
-  allocate(rho_tmp(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1, 1:2))
-  
-  ip_offset = 0 
-  do idim = 1, ndim
-     ix_next(idim) = xpart(1, idim) * part_to_grid
-  end do
-  
-  do ip = 1, nparts
-        ix_current(1: ndim) = ix_next(1: ndim)
+  allocate(rho_tmp_data(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1, 1:2))
+  call patched_particle_loop(xpart, nparts, grid_level, 3, mass_deposit_callback)  
+  deallocate(rho_tmp_data)
 
-     ! If current particle is last particle, evaluate!
-     if (ip == nparts) then
-        evaluate_patch = .true.        
-     else
-        do idim = 1, ndim
-           ix_next(idim) = xpart(ip + 1, idim) * part_to_grid             
-        end do
- 
-        ! Check if current and next key are in same patch 
-        ! (i.e. each integer key ix differs only by last n bits from the current)         
-        evaluate_patch = .false.
-        do idim = 1, ndim
-           evaluate_patch = evaluate_patch .or. (IEOR(ix_current(idim), ix_next(idim)) > patch_size - 1)
-        end do
-     end if
-     
-     if (evaluate_patch)then
-        do idim = 1, ndim
-           grid_offset(idim) = ISHFT(ISHFT(ix_current(idim), -nbits_patch), nbits_patch)
-        end do
-        rho_tmp = 0.d0
-        call cic_deposit(xpart(ip_offset + 1: ip, 1:ndim), mpart(ip_offset + 1: ip), &
-             ip - ip_offset, rho_tmp(-1: patch_size, -1: patch_size, -1: patch_size, 1:2), grid_offset, dx)
-        call deposit_rho_tmp(rho_tmp, grid_offset, patch_size, grid_level)
-        ip_offset = ip
-     end if
-  end do
-  deallocate(rho_tmp)
+contains
+
+  subroutine mass_deposit_callback(oft, np, grid_offset)
+    use amr_parameters, only: nvector
+    use cic_stuff,      only: dump_rho_tmp, cic_nvector
+    implicit none
+    integer, intent(in), value :: oft, np
+    integer(int_pre), dimension(1: ndim) :: grid_offset
+
+    integer(int_pre), dimension(1:nvector, 1:ndim, 0:7) :: ix
+    real(dp),         dimension(1:nvector, 0:7)         :: vol
+    real(dp), pointer                                   :: rho_tmp(:, :, :, :)  
+    
+    integer :: idim, ip, icell, sweep_offset, sweep_nparts
+
+    ! Use a pointer to get the right indexing for the pre-allocated grid patch
+    rho_tmp(grid_offset(1) - 2: grid_offset(1) + patch_size + 1, &
+            grid_offset(2) - 2: grid_offset(2) + patch_size + 1, &
+            grid_offset(3) - 2: grid_offset(3) + patch_size + 1, &
+            1:2) => rho_tmp_data
+
+    rho_tmp = 0.d0
+    ! Loop particles in nvector sweeps
+    do sweep_offset = 0, np - 1, nvector
+       sweep_nparts = min(np - sweep_offset, nvector)
+       
+       ! Get cloud corner integer coordinates and cloud fractions
+       call cic_nvector(xpart(oft + sweep_offset + 1: oft + sweep_offset + sweep_nparts, 1:ndim), ix, vol, sweep_nparts, dx)
+       
+       ! Add mass number density to temporary grid patches
+       do icell = 0, 7
+          do ip = 1, sweep_nparts             
+             rho_tmp(ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell), 1) = &
+                  rho_tmp(ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell), 1) + mpart(oft + sweep_offset + ip) * vol(ip, icell) 
+             rho_tmp(ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell), 2) = &
+                  rho_tmp(ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell), 2) + vol(ip, icell)
+          end do
+       end do
+    end do
+    rho_tmp(:,:,:,1) = rho_tmp(:,:,:,1) / (dx**3)
+    
+    ! Deposit density / number density from patches to AMR grids
+    call dump_rho_tmp(rho_tmp, grid_offset, patch_size, grid_level)
+  end subroutine mass_deposit_callback
+
 end subroutine mass_deposit
 
-subroutine cic_deposit(xpart, mpart, np, rho_tmp, grid_oft, dx)
-  use amr_parameters, only: dp, ndim, int_pre
-  use amr_commons, only: ind_table2
-  implicit none
-  ! Assumed-shape arrays for explicit interfaces...
-  real(dp), dimension(-1:, -1:, -1:, 1:), intent(inout) :: rho_tmp
-  real(dp), dimension(:, :), intent(inout) :: xpart
-  real(dp), dimension(:), intent(in) :: mpart
-  integer, intent(in) :: np
-  integer, dimension(1: ndim), intent(in) :: grid_oft
-  real(dp), dimension(1: ndim), intent(in) :: dx
-
-  ! .....
-
-  integer :: i, idim, icloud
-  integer, dimension(1:ndim) :: ix, ind 
-  real(dp), dimension(1:ndim) :: one_over_dx
-  real(dp), dimension(0:1, 1:ndim) :: cloud_boundary
-  real(dp), dimension(1:ndim) :: delta
-  real(dp) :: vol, cell_volume, one_over_cell_volume
-
-  ! A bit of premature optimization ;)
-  one_over_cell_volume = 1.0D0 / (dx(1) * dx(2) * dx(3))
-  do idim = 1, 3
-     one_over_dx(idim) = 1.0D0 / dx(idim)
-  end do
- 
-  ! Scale to grid-spacing coordinates
-  do idim = 1, 3
-     do i = 1, np
-        xpart(i, idim) = xpart(i, idim) * one_over_dx(idim) - real(grid_oft(idim), kind=dp)
-     end do
-  end do
-
-  do i = 1, np
-     do idim = 1, 3
-        cloud_boundary(1,idim) = xpart(i, idim) + 0.5D0
-        ! upper/rigt/front boundary rel to nearest integer
-        cloud_boundary(1,idim) = cloud_boundary(1,idim) - floor(cloud_boundary(1,idim), kind=8)       
-        ! lower/left/back boundary rel to nearest integer 
-        cloud_boundary(0,idim) = 1.0D0 - cloud_boundary(1,idim)
-     end do
-
-     do icloud = 0, 7
-        ind(1:3) = ind_table2(1:3, icloud)
-
-        ! Compute cloud volume
-        vol = cloud_boundary(ind(1),1) * &
-             cloud_boundary(ind(2),2) * &
-             cloud_boundary(ind(3),3)
-
-        ! Compute cell index of each cic-cloud corner.
-        do idim = 1, 3
-           ix(idim) = floor(xpart(i, idim) + ind(idim) - 0.5D0, kind=int_pre)
-        end do
-
-        rho_tmp(ix(1), ix(2), ix(3), 1) = rho_tmp(ix(1), ix(2), ix(3), 1) + mpart(i) * vol * one_over_cell_volume
-        rho_tmp(ix(1), ix(2), ix(3), 2) = rho_tmp(ix(1), ix(2), ix(3), 2) + vol
-     end do
-  end do
-
-  ! Scale back to input particle coordinates
-  do idim = 1, 3
-     do i = 1, np
-        xpart(i, idim) = (xpart(i, idim) + real(grid_oft(idim), kind=dp)) * dx(idim)
-     end do
-  end do
-
-end subroutine cic_deposit
-
-
-
-subroutine deposit_rho_tmp(rho_tmp, grid_offset, patch_size, ilevel)
-  use amr_parameters,  only: ndim, dp, int_pre
-  use amr_commons,     only: ind_table2, grid_dict, ncoarse, ngridmax
-  use poisson_commons, only: rho, phi
-  use hash,            only: hash_get
-  implicit none
-  
-  real(dp), dimension(-2:, -2:, -2:, 1:), intent(inout) :: rho_tmp
-  integer, dimension(1:ndim) :: grid_offset
-  integer :: ilevel, patch_size
-
-  ! Take a temporary regular grid patch of a given size at a given
-  ! level with a given grid offset and add the content of it to the
-  ! permanent rho in memory.
-
-  integer(int_pre), dimension(0:ndim) :: hash_key
-  integer(int_pre), dimension(1:ndim) :: ix
-  integer(int_pre) :: key_space_size, bitmask
-  integer :: grid_index, i, j, k, icell, idim
-  
-  key_space_size = 2 ** (ilevel - 1)
-  bitmask = key_space_size - 1
-  hash_key(0) = ilevel
-
-  ! Transform grid offset to ilevel - 1 grid
-  grid_offset(1:ndim) = grid_offset(1:ndim) / 2
-  
-  ! Loop over all octs in the grid patch
-  do i = -1, patch_size / 2
-     do j = -1, patch_size / 2
-        do k = -1, patch_size / 2
-
-           ! Construct the hash key
-           hash_key(1: ndim) = grid_offset(1: ndim) + (/ i, j, k /)
-           ! Take care of periodic boundaries!
-           do idim = 1, ndim
-              hash_key(idim) = IAND(key_space_size + hash_key(idim), bitmask)
-           end do
-
-           ! Dump the actual mass onto the grid
-           grid_index = hash_get(grid_dict, hash_key)
-           if (grid_index > 0) then
-              do icell = 0, 7
-                 ix(1:3) = ind_table2(1:3, icell) + 2 * (/ i, j, k /)
-                 rho(ncoarse + icell * ngridmax + grid_index) = &
-                      rho(ncoarse + icell * ngridmax + grid_index) + rho_tmp(ix(1), ix(2), ix(3), 1)
-                 phi(ncoarse + icell * ngridmax + grid_index) = &
-                      phi(ncoarse + icell * ngridmax + grid_index) + rho_tmp(ix(1), ix(2), ix(3), 2)
-              end do
-           end if
-        end do
-     end do
-  end do
-end subroutine deposit_rho_tmp
 
 !##############################################################################
 !##############################################################################
@@ -930,3 +784,146 @@ subroutine add_particle_multipole
        
 end subroutine add_particle_multipole
 
+
+!##############################################################################
+!##############################################################################
+!##############################################################################
+!##############################################################################
+subroutine kick_part(xpart, vpart, levelp, nparts, grid_level, nbits_patch, previous_timestep)
+  use amr_parameters, only: ndim, dp, int_pre, MASK_VALUE
+  use amr_commons,    only: ncpu, ind_table2, boxlen, dtnew, dtold
+  use cic_stuff,      only: load_f_tmp
+  use pm_utils,       only: patched_particle_loop
+  implicit none
+  integer, intent(in) :: grid_level, nparts
+  integer, value, intent(in) :: nbits_patch
+  integer, dimension(:), intent(inout) :: levelp
+  real(dp), dimension(:, :), intent(inout) :: xpart, vpart
+  logical, intent(in), value :: previous_timestep
+  
+  ! This routine deposits the input particles to the AMR grid at
+  ! level grid_level. It uses a regular cartesian grid patch as
+  ! a "3d-histogram" before accessing the hash table.
+
+  integer :: idim, patch_size, patch_size_coarse
+  real(dp), allocatable, dimension(:,:,:,:), target :: f_tmp_data, f_tmp_coarse_data
+  real(dp) :: dx
+
+
+  if (nparts==0)return
+  
+  ! Place a warning sign to make sure the current limitations on this routine are known.
+  if (ncpu > 1)then
+     print*, 'particle patch deposition is not yet implemented for MPI'
+     stop
+  end if
+
+  patch_size = 2 ** nbits_patch
+  patch_size_coarse  = max(patch_size / 2, 2)
+  dx = boxlen * 0.5d0 ** grid_level
+  
+  ! Allocate two cell-thick boundaries to make the depostion onto the AMR grid
+  ! simpler.
+  allocate(f_tmp_data(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1, 1:ndim))
+  allocate(f_tmp_coarse_data(-2: patch_size_coarse + 1, -2: patch_size_coarse + 1, -2: patch_size_coarse + 1, 1:ndim))
+
+  call patched_particle_loop(xpart, nparts, grid_level, 3, kick_part_callback)
+
+  deallocate(f_tmp_data, f_tmp_coarse_data)
+
+contains
+
+  subroutine kick_part_callback(oft, np, grid_offset)
+    use amr_parameters, only: nvector
+    use cic_stuff,      only: dump_rho_tmp, cic_nvector
+    implicit none
+    integer, intent(in), value :: oft, np
+    integer(int_pre), dimension(1: ndim) :: grid_offset
+
+    integer(int_pre), dimension(1:nvector, 1:ndim, 0:7) :: ix
+    real(dp),         dimension(1:nvector, 0:7)         :: vol
+    real(dp),         dimension(1:nvector, 1:ndim)      :: ap
+    real(dp),         dimension(1:nvector)              :: dteff
+    logical,          dimension(1:nvector)              :: repeat_coarser
+    integer(int_pre), dimension(1: ndim) :: grid_offset_coarse
+    real(dp), pointer :: f_tmp(:, :, :, :), f_tmp_coarse(:, :, :, :)
+    
+    integer :: idim, ip, ipart, icell, sweep_offset, sweep_nparts
+    logical :: all_ok
+
+    ! Use pointers to get the right indexing for the pre-allocated grid patch
+    f_tmp(grid_offset(1) - 2: grid_offset(1) + patch_size + 1, &
+          grid_offset(2) - 2: grid_offset(2) + patch_size + 1, &
+          grid_offset(3) - 2: grid_offset(3) + patch_size + 1, &
+          1:ndim) => f_tmp_data
+
+    grid_offset_coarse = grid_offset / 2
+     
+    f_tmp_coarse(grid_offset_coarse(1) - 2: grid_offset_coarse(1) + patch_size_coarse + 1, &
+                 grid_offset_coarse(2) - 2: grid_offset_coarse(2) + patch_size_coarse + 1, &
+                 grid_offset_coarse(3) - 2: grid_offset_coarse(3) + patch_size_coarse + 1, &
+                 1:ndim) => f_tmp_coarse_data
+
+    call load_f_tmp(f_tmp, grid_offset, patch_size, grid_level)
+    call load_f_tmp(f_tmp_coarse, grid_offset_coarse, patch_size_coarse, grid_level - 1)
+
+    
+    ! Loop particles in nvector sweeps
+    do sweep_offset = 0, np - 1, nvector
+       sweep_nparts = min(np - sweep_offset, nvector)
+       
+       ! Get cloud corner integer coordinates and cloud fractions
+       call cic_nvector(xpart(oft + sweep_offset + 1: oft + sweep_offset + sweep_nparts, 1:ndim), ix, vol, sweep_nparts, dx)
+       
+
+       repeat_coarser = .false.
+       all_ok = .true.
+       ap = 0.d0
+       do icell = 0, 7
+          do ip = 1, sweep_nparts
+             if (f_tmp(ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell), 1) == MASK_VALUE) then
+                repeat_coarser(ip) = .true.
+                all_ok = .false.
+             else
+                ! Unfortunate array stride here!!!
+                ap(ip, 1:ndim) =  ap(ip, 1:ndim) + vol(ip, icell) * f_tmp(ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell), 1:ndim)
+             end if
+          end do
+       end do
+
+       ! For particles which are partially in a coarser level, repeat at coarse level
+       do ip = 1, sweep_nparts
+          if (repeat_coarser(ip)) then
+             ! Maybe write cic_one subroutine...
+             call cic_nvector(xpart(oft + sweep_offset + ip: oft + sweep_offset + ip, 1:ndim), ix(1:1, 1:ndim, 0:7), vol(1:1, 0:7), 1, 2 * dx)
+             ap(ip, 1:3) = 0.d0
+             do icell = 0, 7
+                ! Unfortunate array stride here!!!
+                ap(ip, 1:ndim) =  ap(ip, 1:ndim) + vol(1, icell) * f_tmp_coarse(ix(1, 1, icell), ix(1, 2, icell), ix(1, 3, icell), 1:ndim)
+             end do
+          end if
+       end do
+
+       ! Compute individual time step
+       if (previous_timestep)then
+          do ip = 1, sweep_nparts
+             ipart = oft + sweep_offset + ip 
+             if(levelp(ipart) >= grid_level)then
+                dteff(ip) = 0.5d0 * dtnew(levelp(ipart))
+             else
+                dteff(ip) = 0.5d0 * dtold(levelp(ipart))
+             endif
+          end do
+       else
+          dteff = 0.5d0 * dtnew(grid_level)
+       end if
+
+       ! Finally, apply the kick
+       do ip = 1, sweep_nparts
+          ipart = oft + sweep_offset + ip
+          vpart(ipart, 1:ndim) = vpart(ipart, 1:ndim) + ap(ip, 1:ndim) * dteff(ip)
+       end do
+
+    end do
+  end subroutine kick_part_callback
+end subroutine kick_part

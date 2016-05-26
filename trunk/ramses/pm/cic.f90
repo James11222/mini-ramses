@@ -146,6 +146,4 @@ recursive subroutine cic(xpart, array_size, cell_index, vol, offset, np, cic_lev
          end if
       end do
    end if
-      
 end subroutine cic
-

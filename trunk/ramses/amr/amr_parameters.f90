@@ -63,6 +63,10 @@ module amr_parameters
 
   integer, parameter :: nstride = 65536
 
+
+  ! More general parameters
+  real(dp), parameter :: MASK_VALUE = huge(0.0_dp)
+  
   ! Run control
   logical::verbose =.false.   ! Write everything
   logical::hydro   =.false.   ! Hydro activated
