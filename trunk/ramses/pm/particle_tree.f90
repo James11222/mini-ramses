@@ -1,226 +1,146 @@
-subroutine sort_particles(ilevel, use_histograms)
-  use pm_commons,     only: npart, part_level_offset, &
-                            nbins, bin_keys, part_hkey
-  use amr_commons,    only: myid, levelmin, ncpu
-  use amr_parameters, only: nhilbert
-  use sort,           only: lsd_radix_sort_particles, apply_particle_permutation
-  use hilbert,        only: hilbert_for_particle 
-  use coordinates,    only: check_refinements
-#ifndef WITHOUTMPI
-  use particle_communication, only: hilbert_comm, build_communicator
-#endif
+
+
+
+!################################################################
+subroutine levelsort_particles(ilevel)
+  use pm_commons,     only: part_level_offset, part_ind_permutation, part_ind_permutation2
+  use sort,           only: apply_particle_permutation, lsd_radix_sort_particles
+  use amr_parameters, only: nlevelmax, int_pre, ndim, dp
+  use pm_commons,     only: xp, levelp, boxlen
+  use pm_utils,     only: patched_particle_loop
+  use hilbert,      only: hilbert_for_particle
   implicit none
 
   integer, intent(in) :: ilevel
-  logical, intent(in) :: use_histograms
+  
+  ! This routine sorts resorts the ilevel and ilevel + 1 particles
 
-  ! This routine moves all particles that sit in refined cells at level ilevel
-  ! to level ilevel + 1. It then sorts the remaining ilevel particles 
-  ! by hilbert key.
-  
-  integer :: ilev, offset, np, ip, ndata
-  integer, allocatable, dimension(:) :: refined
-  integer(kind=8), pointer :: hkeys(:,:)
-  
-  offset = part_level_offset(ilevel)
-  np = npart - part_level_offset(ilevel)
-
-  if (np == 0)return
-  
-  ! Compute hilbert keys (probably move outside of this routine)
-  call hilbert_for_particle(offset, np, 0, ilevel)
-  
-  ! Compute a permutation that sorts ALL particles starting from offset
-  call lsd_radix_sort_particles(offset, np, ilevel, ilevel, .true.)
-  
-  if (use_histograms)then
-     call compute_particle_histogram(offset, np)
-     ndata = nbins
-     hkeys => bin_keys
-  else
-     ! Need to apply particle permutation here already to have parts sorted
-     ! in memory. Using the index insidet build_communicator and
-     ! communicate_refinements is possible but will let the code deviate more
-     ! from the histogrammed case.
-     call apply_particle_permutation(offset, np, ilevel) 
-     ndata = np
-     hkeys => part_hkey(offset + 1:offset + np, 1:nhilbert)
-  end if  
-
-  allocate(refined(1:ndata))
-  call check_refinements(refined, hkeys, ilevel)
-  call levelsort_particles(ilevel, np, ndata, refined, use_histograms)
-  
-  ! Compute NEW number of particles in ilevel
-  np = part_level_offset(ilevel + 1) - part_level_offset(ilevel)  
-
-  ! Re-sort remaining (ilevel particles) (maybe oversort to gain for the cic step!)
-  !  call hilbert_for_particle(offset, np, 0, ilevel + 1)
-  call lsd_radix_sort_particles(offset, np, ilevel, ilevel, .true.)
-  call apply_particle_permutation(offset, np, ilevel)
-  !  call hilbert_for_particle(offset, np, 0, ilevel)
-  deallocate(refined)
-  
-end subroutine sort_particles
-!################################################################
-
-
-!################################################################
-subroutine levelsort_particles(ilevel, np, ndata, refined, use_histograms)
-  use pm_commons,     only: part_level_offset, part_ind_permutation, part_hkey, &
-                            bin_keys, part_ind_permutation2
-  use sort,           only: apply_particle_permutation
-  use hilbert,        only: gt_keys
-  use amr_parameters, only: nlevelmax, nhilbert
-  implicit none
-
-  
-  integer, intent(in) :: ilevel, np, ndata
-  integer, dimension(1:ndata), intent(in) :: refined
-  logical, intent(in) :: use_histograms
-  
-  ! Sort particles in memory according to their level
-  ! by applying a couting sort on the particles.
-
-  integer  :: offset, ibin, ip, ipart
+  integer  :: offset, ip, patch_size, nparts, nbits_patch, ilev2
   integer  :: unrefined_pos, refined_pos
   logical  :: unrefined
-
-  if (ilevel == nlevelmax) return
-  if (ndata == 0) return
+  integer, allocatable, dimension(:,:,:) :: refmap_tmp
+  real(dp) :: dx
   
+  
+  if (ilevel == nlevelmax) return
   offset = part_level_offset(ilevel)
+  nparts = part_level_offset(ilevel + 2) - offset
+  if (nparts == 0) return
 
+
+  nbits_patch = 3
+  patch_size = 2 ** nbits_patch
+  dx = boxlen * 0.5d0 ** ilevel
+  
+  ! Allocate two cell-thick boundaries to make the depostion onto the AMR grid
+  ! simpler.
+  allocate(refmap_tmp(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1))
+
+  call patched_particle_loop(xp(offset + 1: offset + nparts, 1: ndim), nparts, ilevel, nbits_patch, levelsort_particles_callback)
+
+  deallocate(refmap_tmp) 
+
+  refined_pos = offset + nparts
+  do ip = offset + 1, offset + nparts
+     if (btest(levelp(ip), 31)) refined_pos = refined_pos - 1
+  end do
+  
   ! Find starting indices for refined particles
-  unrefined_pos = offset; refined_pos = offset          
-
-  if (use_histograms)then
-     ibin = 1; unrefined = (refined(ibin) == 0)     
-     do ip = offset + 1, offset + np  
-        ipart = part_ind_permutation(ip)
-        if (gt_keys(part_hkey(ipart, 1:nhilbert), bin_keys(ibin, 1:nhilbert)))then
-           ibin=ibin + 1
-        end if
-        if (refined(ibin) == 0) then 
-           refined_pos = refined_pos + 1
-        end if
-     end do
-  else
-     refined_pos = refined_pos + np - sum(refined)
-  end if
+  unrefined_pos = offset
 
   ! Set "level boundary" in particle array and rearrange particles
   part_level_offset(ilevel + 1) = refined_pos
 
-  if (use_histograms)then
-     ibin = 1; unrefined = (refined(ibin) == 0)
-     do ip = offset + 1, offset + np
-        ipart = part_ind_permutation(ip)
-        if (gt_keys(part_hkey(ipart,1:nhilbert), bin_keys(ibin,1:nhilbert))) then
-           ibin = ibin + 1
-        end if
-        if (refined(ibin) == 1)then
-           refined_pos = refined_pos + 1
-           part_ind_permutation2(refined_pos) = ipart
-        else
-           unrefined_pos = unrefined_pos + 1
-           part_ind_permutation2(unrefined_pos) = ipart
-        end if
-     end do
-  else
-     do ip = offset + 1, offset + np
-        ipart = part_ind_permutation(ip)
-        if (refined(ipart - offset) == 1)then
-           refined_pos = refined_pos + 1
-           part_ind_permutation2(refined_pos) = ipart
-        else
-           unrefined_pos = unrefined_pos + 1
-           part_ind_permutation2(unrefined_pos) = ipart
-        end if
-     end do
-  end if
-  
-  part_ind_permutation(offset + 1:offset + np) = &
-       part_ind_permutation2(offset + 1:offset + np)
-  call apply_particle_permutation(offset, np, ilevel)
+  do ip = offset + 1, offset + nparts
+     if (btest(levelp(ip), 31))then
+        refined_pos = refined_pos + 1
+        part_ind_permutation(refined_pos) = ip
+     else
+        unrefined_pos = unrefined_pos + 1
+        part_ind_permutation(unrefined_pos) = ip
+     end if
+  end do
 
+  do ip = offset + 1, offset + nparts
+     levelp(ip) = ibclr(levelp(ip), 31)
+  end do
+ 
+  call apply_particle_permutation(offset, nparts, ilevel)
+
+  nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
+  ilev2 = ilevel - 2
+  ! Compute hilbert keys (probably move outside of this routine)
+  call hilbert_for_particle(offset, nparts, 0, ilevel - 3)
+  call lsd_radix_sort_particles(offset, nparts, ilevel - 3, ilevel - 3, .true.)
+  call apply_particle_permutation(offset, nparts, ilevel)
+
+  
+contains
+  subroutine levelsort_particles_callback(oft, np, grid_offset)
+    use amr_parameters,         only: nvector
+    use particle_interpolation, only: ngp_nvector
+    use pm_utils,               only: patch_to_AMR
+    implicit none
+    integer, intent(in), value :: oft, np
+    integer(int_pre), dimension(1: ndim) :: grid_offset
+
+    integer(int_pre), dimension(1: nvector, 1:ndim) :: ix
+    integer :: sweep_offset, sweep_nparts, ip, idim
+    
+    call patch_to_AMR(grid_offset, patch_size, ilevel, load_refmap_tmp_callback)
+
+    ! Loop particles in nvector sweeps
+    do sweep_offset = 0, np - 1, nvector
+       sweep_nparts = min(np - sweep_offset, nvector)
+       
+       ! Get cloud corner integer coordinates and cloud fractions
+       call ngp_nvector(xp(offset + oft + sweep_offset + 1: offset + oft + sweep_offset + sweep_nparts, 1:ndim), ix, sweep_nparts, dx)
+
+       do idim = 1, ndim
+          do ip = 1, sweep_nparts
+             ix(ip, idim) = ix(ip, idim) - grid_offset(idim)
+          end do
+       end do
+       
+       do ip = 1, sweep_nparts
+          if (.not. refmap_tmp(ix(ip, 1), ix(ip, 2), ix(ip, 3)) == 0)then
+             levelp(offset + oft + sweep_offset + ip) = ibset(levelp(offset + oft + sweep_offset + ip), 31)
+          end if
+       end do
+    end do
+  end subroutine levelsort_particles_callback
+
+  subroutine load_refmap_tmp_callback(ix, grid_index)
+    use amr_parameters,  only: ndim, int_pre, ngridmax
+    use amr_commons,     only: ind_table2, ncoarse, son
+    implicit none
+    integer(int_pre), dimension(1:ndim) :: ix, ixg
+    integer                             :: grid_index, cell_index
+    
+    integer :: icell
+    if (grid_index > 0) then
+       !          do icell = 0, 7
+       !             ixg(1:ndim) = ix(1:ndim) + ind_table2(1:ndim, icell)
+       !refmap_tmp(ixg(1), ixg(2), ixg(3)) = son(ncoarse + icell * ngridmax + grid_index)
+       !          end do
+       refmap_tmp(ix(1)    , ix(2)    , ix(3)    ) = son(ncoarse + grid_index               )
+       refmap_tmp(ix(1) + 1, ix(2)    , ix(3)    ) = son(ncoarse + grid_index +     ngridmax)
+       refmap_tmp(ix(1)    , ix(2) + 1, ix(3)    ) = son(ncoarse + grid_index + 2 * ngridmax)
+       refmap_tmp(ix(1) + 1, ix(2) + 1, ix(3)    ) = son(ncoarse + grid_index + 3 * ngridmax)
+       refmap_tmp(ix(1)    , ix(2)    , ix(3) + 1) = son(ncoarse + grid_index + 4 * ngridmax)
+       refmap_tmp(ix(1) + 1, ix(2)    , ix(3) + 1) = son(ncoarse + grid_index + 5 * ngridmax)
+       refmap_tmp(ix(1)    , ix(2) + 1, ix(3) + 1) = son(ncoarse + grid_index + 6 * ngridmax)
+       refmap_tmp(ix(1) + 1, ix(2) + 1, ix(3) + 1) = son(ncoarse + grid_index + 7 * ngridmax)
+    else
+       do icell = 0, 7
+          ixg(1:ndim) = ix(1:ndim) + ind_table2(1:ndim, icell)
+          refmap_tmp(ixg(1), ixg(2), ixg(3)) = 0
+       end do
+    end if
+    
+  end subroutine load_refmap_tmp_callback  
 end subroutine levelsort_particles
 !#########################################################################
-
-
-!#########################################################################
-subroutine compute_particle_histogram(offset, np)
-  use pm_commons, only: part_hkey, bin_keys, bin_count, bin_start_offset, bin_mass, nbins, part_ind_permutation
-  use amr_parameters, only: nhilbert
-  use hilbert,        only: gt_keys
-  implicit none
-  integer, intent(in) :: offset, np
-
-  ! This routine computes a particle histogram for np particles in memory, 
-  ! starting from offset + 1 to offset + np.
-  ! IMPORTANT: There must be a precomputed array part_ind_permutation which sorts
-  ! the particles by hilbert key.
-
-  integer :: ibin, ipart, ip
-  integer(kind=8), dimension(1:nhilbert) :: current_bin_key
-
-  ! if there is nothing to do...
-  nbins = 0
-  if (.not. np > 0)return
-  
-  ! Count the number of bins
-  nbins = 1
-  current_bin_key(1:nhilbert) = part_hkey(part_ind_permutation(offset + 1), 1:nhilbert)
-  do ip = offset + 2, offset + np
-     ipart = part_ind_permutation(ip)
-     if (gt_keys(part_hkey(ipart,1:nhilbert), current_bin_key(1:nhilbert)))then
-        nbins=nbins+1
-        current_bin_key(1:nhilbert) = part_hkey(ipart, 1:nhilbert)
-     end if
-  end do
-  
-  ! Allocate histograms
-  if(allocated(bin_count))then
-     deallocate(bin_keys)
-     deallocate(bin_count)
-     deallocate(bin_start_offset)
-     deallocate(bin_mass)
-  end if
-  if (.not. allocated(bin_keys))then
-     allocate(bin_keys(nbins, 1:nhilbert))
-     allocate(bin_count(nbins))
-     allocate(bin_start_offset(nbins+1))
-     allocate(bin_mass(nbins))
-  end if
-  bin_mass = 0; bin_count = 0.d0
-
-  ! Label every bin by a key and sum up the particles per bin, store 
-  ! the offset of the first particle in each bin in the particle array
-
-  ! First particle in first bin
-  ibin=1
-  bin_keys(ibin, 1:nhilbert) = part_hkey(part_ind_permutation(offset + 1), 1:nhilbert)  
-  bin_count(ibin) = 1.d0
-  bin_start_offset(ibin) = offset
-
-  ! All other particles/bins
-  current_bin_key(1:nhilbert) = part_hkey(part_ind_permutation(offset + 1), 1:nhilbert)
-  do ip = offset + 2, offset + np
-     ipart = part_ind_permutation(ip)
-     if (gt_keys(part_hkey(ipart,1:nhilbert), current_bin_key(1:nhilbert)))then
-        ibin = ibin + 1
-        bin_start_offset(ibin) = ip - 1 
-        bin_keys(ibin,1:nhilbert) = part_hkey(ipart, 1:nhilbert)
-        current_bin_key(1:nhilbert) = part_hkey(ipart, 1:nhilbert)
-     end if
-     bin_count(ibin) = bin_count(ibin) + 1.d0
-  end do
-  bin_start_offset(nbins+1) = offset + np
-
-end subroutine compute_particle_histogram
-!################################################################
-
-
 
 
 !#########################################################################

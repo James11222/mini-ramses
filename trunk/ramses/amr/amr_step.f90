@@ -39,6 +39,10 @@ recursive subroutine amr_step(ilevel,icount)
 
   if(verbose)write(*,999)icount,ilevel
 
+
+  print*, 'ilevel', part_level_offset(ilevel), part_level_offset(ilevel + 1)
+
+  
   !-------------------------------------------
   ! Make new refinements and update boundaries
   !-------------------------------------------
@@ -134,7 +138,8 @@ recursive subroutine amr_step(ilevel,icount)
      call remove_escaped_particles(ilevel)
      use_histograms = .true.     
      do ilev=ilevel, nlevelmax
-        call sort_particles(ilev, use_histograms)
+!        call sort_particles(ilev, use_histograms)
+        call levelsort_particles(ilev)
         if(MOD(nstep_coarse,nremap) == 0 .and. ilevel == levelmin)then
            call balance_particles(ilev)
         end if

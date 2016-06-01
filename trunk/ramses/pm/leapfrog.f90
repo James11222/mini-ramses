@@ -1,56 +1,154 @@
-!#########################################################################
-!#########################################################################
-!#########################################################################
-!#########################################################################
-subroutine kick(ilevel, previous_timestep)
-  use pm_commons,      only: part_level_offset, xp, vp, levelp
-  use amr_parameters,  only: dp, ndim, tracer, hydro, static, nvector
-  use amr_commons,     only: dtnew, dtold
+!##############################################################################
+!##############################################################################
+!##############################################################################
+!##############################################################################
+subroutine kick_part(xpart, vpart, levelp, nparts, grid_level, nbits_patch, previous_timestep)
+  use amr_parameters, only: ndim, dp, int_pre, MASK_VALUE
+  use amr_commons,    only: ncpu, ind_table2, boxlen, dtnew, dtold
+  use pm_utils,       only: patched_particle_loop
   implicit none
-
-  integer, intent(in) :: ilevel
+  integer, intent(in) :: grid_level, nparts
+  integer, value, intent(in) :: nbits_patch
+  integer, dimension(:), intent(inout) :: levelp
+  real(dp), dimension(:, :), intent(inout) :: xpart, vpart
   logical, intent(in), value :: previous_timestep
-
-
-  integer :: offset, nparts, idim, ioft, np, ip
-  real(dp), allocatable, dimension(:,:) :: ap
-  real(dp), dimension(1:nvector) :: dteff
   
-  offset = part_level_offset(ilevel)
-  nparts = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
 
-  allocate(ap(offset + 1: offset + nparts, 1:ndim))
-  
-  call compute_particle_acceleration(ap, offset, nparts, ilevel, tracer .and. hydro)
+  integer :: idim, patch_size, patch_size_coarse
+  real(dp), allocatable, dimension(:,:,:,:), target :: f_tmp_fine, f_tmp_coarse
+  real(dp), dimension(:,:,:,:), pointer :: f_tmp
+  real(dp) :: dx
 
-  dteff = 0.5d0 * dtnew(ilevel)
+  if (nparts==0)return  
+
+  patch_size = 2 ** nbits_patch
+  patch_size_coarse  = max(patch_size / 2, 2)
+  dx = boxlen * 0.5d0 ** grid_level
   
-  do ioft = offset, offset + nparts - 1, nvector
-     np = min(nvector, offset + nparts - ioft)
-     
-     ! Compute individual time steps
-     if (previous_timestep)then
-        do ip = 1, np
-           if(levelp(ioft + ip) >= ilevel)then
-              dteff(ip) = 0.5d0 * dtnew(levelp(ioft + ip))
-           else
-              dteff(ip) = 0.5d0 * dtold(levelp(ioft + ip))
-           endif
-        end do
-     end if
-     
-     ! Update velocity     
-     ! TODO: fix static/tracer cases
-     do idim = 1, ndim     
-        do ip = 1, np
-           vp(ioft + ip, idim) = vp(ioft + ip, idim) &
-                + ap(ioft + ip, idim) * dteff(ip)
-        end do
-     end do
-  end do
-  deallocate(ap)
+  ! Allocate two cell-thick boundaries to make the depostion onto the AMR grid simpler.
+  allocate(f_tmp_fine(1:ndim, -2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1))
+  allocate(f_tmp_coarse(1:ndim, -2: patch_size_coarse + 1, -2: patch_size_coarse + 1, -2: patch_size_coarse + 1))
+
+  call patched_particle_loop(xpart, nparts, grid_level, 3, kick_part_callback)
+
+  deallocate(f_tmp_fine, f_tmp_coarse)
+
+contains
+
+  subroutine kick_part_callback(oft, np, grid_offset)
+    use amr_parameters,         only: nvector
+    use particle_interpolation, only: cic_nvector
+    use pm_utils,               only: patch_to_AMR
+    implicit none
+    integer, intent(in), value :: oft, np
+    integer(int_pre), dimension(1: ndim) :: grid_offset
+
+    integer(int_pre), dimension(1:nvector, 1:ndim, 0:7) :: ix
+    real(dp),         dimension(1:nvector, 0:7)         :: vol
+    real(dp),         dimension(1:ndim, 1:nvector)      :: ap
+    real(dp),         dimension(1:nvector)              :: dteff
+    logical,          dimension(1:nvector)              :: repeat_coarser
+    integer(int_pre), dimension(1: ndim)                :: grid_offset_coarse
+      
+    integer :: idim, ip, ipart, icell, sweep_offset, sweep_nparts
+    logical :: all_ok
   
-end subroutine kick
+    grid_offset_coarse = grid_offset / 2
+    f_tmp => f_tmp_fine
+    call patch_to_AMR(grid_offset, patch_size, grid_level, load_f_tmp_callback)
+    f_tmp => f_tmp_coarse
+    call patch_to_AMR(grid_offset_coarse, patch_size_coarse, grid_level - 1, load_f_tmp_callback)
+
+    ! Loop particles in nvector sweeps
+    do sweep_offset = 0, np - 1, nvector
+       sweep_nparts = min(np - sweep_offset, nvector)
+
+       ! Get cloud corner integer coordinates and cloud fractions
+       call cic_nvector(xpart(oft + sweep_offset + 1: oft + sweep_offset + sweep_nparts, 1:ndim), ix, vol, sweep_nparts, dx)
+
+       do icell = 0, 7
+          do idim = 1, ndim
+             do ip = 1, sweep_nparts
+                ix(ip, idim, icell) = ix(ip, idim, icell) - grid_offset(idim)
+             end do
+          end do
+       end do
+
+       repeat_coarser = .false.
+       all_ok = .true.
+       ap = 0.d0
+       do icell = 0, 7
+          do ip = 1, sweep_nparts
+             if (f_tmp_fine(1, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) == MASK_VALUE) then
+                repeat_coarser(ip) = .true.
+                all_ok = .false.
+             else
+                ap(1:ndim, ip) =  ap(1:ndim, ip) + vol(ip, icell) * f_tmp_fine(1:ndim, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell))
+             end if
+          end do
+       end do
+
+       ! For particles which are partially in a coarser level, repeat at coarse level
+       do ip = 1, sweep_nparts
+          if(repeat_coarser(ip)) then
+             ! Maybe write cic_one subroutine...
+             call cic_nvector(xpart(oft + sweep_offset + ip: oft + sweep_offset + ip, 1:ndim), ix(1:1, 1:ndim, 0:7), vol(1:1, 0:7), 1, 2 * dx)
+             ap(1:3, ip) = 0.d0
+             do icell = 0, 7
+                ix(1, 1:ndim, icell) = ix(1, 1:ndim, icell) - grid_offset_coarse(1:ndim)
+                ap(1:ndim, ip) =  ap(1:ndim, ip) + vol(1, icell) * f_tmp_coarse(1:ndim, ix(1, 1, icell), ix(1, 2, icell), ix(1, 3, icell))
+             end do
+          end if
+       end do
+
+       ! Compute individual time step
+       if (previous_timestep)then
+          do ip = 1, sweep_nparts
+             ipart = oft + sweep_offset + ip 
+             if(levelp(ipart) >= grid_level)then
+                dteff(ip) = 0.5d0 * dtnew(levelp(ipart))
+             else
+                dteff(ip) = 0.5d0 * dtold(levelp(ipart))
+             endif
+          end do
+       else
+          dteff = 0.5d0 * dtnew(grid_level)
+       end if
+
+       ! Finally, apply the kick
+       do ip = 1, sweep_nparts
+          ipart = oft + sweep_offset + ip
+          vpart(ipart, 1:ndim) = vpart(ipart, 1:ndim) + ap(1:ndim, ip) * dteff(ip)
+       end do
+
+    end do
+  end subroutine kick_part_callback
+
+  subroutine load_f_tmp_callback(ix, grid_index)
+    use amr_parameters,  only: ndim, int_pre, ngridmax
+    use amr_commons,     only: ind_table2, ncoarse
+    use poisson_commons, only: f
+    implicit none
+    integer(int_pre), dimension(1:ndim)      :: ix
+    integer                                  :: grid_index
+    
+    integer(int_pre), dimension(1:ndim, 0:7) :: ixg       
+    integer :: icell
+    
+    do icell = 0, 7
+       ixg(1:3, icell) = ind_table2(1:3, icell) + ix(1:3)
+    end do    
+    if (grid_index > 0) then
+       do icell = 0, 7
+          f_tmp(1:ndim, ixg(1, icell), ixg(2, icell), ixg(3, icell)) = f(ncoarse + icell * ngridmax + grid_index, 1:ndim)
+       end do
+    else
+       do icell = 0, 7
+          f_tmp(1:ndim, ixg(1, icell), ixg(2, icell), ixg(3, icell)) = MASK_VALUE
+       end do
+    end if
+  end subroutine load_f_tmp_callback  
+end subroutine kick_part
 !#########################################################################
 !#########################################################################
 !#########################################################################
@@ -107,126 +205,8 @@ subroutine update_levelp(ilevel)
 
   integer, intent(in) :: ilevel
   integer :: np, offset
-  
   offset = part_level_offset(ilevel)
   np = part_level_offset(ilevel + 1) - part_level_offset(ilevel)
-  
-  levelp(offset + 1:offset + np) = ilevel
-  
+  levelp(offset + 1:offset + np) = ilevel  
+
 end subroutine update_levelp
-!#########################################################################
-!#########################################################################
-!#########################################################################
-!#########################################################################
-subroutine compute_particle_acceleration(ap, offset, nparts, ilevel, read_gas_velocity)
-  use pm_commons,      only: part_level_offset, xp, &
-                             part_hkey, npart
-  use amr_parameters,  only: dp, nvector, ndim, twotondim, poisson, verbose, nhilbert
-  use hydro_commons,   only: uold
-  use poisson_commons, only: f
-  use amr_commons,     only: dtnew, ncpu, myid, t, son, bound_key_level
-  use pm_parameters,   only: npartmax
-#ifndef WITHOUTMPI
-  use particle_communication, only: hilbert_comm, build_communicator, part_data_to_domain, domain_data_to_part
-#endif
-  use hilbert,     only: hilbert_for_particle 
-  implicit none
-#ifndef WITHOUTMPI
-  include 'mpif.h' 
-  integer :: info
-#endif
-
-  integer, intent(in) :: ilevel, offset, nparts
-  logical, intent(in) :: read_gas_velocity
-  real(dp), intent(inout), dimension(offset + 1 : offset + nparts, 1:ndim) :: ap
-  
-  real(dp), allocatable, dimension(:,:) :: xp_remote, ap_remote
-  type(hilbert_comm) :: comm
-  integer,  dimension(1:nvector, 1:twotondim), save :: cell_index
-  real(dp), dimension(1:nvector, 1:twotondim), save :: vol
-  
-  integer :: ioft, np, ip, ind, idim
-
-  if(verbose)write(*,'("Entering compute_particle_acceleration, level " I2)')ilevel 
-
-#ifndef WITHOUTMPI
-  call build_communicator(comm, part_hkey(offset + 1:offset + nparts, 1:nhilbert), bound_key_level(:, ilevel))
-
-  allocate(xp_remote(comm%nrecv, 1:ndim), ap_remote(comm%nrecv, 1:ndim))
-  do idim = 1, ndim
-     call part_data_to_domain(comm, xp(offset + 1: offset + nparts, idim), xp_remote(:, idim))
-  end do
-  
-  ! Deal with remote particles
-  do ioft = 0, comm%nrecv - 1, nvector
-     np = min(nvector, comm%nrecv - ioft)
-     
-     call cic(xp_remote, comm%nrecv, cell_index, vol, ioft, np, ilevel, 2)
-
-     ap_remote(ioft + 1: ioft + np, 1: ndim) = 0.0D0
-     if(read_gas_velocity)then
-        do idim = 1, ndim
-           do ind = 1, twotondim              
-              do ip = 1, np
-                 ap_remote(ioft + ip, idim) = ap_remote(ioft + ip, idim) + uold(cell_index(ip, ind), idim + 1) * vol(ip, ind)
-              end do
-           end do
-        end do
-     endif
-     
-     if(poisson)then
-        do idim = 1, ndim
-           do ind = 1, twotondim
-              do ip = 1, np
-                 ap_remote(ioft + ip, idim) = ap_remote(ioft + ip, idim) + f(cell_index(ip, ind), idim) * vol(ip, ind)
-              end do
-           end do
-        end do
-     endif
-  end do
-  do idim = 1, ndim
-     call domain_data_to_part(comm, ap_remote(:,idim), ap(offset + 1 : offset + nparts, idim))
-  end do
-
-  deallocate(xp_remote, ap_remote)
-
-#endif
-  
-  ! Deal with local particles
-  do ioft = offset + comm%local_oft, offset + comm%local_oft + comm%nlocal - 1, nvector
-     np = min(nvector, offset + comm%local_oft + comm%nlocal - ioft)
-
-     call cic(xp, npartmax, cell_index, vol, ioft, np, ilevel, 2)
-     
-     ap(ioft + 1: ioft + np, 1: ndim) = 0.0D0
-     if(read_gas_velocity)then
-        do idim = 1, ndim
-           do ind = 1, twotondim              
-              do ip = 1, np
-                 ap(ioft + ip, idim) = ap(ioft + ip, idim) + uold(cell_index(ip, ind),idim + 1) * vol(ip, ind)
-              end do
-           end do
-        end do
-     endif
-     
-     if(poisson)then
-        do idim = 1,ndim
-           do ind = 1,twotondim
-              do ip = 1,np
-                  ap(ioft + ip, idim) =  ap(ioft + ip, idim) + f(cell_index(ip, ind), idim) * vol(ip, ind)
-               end do
-           end do
-        end do
-     endif
-  end do
-  
-#ifdef OUTPUT_PARTICLE_POTENTIAL
-  ! Just a reminder that this option is not built in yet
-  print*,"stopping because of OUTPUT_PARTICLE_POTENTIAL"
-  call clean_stop
-#endif
-end subroutine compute_particle_acceleration
-!#########################################################################
-!#########################################################################
-!#########################################################################
-!#########################################################################

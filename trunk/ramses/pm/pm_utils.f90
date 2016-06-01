@@ -1,11 +1,11 @@
 module pm_utils
-  
+
 contains
   subroutine patched_particle_loop(xpart, nparts, grid_level, nbits_patch, particle_callback)
     use amr_parameters, only: dp, int_pre, ndim
     use amr_commons, only: boxlen
     implicit none
-    real(dp), dimension(:,:), intent(inout) :: xpart
+    real(dp), dimension(:,:), intent(in) :: xpart
     integer, intent(in) :: nparts, grid_level
     integer, value, intent(in) :: nbits_patch
     
@@ -58,7 +58,7 @@ contains
        if (evaluate_patch)then
           do idim = 1, ndim
              grid_offset(idim) = ISHFT(ISHFT(ix_current(idim), -nbits_patch), nbits_patch)
-          end do          
+          end do
           call particle_callback(ip_offset, ip - ip_offset, grid_offset)
           ip_offset = ip
        end if
@@ -73,8 +73,8 @@ contains
     use hash,            only: hash_get
     implicit none
     
-    integer(int_pre), dimension(1:ndim) :: grid_offset
-    integer :: grid_level, patch_size
+    integer(int_pre), dimension(1:ndim), intent(in) :: grid_offset
+    integer,value,                       intent(in) :: grid_level, patch_size
 
     interface
        subroutine callback(cartesian_index, amr_index)
@@ -99,13 +99,10 @@ contains
     bitmask = key_space_size - 1
     hash_key(0) = int(grid_level, kind=int_pre)
 
-    ! Transform grid offset to ilevel - 1 grid (oct offsets)
-    grid_offset(1:ndim) = grid_offset(1:ndim) / 2
-
     ! Loop over all octs in the grid patch
-    do i = grid_offset(1) - 1, grid_offset(1) +  patch_size / 2
-       do j = grid_offset(2) - 1, grid_offset(2) +  patch_size / 2
-          do k = grid_offset(3) - 1, grid_offset(3) +  patch_size / 2
+    do i = grid_offset(1) / 2 - 1, grid_offset(1) / 2 +  patch_size / 2
+       do j = grid_offset(2) / 2  - 1, grid_offset(2) / 2 +  patch_size / 2
+          do k = grid_offset(3) / 2 - 1, grid_offset(3) / 2 +  patch_size / 2
              
              ! Construct the hash key
              hash_key(1: ndim) = (/ i, j, k /)
@@ -117,7 +114,7 @@ contains
 
              ! Dump the actual mass onto the grid
              grid_index = hash_get(grid_dict, hash_key)
-             ix(1:3) = 2 * (/ i, j, k /)
+             ix(1:3) = 2 * (/ i, j, k /) - grid_offset(1:3)
              call interaction_callback(ix, grid_index)
           end do
        end do

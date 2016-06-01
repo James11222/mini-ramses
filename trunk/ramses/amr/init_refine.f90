@@ -72,7 +72,7 @@ subroutine init_refine_2
      ! particles must be re-sorted before density is computed
      use_histograms = .true.
      do ilev=levelmin, nlevelmax
-        call sort_particles(ilev, use_histograms)
+        call levelsort_particles(ilev)
      end do
      
      do ilevel=levelmin,nlevelmax
