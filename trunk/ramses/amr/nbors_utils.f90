@@ -1070,8 +1070,10 @@ subroutine check_mail(comm_id,hash_dict)
 #ifdef GRAV
               if(ichild>0)then
                  do ind=1,twotondim
+!                    print*, 'in', myid, ichild, recv_flush_poisson%realdp(ind,i), grid(ichild)%rho(ind)
                     grid(ichild)%rho(ind)=grid(ichild)%rho(ind)&
                          & +recv_flush_poisson%realdp(ind,i)
+!                    print*, 'out', myid, ichild
                  end do
               endif
 #endif

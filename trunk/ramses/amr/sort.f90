@@ -622,7 +622,7 @@ contains
   !########################################################################
   !########################################################################
   
-  subroutine apply_particle_permutation(offset, np, key_level)
+  subroutine apply_particle_permutation(offset, limit, key_level)
     use amr_commons,    only: dp, ndim
     use pm_commons
     implicit none
@@ -639,7 +639,7 @@ contains
     ! this to the key array to get (sigma^-1(key))(i) sorted in memory
 
     do ipart = offset + 1, offset + np
-       part_ind_permutation2( part_ind_permutation(ipart) ) = ipart
+       workp( sortp(ipart) ) = ipart
     end do
 
     ! Apply  particle_permutation2
@@ -649,20 +649,20 @@ contains
 
     do idim = 1, ndim       
        do ipart = offset + 1, offset + np
-          extra_storage_dp(part_ind_permutation2(ipart)) = xp(ipart, idim) 
+          extra_storage_dp(workp(ipart)) = xp(ipart, idim) 
        end do
        xp(offset + 1 : offset + np, idim) = extra_storage_dp(offset + 1 : offset + np)
     end do
 
     do idim = 1, ndim       
        do ipart = offset + 1, offset + np
-          extra_storage_dp(part_ind_permutation2(ipart)) = vp(ipart, idim) 
+          extra_storage_dp(workp(ipart)) = vp(ipart, idim) 
        end do
        vp(offset + 1 : offset + np, idim) = extra_storage_dp(offset + 1 : offset + np)
     end do
 
     do ipart = offset + 1, offset + np
-       extra_storage_dp(part_ind_permutation2(ipart)) = mp(ipart) 
+       extra_storage_dp(workp(ipart)) = mp(ipart) 
     end do
     mp(offset + 1 : offset + np) = extra_storage_dp(offset + 1 : offset + np)
 
@@ -671,16 +671,9 @@ contains
     ! Rearrange long integer arrays
     allocate(extra_storage_i8(offset+1 : offset + np))
 
-    do ikey = 1, nhilbert  
-       do ipart = offset + 1, offset + np
-          extra_storage_i8(part_ind_permutation2(ipart)) = part_hkey(ipart, ikey) 
-       end do
-       part_hkey(offset + 1 : offset + np, ikey) = extra_storage_i8(offset + 1 : offset + np)
-    end do
-    
 #if ID_PRECISION == 8
     do ipart = offset + 1, offset + np
-       extra_storage_i8(part_ind_permutation2(ipart)) = idp(ipart)
+       extra_storage_i8(workp(ipart)) = idp(ipart)
     end do
     idp(offset + 1 : offset + np) = extra_storage_i8(offset + 1 : offset + np)
 #endif
@@ -691,18 +684,18 @@ contains
     allocate(extra_storage_i4(offset+1 : offset + np))
 #if ID_PRECISION == 4
     do ipart = offset + 1, offset + np
-       extra_storage_i4(part_ind_permutation2(ipart)) = idp(ipart)
+       extra_storage_i4(workp(ipart)) = idp(ipart)
     end do
     idp(offset + 1 : offset + np) = extra_storage_i4(offset + 1 : offset + np)
 #endif
 
     do ipart = offset + 1, offset + np
-       extra_storage_i4(part_ind_permutation2(ipart)) = levelp(ipart)
+       extra_storage_i4(workp(ipart)) = levelp(ipart)
     end do
     levelp(offset + 1 : offset + np) = extra_storage_i4(offset + 1 : offset + np)
     
     do ipart = offset + 1, offset + np
-       extra_storage_i4(part_ind_permutation2(ipart)) = current_state(ipart)
+       extra_storage_i4(workp(ipart)) = current_state(ipart)
     end do
     current_state(offset + 1 : offset + np) = extra_storage_i4(offset + 1 : offset + np)
 
@@ -710,7 +703,7 @@ contains
 
     ! Reset applied part of permutation
     do ipart = offset + 1, offset + np
-       part_ind_permutation(ipart) = ipart
+       sortp(ipart) = ipart
     end do
     
   end subroutine apply_particle_permutation

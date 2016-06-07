@@ -7,6 +7,7 @@ subroutine rho_fine(ilevel)
   use pm_commons
   use hydro_commons
   use poisson_commons
+  use hilbert, only: sort_hilbert
   implicit none
 #ifndef WITHOUTMPI
   include 'mpif.h'
@@ -19,10 +20,22 @@ subroutine rho_fine(ilevel)
   ! On output, particles are sorted according to the level they sit in
   ! and inside their level, they are sorted in grid Hilbert order.
   !------------------------------------------------------------------
-  integer::i,igrid,ind,info
+  integer::i,igrid,ind,info, nparts, nbits_patch, sort_level, ip
   real(dp)::dx_loc,d_scale,scalar
   real(kind=8),dimension(1:ndim+1)::multipole_in,multipole_out
+  integer,dimension(1:ndim), save::ix
 
+  interface
+     subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
+       use amr_parameters, only: ndim, dp, int_pre
+       use amr_commons,    only: ncpu, ind_table2, boxlen
+       implicit none
+       integer, intent(in) :: grid_level, nparts, nbits_patch
+       real(dp), dimension(:, :), intent(inout) :: xpart
+       real(dp), dimension(:), intent(in) :: mpart
+     end subroutine mass_deposit
+  end interface
+  
   if(.not. poisson)return
   if(noct_tot(ilevel)==0)return
   if(verbose)write(*,111)ilevel
@@ -47,10 +60,21 @@ subroutine rho_fine(ilevel)
   if(pic)then
      do i=ilevel,nlevelmax
                                call timer('rho','start')
-        call cic_part(i)
+                               !        call cic_part(i)
+        nparts = tailp(nlevelmax) - headp(i) + 1
+        nbits_patch = 3
+        call mass_deposit(xp(headp(i): tailp(nlevelmax), 1:ndim), mp(headp(i): tailp(nlevelmax)), nparts, i, nbits_patch)
                                call timer('particles','start')
         call split_part(i)
-                               call timer('rho','start')
+        ! Sort particle according to current level Hilbert key
+        do ip = headp(ilevel), tailp(i)
+           sortp(ip) = ip
+        end do
+        sort_level = max(i - 3, 1)
+        ix=0
+        call sort_hilbert(headp(i), tailp(i), ix, 0, 1, sort_level)
+        call swap_parts(headp(i), tailp(i), sortp(headp(i): tailp(i)))
+                                call timer('rho','start')
      end do
 !!$     if(ilevel==levelmin)then
 !!$        do i=ilevel,nlevelmax
@@ -61,6 +85,11 @@ subroutine rho_fine(ilevel)
 !!$        end do
 !!$     endif
   endif
+
+  if (ilevel==levelmin) then
+     call add_particle_multipole
+  end if
+
 
   !--------------------------------------------------------------
   ! Compute multipole contribution from all cpus and set rho_tot
@@ -525,139 +554,240 @@ end subroutine cic_part
 subroutine split_part(ilevel)
   use amr_commons
   use pm_commons
-  use hilbert
+  use pm_utils, only: patched_particle_loop
   implicit none
   integer::ilevel
   !
   !
-  real(dp),dimension(1:ndim),save::x,xp_tmp,vp_tmp
-  integer,dimension(1:ndim),save::ii,ix,ix_ref
-  integer(kind=8),dimension(0:ndim),save::hash_key
-  integer::i,ipart,jpart,inbor,igrid,ind,idim,ioct,icell,ipos,get_grid
+  integer::ipart, jpart, ind,idim,ioct
   integer::npart_coarse,npart_fine
   real(kind=8)::dx_loc,vol_loc,vol2
-  real(dp)::mp_tmp
-  integer::levelp_tmp
-  integer(i8b)::idp_tmp
+  logical, allocatable, dimension(:,:,:) :: refmap_tmp
+  integer  :: offset, ip, patch_size, nparts, nbits_patch
+  real(dp) :: dx
 
-  if(ilevel.GE.nlevelmax)return
-  if(noct_tot(ilevel)==0)return
+  if(ilevel == nlevelmax .or. noct_tot(ilevel) == 0)return
   if(verbose)write(*,111)ilevel
 
-  ! Mesh spacing in that level
-  dx_loc=boxlen/2**ilevel 
-  vol_loc=dx_loc**ndim
+  nbits_patch = 3
+  patch_size = 2 ** nbits_patch
+  dx = boxlen * 0.5d0 ** ilevel
 
-  ! Open read-only cache for array refined
-  hash_key(0)=ilevel
-  call open_cache(operation_split,domain_decompos_amr)
-
-  ! Loop over particles
-  ix_ref=-1
+  ! Allocate two cell-thick boundaries to make the depostion onto the AMR grid
+  ! simpler.                                                                                                                                                                       
   npart_coarse=0
-  do i=headp(ilevel),tailp(nlevelmax)
-     ipart=sortp(i)
-
-     ! Acquire grid using read-only cache
-     ix = int(xp(ipart,1:ndim)/(2*dx_loc))
-     if(.NOT. ALL(ix.EQ.ix_ref))then
-        hash_key(1:ndim)=ix(1:ndim)
-        igrid=get_grid(hash_key,grid_dict,.false.,.true.)
-        ix_ref=ix
-     endif
-
-     ! Rescale particle position at level ilevel
-     do idim=1,ndim
-        x(idim)=xp(ipart,idim)/dx_loc
-     end do
-     
-     ! Shift particle position to to 2x2x2 grid corner
-     do idim=1,ndim
-        ii(idim)=x(idim)-2*ix_ref(idim)
-     end do
-     
-     ! Compute parent cell
-#if NDIM==1
-     icell=1+ii(1)
-#endif
-#if NDIM==2
-     icell=1+ii(1)+2*ii(2)
-#endif
-#if NDIM==3
-     icell=1+ii(1)+2*ii(2)+4*ii(3)
-#endif
-     ! Increase counter if cell is not refined
-     if(.NOT.grid(igrid)%refined(icell))then
-        npart_coarse=npart_coarse+1
-        levelp(ipart)=-levelp(ipart)
-     else
-        sortp(i)=-sortp(i)
-     endif
-
-  end do
-  ! End loop over particles
-
+  offset = headp(ilevel) - 1
+  nparts = tailp(ilevel + 1) - offset
+  call open_cache(operation_split, domain_decompos_amr)
+  allocate(refmap_tmp(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1))
+  call patched_particle_loop(xp(offset + 1: offset + nparts, 1: ndim), nparts, ilevel, nbits_patch, levelsort_particles_callback)
+  deallocate(refmap_tmp)
   call close_cache(grid_dict)
-  
-  tailp(ilevel)=headp(ilevel)+npart_coarse-1
-  headp(ilevel+1)=tailp(ilevel)+1
 
-  ! Loop over fine level particles
-  ! This preserves the initial ordering after partioning
+
+  tailp(ilevel) = headp(ilevel) + npart_coarse - 1
+  headp(ilevel + 1) = tailp(ilevel) + 1
+
+  ! Loop over fine and coarse particles separately.
+  ! This preserves the initial ordering inside levels after partioning.
   npart_fine=0
-  do ipart=headp(ilevel),tailp(nlevelmax)
-     if(levelp(ipart)>0)then
-        npart_fine=npart_fine+1
-        workp(ipart)=headp(ilevel+1)+npart_fine-1
+  do ipart = headp(ilevel), tailp(ilevel + 1)
+     if (levelp(ipart) > 0) then
+        workp(ipart) = headp(ilevel + 1) + npart_fine
+        npart_fine = npart_fine + 1
      endif
   end do
 
-  ! Loop over coarse level particles
-  ! This enforces Hilbert ordering after partioning
   npart_coarse=0
-  do i=headp(ilevel),tailp(nlevelmax)
-     ipart=sortp(i)
-     if(ipart>0)then
-        npart_coarse=npart_coarse+1
-        workp(ipart)=headp(ilevel)+npart_coarse-1
-        levelp(ipart)=-levelp(ipart)
+  do ipart = headp(ilevel), tailp(ilevel + 1)
+     if (levelp(ipart) < 0) then
+        workp(ipart) = headp(ilevel) + npart_coarse
+        npart_coarse = npart_coarse + 1
+        levelp(ipart) = -levelp(ipart)
      endif
   end do
 
-  ! Swap particles using new index table
-  do ipart=headp(ilevel),tailp(nlevelmax)
-     do while(workp(ipart).NE.ipart)
-        ! Swap new index
-        jpart=workp(ipart)
-        workp(ipart)=workp(jpart)
-        workp(jpart)=jpart
-        ! Swap positions
-        xp_tmp(1:ndim)=xp(ipart,1:ndim)
-        xp(ipart,1:ndim)=xp(jpart,1:ndim)
-        xp(jpart,1:ndim)=xp_tmp(1:ndim)
-        ! Swap velocities
-        vp_tmp(1:ndim)=vp(ipart,1:ndim)
-        vp(ipart,1:ndim)=vp(jpart,1:ndim)
-        vp(jpart,1:ndim)=vp_tmp(1:ndim)
-        ! Swap masses
-        mp_tmp=mp(ipart)
-        mp(ipart)=mp(jpart)
-        mp(jpart)=mp_tmp
-        ! Swap ids
-        idp_tmp=idp(ipart)
-        idp(ipart)=idp(jpart)
-        idp(jpart)=idp_tmp
-        ! Swap levels
-        levelp_tmp=levelp(ipart)
-        levelp(ipart)=levelp(jpart)
-        levelp(jpart)=levelp_tmp
-     end do
-  end do
-
+  call swap_parts(headp(ilevel), tailp(ilevel + 1), workp(headp(ilevel): tailp(ilevel + 1)))
+  
 111 format('   Entering split_part for level',i2)
+contains
+
+    subroutine levelsort_particles_callback(oft, np, grid_offset)
+    use amr_parameters,         only: nvector
+    use particle_interpolation, only: ngp_nvector
+    use pm_utils,               only: patch_to_AMR
+    implicit none
+    integer, intent(in), value :: oft, np
+    integer(int_pre), dimension(1: ndim) :: grid_offset
+
+    integer(int_pre), dimension(1: nvector, 1:ndim) :: ix
+    integer :: sweep_offset, sweep_nparts, ip, idim
+
+    call patch_to_AMR(grid_offset, patch_size, ilevel, load_refmap_tmp_callback)
+
+    ! Loop particles in nvector sweeps                                                                                                                                              
+    do sweep_offset = 0, np - 1, nvector
+       sweep_nparts = min(np - sweep_offset, nvector)
+       call ngp_nvector(xp(offset + oft + sweep_offset + 1: offset + oft + sweep_offset + sweep_nparts, 1:ndim), ix, sweep_nparts, dx)
+
+       do idim = 1, ndim
+          do ip = 1, sweep_nparts
+             ix(ip, idim) = ix(ip, idim) - grid_offset(idim)
+          end do
+       end do
+
+       do ip = 1, sweep_nparts
+          if (.not. refmap_tmp(ix(ip, 1), ix(ip, 2), ix(ip, 3)))then
+             levelp(offset + oft + sweep_offset + ip) = -levelp(offset + oft + sweep_offset + ip)
+             npart_coarse = npart_coarse + 1
+          end if
+       end do
+    end do
+  end subroutine levelsort_particles_callback
+
+  subroutine load_refmap_tmp_callback(ix, grid_index)
+    use amr_parameters,  only: ndim, int_pre, ngridmax
+    use amr_commons,     only: ind_table2
+    implicit none
+    integer(int_pre), dimension(1:ndim) :: ix, ixg
+    integer                             :: grid_index
+    
+    integer :: icell
+    if (grid_index > 0) then
+       do icell = 0, 7 
+          ixg(1:ndim) = ix(1:ndim) + ind_table2(1:ndim, icell)
+          refmap_tmp(ixg(1), ixg(2), ixg(3)) = grid(grid_index)%refined(icell + 1)
+       end do
+    else
+       do icell = 0, 7
+          ixg(1:ndim) = ix(1:ndim) + ind_table2(1:ndim, icell)
+          refmap_tmp(ixg(1), ixg(2), ixg(3)) = .false.
+       end do
+    end if
+
+  end subroutine load_refmap_tmp_callback
 
 end subroutine split_part
 !##############################################################################
 !##############################################################################
 !##############################################################################
 !##############################################################################
+subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
+  use amr_parameters, only: ndim, dp, int_pre
+  use amr_commons,    only: ncpu, ind_table2, boxlen, operation_rho, domain_decompos_amr, grid_dict
+  use pm_utils,       only: patched_particle_loop
+  implicit none
+  integer, intent(in) :: grid_level, nparts, nbits_patch
+  real(dp), dimension(:, :), intent(inout) :: xpart
+  real(dp), dimension(:), intent(in) :: mpart
+  
+  ! This routine deposits the input particles to the AMR grid at
+  ! level grid_level. It uses a regular cartesian grid patch as
+  ! a "3d-histogram" before accessing the hash table.
+  
+  integer :: patch_size
+  real(dp), allocatable, dimension(:,:,:,:), target :: rho_tmp
+  real(dp) :: dx
+
+  if (nparts == 0) return
+  patch_size = 2 ** nbits_patch
+  dx = boxlen * 0.5d0 ** grid_level
+
+  call open_cache(operation_rho,domain_decompos_amr)
+  
+  ! Allocate two cell-thick boundaries to make the depostion onto the AMR grid
+  ! simpler.
+  allocate(rho_tmp(1:2, -2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1))
+  call patched_particle_loop(xpart, nparts, grid_level, 3, mass_deposit_callback)
+  deallocate(rho_tmp)
+
+  call close_cache(grid_dict)
+  
+contains
+  
+  subroutine mass_deposit_callback(oft, np, grid_offset)
+    use amr_parameters,         only: nvector
+    use particle_interpolation, only: cic_nvector
+    use pm_utils,               only: patch_to_AMR
+    implicit none
+    integer, intent(in), value :: oft, np
+    integer(int_pre), dimension(1: ndim) :: grid_offset
+    
+    integer(int_pre), dimension(1:nvector, 1:ndim, 0:7) :: ix
+    real(dp),         dimension(1:nvector, 0:7)         :: vol
+    
+    integer :: idim, ip, icell, sweep_offset, sweep_nparts
+    
+    rho_tmp = 0.d0
+    ! Loop particles in nvector sweeps
+    do sweep_offset = 0, np - 1, nvector
+       sweep_nparts = min(np - sweep_offset, nvector)
+       
+       ! Get cloud corner integer coordinates and cloud fractions
+       call cic_nvector(xpart(oft + sweep_offset + 1: oft + sweep_offset + sweep_nparts, 1:ndim), ix, vol, sweep_nparts, dx)
+       
+       ! Add mass number density to temporary grid patches
+       do icell = 0, 7
+          do idim = 1, ndim
+             ix(1: sweep_nparts, idim, icell) = ix(1: sweep_nparts, idim, icell) - grid_offset(idim)
+          end do
+
+          do ip = 1, sweep_nparts
+             rho_tmp(1, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) = &
+                  rho_tmp(1, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) + mpart(oft + sweep_offset + ip) * vol(ip, icell)
+             rho_tmp(2, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) = &
+                  rho_tmp(2, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) + vol(ip, icell)
+          end do
+       end do
+    end do
+    rho_tmp(1,:,:,:) = rho_tmp(1,:,:,:) / (dx**3)
+    
+    call patch_to_AMR(grid_offset, patch_size, grid_level, dump_rho_tmp_callback)
+  end subroutine mass_deposit_callback
+  
+  subroutine dump_rho_tmp_callback(i, grid_index)
+    use amr_parameters,  only: ndim, int_pre
+    use amr_commons,     only: ind_table2, grid
+
+    implicit none
+    integer(int_pre), dimension(1:ndim)          :: i, ii
+    integer                                      :: grid_index, cell_index
+    
+    integer :: icell
+    if (grid_index > 0) then
+       do icell = 0, 7
+          ii(1:ndim) = i(1:ndim) + ind_table2(1:ndim, icell)
+          grid(grid_index)%rho(icell + 1) = grid(grid_index)%rho(icell + 1) + rho_tmp(1, ii(1), ii(2), ii(3))
+!          if (grid(grid_index)%rho(icell + 1) > 0.d0 .and. grid(grid_index)%rho(icell + 1) < 1.d-100)print*, grid(grid_index)%rho(icell + 1), rho_tmp(1, ii(1), ii(2), ii(3)) 
+!          grid(grid_index)%phi(icell + 1) = grid(grid_index)%phi(icell + 1) + rho_tmp(2, ii(1), ii(2), ii(3))
+       end do
+    end if
+  end subroutine dump_rho_tmp_callback
+end subroutine mass_deposit
+!##############################################################################
+!##############################################################################
+!##############################################################################
+!##############################################################################
+subroutine add_particle_multipole
+  use amr_parameters, only: ndim
+  use amr_commons, only: myid
+  use pm_commons, only: xp, mp, npart
+  use poisson_commons, only: multipole
+  implicit none
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  ! Simple routine to compute the multipole contribution from particles
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  integer :: ipart, idim
+
+  do ipart = 1, npart
+     multipole(1) = multipole(1) + mp(ipart)
+  end do
+  do idim = 1, ndim
+     do ipart = 1, npart
+        multipole(idim + 1) = multipole(idim + 1) + mp(ipart) * xp(ipart, idim)
+     end do
+  end do
+
+  end subroutine add_particle_multipole

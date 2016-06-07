@@ -27,6 +27,21 @@ module amr_parameters
   integer,parameter::i8b=8  ! long int are long int
 #endif
 
+  ! Integer type necessary to store particle ids and number of particles
+  ! grid ids, etc.
+#ifndef ID_PRECISION
+  integer,parameter:: id_pre = 4
+#else
+  integer,parameter:: id_pre = ID_PRECISION
+#endif
+
+  ! Precision necessary to store a cartesian key
+#ifndef INTKEY_PRECISION
+  integer, parameter :: int_pre = 4
+#else
+  integer, parameter :: int_pre = INTKEY_PRECISION
+#endif
+  
   ! Number of dimensions
 #ifndef NDIM
   integer,parameter::ndim=1
@@ -51,6 +66,9 @@ module amr_parameters
   integer,parameter::nvector=NVECTOR
 #endif
   integer::nsuperoct=0 ! Number of superoct levels
+
+  ! More general parameters
+  real(dp), parameter :: MASK_VALUE = huge(0.0_dp)             
 
   ! Run control
   logical::verbose =.false.   ! Write everything

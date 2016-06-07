@@ -1,18 +1,34 @@
 recursive subroutine amr_step(ilevel,icount)
   use amr_commons
-  use pm_commons
+  use pm_commons, only: xp, vp, levelp, headp, tailp
   use hydro_commons
   use poisson_commons
   implicit none
 #ifndef WITHOUTMPI
   include 'mpif.h'
 #endif
+  
+  interface
+     subroutine kick_part(xpart, vpart, levelp, nparts, grid_level, nbits_patch, previous_timestep)
+       use amr_parameters, only: ndim, dp, int_pre, MASK_VALUE
+       use amr_commons,    only: ncpu, ind_table2, boxlen, dtnew, dtold, operation_kick, domain_decompos_amr, grid_dict
+       use pm_utils,       only: patched_particle_loop
+       implicit none
+       integer, intent(in) :: grid_level, nparts
+       integer, value, intent(in) :: nbits_patch
+       integer, dimension(:), intent(inout) :: levelp
+       real(dp), dimension(:, :), intent(inout) :: xpart, vpart
+       logical, intent(in), value :: previous_timestep
+     end subroutine kick_part
+  end interface
+
   integer::ilevel,icount,ilev
   !-------------------------------------------------------------------!
   ! This routine is the adaptive-mesh/adaptive-time-step main driver. !
   ! Each routine is called using a specific order, don't change it,   !
   ! unless you check all consequences first                           !
   !-------------------------------------------------------------------!
+  integer :: nparts
   logical,save::first_step=.true.
 
   if(noct_tot(ilevel)==0)return
@@ -104,8 +120,10 @@ recursive subroutine amr_step(ilevel,icount)
 
      ! Perform second kick for particles
                                call timer('particles','start')
-     call kick_drift_part(ilevel,action_kick_only)
-
+!     call kick_drift_part(ilevel,action_kick_only)
+     nparts = tailp(ilevel) - headp(ilevel) + 1
+     call kick_part(xp(headp(ilevel): tailp(ilevel), 1:ndim), vp(headp(ilevel): tailp(ilevel), 1:ndim), levelp(headp(ilevel): tailp(ilevel)), nparts, ilevel, 3, .true.)
+     call update_levelp(ilevel)
      ! Add gravity source term with half time step and new force
      if(hydro)then
                                call timer('poisson','start')
@@ -185,7 +203,10 @@ recursive subroutine amr_step(ilevel,icount)
   ! Perform first kick and drift for particles
   !-------------------------------------------
                                call timer('particles','start')
-  call kick_drift_part(ilevel,action_kick_drift)
+!  call kick_drift_part(ilevel,action_kick_drift)
+  nparts = tailp(ilevel) - headp(ilevel) + 1
+  call kick_part(xp(headp(ilevel): tailp(ilevel), 1:ndim), vp(headp(ilevel): tailp(ilevel), 1:ndim), levelp(headp(ilevel): tailp(ilevel)), nparts, ilevel, 3, .false.)
+  call drift(ilevel)
 
   !-----------------------
   ! Compute refinement map

@@ -286,5 +286,39 @@ module amr_commons
   type(small_realdp_flush),allocatable,dimension(:)::send_flush_poisson
   type(large_realdp_flush),allocatable,dimension(:)::send_flush_refine
 
+
+#if NDIM == 3
+  integer(int_pre), dimension(0:7, 1:3), parameter :: ind_table = reshape((/&
+       0,1,0,1,0,1,0,1, &
+       0,0,1,1,0,0,1,1, &
+       0,0,0,0,1,1,1,1 /), (/8,3/) )
+
+  integer, dimension(1:3, 0:7), parameter :: ind_table2 = reshape((/&
+       0,0,0, &
+       1,0,0, &
+       0,1,0, &
+       1,1,0, &
+       0,0,1, &
+       1,0,1, &
+       0,1,1, &
+       1,1,1 /), (/3,8/) )
+#endif
+#if NDIM == 2
+  integer(int_pre), dimension(0:3, 1:2), parameter :: ind_table = reshape((/&
+       0,1,0,1, &
+       0,0,1,1 /), (/4,2/) )
+  integer, dimension(1:2, 0:3), parameter :: ind_table2 = reshape((/&
+       0,0, &
+       0,1, &
+       1,0, &
+       1,1 /), (/2,4/) )
+#endif
+#if NDIM == 1
+  integer(int_pre), dimension(0:1, 1:1), parameter :: ind_table = reshape((/&
+       0,1 /), (/2,1/) )
+  integer, dimension(1:1, 0:1), parameter :: ind_table2 = reshape((/&
+       0,1 /), (/1,2/) )
+#endif
+  
 end module amr_commons
 
