@@ -58,23 +58,30 @@ subroutine rho_fine(ilevel)
   ! Compute particle contribution to density field
   !-------------------------------------------------------
   if(pic)then
+     call timer('particles','start')
      do i=ilevel,nlevelmax
-                               call timer('rho','start')
+        ! Sort particle according to current level Hilbert key           
+        do ip = headp(i), tailp(i)
+           sortp(ip) = ip
+        end do
+        sort_level = max(i - 3, 1)
+        ix=0
+        call sort_hilbert(headp(i), tailp(i), ix, 0, 1, sort_level)
+        do ip = headp(i), tailp(i)
+           workp(sortp(ip)) = ip
+        end do
+        call swap_parts(headp(i), tailp(i), workp(headp(i): tailp(i)))
+     end do
+
+     call timer('rho','start')
+
+     do i=ilevel, nlevelmax
                                !        call cic_part(i)
         nparts = tailp(nlevelmax) - headp(i) + 1
         nbits_patch = 3
         call mass_deposit(xp(headp(i): tailp(nlevelmax), 1:ndim), mp(headp(i): tailp(nlevelmax)), nparts, i, nbits_patch)
                                call timer('particles','start')
         call split_part(i)
-        ! Sort particle according to current level Hilbert key
-        do ip = headp(ilevel), tailp(i)
-           sortp(ip) = ip
-        end do
-        sort_level = max(i - 3, 1)
-        ix=0
-        call sort_hilbert(headp(i), tailp(i), ix, 0, 1, sort_level)
-        call swap_parts(headp(i), tailp(i), sortp(headp(i): tailp(i)))
-                                call timer('rho','start')
      end do
 !!$     if(ilevel==levelmin)then
 !!$        do i=ilevel,nlevelmax
@@ -561,7 +568,6 @@ subroutine split_part(ilevel)
   !
   integer::ipart, jpart, ind,idim,ioct
   integer::npart_coarse,npart_fine
-  real(kind=8)::dx_loc,vol_loc,vol2
   logical, allocatable, dimension(:,:,:) :: refmap_tmp
   integer  :: offset, ip, patch_size, nparts, nbits_patch
   real(dp) :: dx
@@ -647,22 +653,14 @@ contains
 
   subroutine load_refmap_tmp_callback(ix, grid_index)
     use amr_parameters,  only: ndim, int_pre, ngridmax
-    use amr_commons,     only: ind_table2
     implicit none
-    integer(int_pre), dimension(1:ndim) :: ix, ixg
+    integer(int_pre), dimension(1:ndim) :: ix
     integer                             :: grid_index
     
-    integer :: icell
     if (grid_index > 0) then
-       do icell = 0, 7 
-          ixg(1:ndim) = ix(1:ndim) + ind_table2(1:ndim, icell)
-          refmap_tmp(ixg(1), ixg(2), ixg(3)) = grid(grid_index)%refined(icell + 1)
-       end do
+       refmap_tmp(ix(1): ix(1) + 1, ix(2): ix(2) + 1, ix(3): ix(3) + 1) = RESHAPE(grid(grid_index)%refined(:), (/2, 2, 2 /))
     else
-       do icell = 0, 7
-          ixg(1:ndim) = ix(1:ndim) + ind_table2(1:ndim, icell)
-          refmap_tmp(ixg(1), ixg(2), ixg(3)) = .false.
-       end do
+       refmap_tmp(ix(1): ix(1) + 1, ix(2): ix(2) + 1, ix(3): ix(3) + 1) = .false.
     end if
 
   end subroutine load_refmap_tmp_callback
@@ -686,7 +684,7 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
   ! a "3d-histogram" before accessing the hash table.
   
   integer :: patch_size
-  real(dp), allocatable, dimension(:,:,:,:), target :: rho_tmp
+  real(dp), allocatable, dimension(:,:,:), target :: rho_tmp
   real(dp) :: dx
 
   if (nparts == 0) return
@@ -697,7 +695,7 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
   
   ! Allocate two cell-thick boundaries to make the depostion onto the AMR grid
   ! simpler.
-  allocate(rho_tmp(1:2, -2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1))
+  allocate(rho_tmp(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1))
   call patched_particle_loop(xpart, nparts, grid_level, 3, mass_deposit_callback)
   deallocate(rho_tmp)
 
@@ -733,34 +731,28 @@ contains
           end do
 
           do ip = 1, sweep_nparts
-             rho_tmp(1, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) = &
-                  rho_tmp(1, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) + mpart(oft + sweep_offset + ip) * vol(ip, icell)
-             rho_tmp(2, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) = &
-                  rho_tmp(2, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) + vol(ip, icell)
+             rho_tmp(ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) = &
+                  rho_tmp(ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) + mpart(oft + sweep_offset + ip) * vol(ip, icell)
+!             rho_tmp(2, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) = &
+!                  rho_tmp(2, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) + vol(ip, icell)
           end do
        end do
     end do
-    rho_tmp(1,:,:,:) = rho_tmp(1,:,:,:) / (dx**3)
+    rho_tmp(:,:,:) = rho_tmp(:,:,:) / (dx**3)
     
     call patch_to_AMR(grid_offset, patch_size, grid_level, dump_rho_tmp_callback)
   end subroutine mass_deposit_callback
   
   subroutine dump_rho_tmp_callback(i, grid_index)
     use amr_parameters,  only: ndim, int_pre
-    use amr_commons,     only: ind_table2, grid
-
+    use amr_commons,     only: grid
     implicit none
-    integer(int_pre), dimension(1:ndim)          :: i, ii
+    integer(int_pre), dimension(1:ndim)          :: i
     integer                                      :: grid_index, cell_index
     
-    integer :: icell
     if (grid_index > 0) then
-       do icell = 0, 7
-          ii(1:ndim) = i(1:ndim) + ind_table2(1:ndim, icell)
-          grid(grid_index)%rho(icell + 1) = grid(grid_index)%rho(icell + 1) + rho_tmp(1, ii(1), ii(2), ii(3))
-!          if (grid(grid_index)%rho(icell + 1) > 0.d0 .and. grid(grid_index)%rho(icell + 1) < 1.d-100)print*, grid(grid_index)%rho(icell + 1), rho_tmp(1, ii(1), ii(2), ii(3)) 
-!          grid(grid_index)%phi(icell + 1) = grid(grid_index)%phi(icell + 1) + rho_tmp(2, ii(1), ii(2), ii(3))
-       end do
+       grid(grid_index)%rho(1:8) = grid(grid_index)%rho(1:8) + &
+            RESHAPE(rho_tmp(i(1): i(1) + 1, i(2): i(2) + 1, i(3): i(3) + 1), (/8/))
     end if
   end subroutine dump_rho_tmp_callback
 end subroutine mass_deposit

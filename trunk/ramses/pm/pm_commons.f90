@@ -24,6 +24,8 @@ module pm_commons
 
   contains
     subroutine swap_parts(istart, iend, swap_table)
+      use amr_parameters, only: ndim
+      implicit none
       integer, intent(in) :: istart, iend
       integer, dimension(istart: ) :: swap_table
 
@@ -32,7 +34,8 @@ module pm_commons
       real(dp) :: mp_tmp
       integer :: levelp_tmp
       integer(i8b) :: idp_tmp
-
+      integer :: ipart, jpart
+      
       do ipart = istart, iend
          do while(swap_table(ipart) .NE. ipart)
             ! Swap new index

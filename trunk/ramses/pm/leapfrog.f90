@@ -28,8 +28,8 @@ subroutine kick_part(xpart, vpart, levelp, nparts, grid_level, nbits_patch, prev
   dx = boxlen * 0.5d0 ** grid_level
   
   ! Allocate two cell-thick boundaries to make the depostion onto the AMR grid simpler.
-  allocate(f_tmp_fine(1:ndim, -2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1))
-  allocate(f_tmp_coarse(1:ndim, -2: patch_size_coarse + 1, -2: patch_size_coarse + 1, -2: patch_size_coarse + 1))
+  allocate(f_tmp_fine(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1, 1:ndim))
+  allocate(f_tmp_coarse(-2: patch_size_coarse + 1, -2: patch_size_coarse + 1, -2: patch_size_coarse + 1, 1:ndim))
 
   call patched_particle_loop(xpart, nparts, grid_level, 3, kick_part_callback)
 
@@ -49,7 +49,7 @@ contains
 
     integer(int_pre), dimension(1:nvector, 1:ndim, 0:7) :: ix
     real(dp),         dimension(1:nvector, 0:7)         :: vol
-    real(dp),         dimension(1:ndim, 1:nvector)      :: ap
+    real(dp),         dimension(1:nvector, 1:ndim)      :: ap
     real(dp),         dimension(1:nvector)              :: dteff
     logical,          dimension(1:nvector)              :: repeat_coarser
     integer(int_pre), dimension(1: ndim)                :: grid_offset_coarse
@@ -83,11 +83,11 @@ contains
        ap = 0.d0
        do icell = 0, 7
           do ip = 1, sweep_nparts
-             if (f_tmp_fine(1, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell)) == MASK_VALUE) then
+             if (f_tmp_fine(ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell), 1) == MASK_VALUE) then
                 repeat_coarser(ip) = .true.
                 all_ok = .false.
              else
-                ap(1:ndim, ip) =  ap(1:ndim, ip) + vol(ip, icell) * f_tmp_fine(1:ndim, ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell))
+                ap(ip, 1:ndim) =  ap(ip, 1:ndim) + vol(ip, icell) * f_tmp_fine(ix(ip, 1, icell), ix(ip, 2, icell), ix(ip, 3, icell), 1:ndim)
              end if
           end do
        end do
@@ -100,7 +100,7 @@ contains
              ap(1:3, ip) = 0.d0
              do icell = 0, 7
                 ix(1, 1:ndim, icell) = ix(1, 1:ndim, icell) - grid_offset_coarse(1:ndim)
-                ap(1:ndim, ip) =  ap(1:ndim, ip) + vol(1, icell) * f_tmp_coarse(1:ndim, ix(1, 1, icell), ix(1, 2, icell), ix(1, 3, icell))
+                ap(ip, 1:ndim) =  ap(ip, 1:ndim) + vol(1, icell) * f_tmp_coarse(ix(1, 1, icell), ix(1, 2, icell), ix(1, 3, icell), 1:ndim)
              end do
           end if
        end do
@@ -120,11 +120,12 @@ contains
        end if
 
        ! Finally, apply the kick
-       do ip = 1, sweep_nparts
-          ipart = oft + sweep_offset + ip
-          vpart(ipart, 1:ndim) = vpart(ipart, 1:ndim) + ap(1:ndim, ip) * dteff(ip)
+       do idim = 1, ndim
+          do ip = 1, sweep_nparts
+             ipart = oft + sweep_offset + ip
+             vpart(ipart, idim) = vpart(ipart, idim) + ap(ip, idim) * dteff(ip)
+          end do
        end do
-
     end do
   end subroutine kick_part_callback
 
@@ -135,20 +136,10 @@ contains
     integer(int_pre), dimension(1:ndim)      :: ix
     integer                                  :: grid_index
     
-    integer(int_pre), dimension(1:ndim, 0:7) :: ixg       
-    integer :: icell
-    
-    do icell = 0, 7
-       ixg(1:3, icell) = ind_table2(1:3, icell) + ix(1:3)
-    end do    
     if (grid_index > 0) then
-       do icell = 0, 7
-          f_tmp(1:ndim, ixg(1, icell), ixg(2, icell), ixg(3, icell)) = grid(grid_index)%f(icell + 1, 1:ndim)
-       end do
+       f_tmp(ix(1): ix(1) + 1, ix(2): ix(2) + 1, ix(3): ix(3) + 1, 1:ndim) = RESHAPE(grid(grid_index)%f(1:8, 1:ndim), (/2,2,2,ndim/))
     else
-       do icell = 0, 7
-          f_tmp(1:ndim, ixg(1, icell), ixg(2, icell), ixg(3, icell)) = MASK_VALUE
-       end do
+       f_tmp(ix(1): ix(1) + 1, ix(2): ix(2) + 1, ix(3): ix(3) + 1, 1:ndim) = MASK_VALUE
     end if
   end subroutine load_f_tmp_callback  
 end subroutine kick_part
