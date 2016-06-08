@@ -97,7 +97,7 @@ contains
           if(repeat_coarser(ip)) then
              ! Maybe write cic_one subroutine...
              call cic_nvector(xpart(oft + sweep_offset + ip: oft + sweep_offset + ip, 1:ndim), ix(1:1, 1:ndim, 0:7), vol(1:1, 0:7), 1, 2 * dx)
-             ap(1:3, ip) = 0.d0
+             ap(ip, 1:ndim) = 0.d0
              do icell = 0, 7
                 ix(1, 1:ndim, icell) = ix(1, 1:ndim, icell) - grid_offset_coarse(1:ndim)
                 ap(ip, 1:ndim) =  ap(ip, 1:ndim) + vol(1, icell) * f_tmp_coarse(ix(1, 1, icell), ix(1, 2, icell), ix(1, 3, icell), 1:ndim)
