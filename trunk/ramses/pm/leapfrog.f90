@@ -4,7 +4,7 @@
 !##############################################################################
 subroutine kick_part(xpart, vpart, levelp, nparts, grid_level, nbits_patch, previous_timestep)
   use amr_parameters, only: ndim, dp, int_pre, MASK_VALUE
-  use amr_commons,    only: ncpu, ind_table2, boxlen, dtnew, dtold, operation_kick, domain_decompos_amr, grid_dict
+  use amr_commons,    only: ncpu, ind_table2, boxlen, dtnew, dtold, operation_kick, domain_decompos_amr, grid_dict, noct_tot
   use pm_utils,       only: patched_particle_loop
   implicit none
   integer, intent(in) :: grid_level, nparts
@@ -19,8 +19,8 @@ subroutine kick_part(xpart, vpart, levelp, nparts, grid_level, nbits_patch, prev
   real(dp), dimension(:,:,:,:), pointer :: f_tmp
   real(dp) :: dx
 
-  if (nparts==0)return  
-
+  if (noct_tot(grid_level) == 0) return
+  
   call open_cache(operation_kick,domain_decompos_amr)
 
   patch_size = 2 ** nbits_patch
@@ -59,9 +59,9 @@ contains
   
     grid_offset_coarse = grid_offset / 2
     f_tmp => f_tmp_fine
-    call patch_to_AMR(grid_offset, patch_size, grid_level, load_f_tmp_callback)
+    call patch_to_AMR(grid_offset, patch_size, grid_level, load_f_tmp_callback, .false., .true.)
     f_tmp => f_tmp_coarse
-    call patch_to_AMR(grid_offset_coarse, patch_size_coarse, grid_level - 1, load_f_tmp_callback)
+    call patch_to_AMR(grid_offset_coarse, patch_size_coarse, grid_level - 1, load_f_tmp_callback, .false., .true.)
 
     ! Loop particles in nvector sweeps
     do sweep_offset = 0, np - 1, nvector

@@ -629,7 +629,7 @@ contains
     integer(int_pre), dimension(1: nvector, 1:ndim) :: ix
     integer :: sweep_offset, sweep_nparts, ip, idim
 
-    call patch_to_AMR(grid_offset, patch_size, ilevel, load_refmap_tmp_callback)
+    call patch_to_AMR(grid_offset, patch_size, ilevel, load_refmap_tmp_callback, .false., .true.)
 
     ! Loop particles in nvector sweeps                                                                                                                                              
     do sweep_offset = 0, np - 1, nvector
@@ -672,7 +672,7 @@ end subroutine split_part
 !##############################################################################
 subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
   use amr_parameters, only: ndim, dp, int_pre
-  use amr_commons,    only: ncpu, ind_table2, boxlen, operation_rho, domain_decompos_amr, grid_dict
+  use amr_commons,    only: ncpu, ind_table2, boxlen, operation_rho, domain_decompos_amr, grid_dict, noct_tot
   use pm_utils,       only: patched_particle_loop
   implicit none
   integer, intent(in) :: grid_level, nparts, nbits_patch
@@ -687,7 +687,7 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
   real(dp), allocatable, dimension(:,:,:), target :: rho_tmp
   real(dp) :: dx
 
-  if (nparts == 0) return
+  if (noct_tot(grid_level) == 0) return
   patch_size = 2 ** nbits_patch
   dx = boxlen * 0.5d0 ** grid_level
 
@@ -740,7 +740,7 @@ contains
     end do
     rho_tmp(:,:,:) = rho_tmp(:,:,:) / (dx**3)
     
-    call patch_to_AMR(grid_offset, patch_size, grid_level, dump_rho_tmp_callback)
+    call patch_to_AMR(grid_offset, patch_size, grid_level, dump_rho_tmp_callback, .true., .false.)
   end subroutine mass_deposit_callback
   
   subroutine dump_rho_tmp_callback(i, grid_index)

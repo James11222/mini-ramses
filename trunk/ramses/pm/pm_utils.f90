@@ -32,9 +32,11 @@ contains
     patch_size = 2 ** nbits_patch
 
     ip_offset = 0 
-    do idim = 1, ndim
-       ix_next(idim) = xpart(1, idim) * part_to_grid
-    end do
+    if (nparts > 0) then
+       do idim = 1, ndim
+          ix_next(idim) = xpart(1, idim) * part_to_grid
+       end do
+    end if
     
     do ip = 1, nparts
        ix_current(1: ndim) = ix_next(1: ndim)
@@ -67,14 +69,15 @@ contains
   
   
   
-  subroutine patch_to_AMR(grid_offset, patch_size, grid_level, interaction_callback)
+  subroutine patch_to_AMR(grid_offset, patch_size, grid_level, interaction_callback, flush_cache, fetch_cache) 
     use amr_parameters,  only: ndim, dp, int_pre
     use amr_commons,     only: ind_table2, grid_dict
     implicit none
     
     integer(int_pre), dimension(1:ndim), intent(in) :: grid_offset
     integer,value,                       intent(in) :: grid_level, patch_size
-
+    logical, value,                      intent(in) :: flush_cache, fetch_cache
+    
     interface
        subroutine callback(cartesian_index, amr_index)
          use amr_parameters, only: ndim, int_pre
@@ -112,7 +115,7 @@ contains
              end do
 
              ! Dump the actual mass onto the grid
-             grid_index = get_grid(hash_key, grid_dict, .true., .false.)
+             grid_index = get_grid(hash_key, grid_dict, flush_cache, fetch_cache)
              ix(1:3) = 2 * (/ i, j, k /) - grid_offset(1:3)
              call interaction_callback(ix, grid_index)
           end do
