@@ -5,6 +5,7 @@ module pm_parameters
   integer  :: npart_tot=0                 ! Total number of particles in all processors
   integer  :: npart_max=0                 ! Maximum number of particles in all processors
 
-  logical :: part_memory=.true.           ! Optimize particle memory distribution
+  logical :: part_memory=.false.           ! Optimize particle memory distribution
 
+  
 end module pm_parameters

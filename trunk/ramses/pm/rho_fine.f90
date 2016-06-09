@@ -20,7 +20,7 @@ subroutine rho_fine(ilevel)
   ! On output, particles are sorted according to the level they sit in
   ! and inside their level, they are sorted in grid Hilbert order.
   !------------------------------------------------------------------
-  integer::i,igrid,ind,info, nparts, nbits_patch, sort_level, ip
+  integer::i,igrid,ind,info, nparts, sort_level, ip
   real(dp)::dx_loc,d_scale,scalar
   real(kind=8),dimension(1:ndim+1)::multipole_in,multipole_out
   integer,dimension(1:ndim), save::ix
@@ -30,7 +30,8 @@ subroutine rho_fine(ilevel)
        use amr_parameters, only: ndim, dp, int_pre
        use amr_commons,    only: ncpu, ind_table2, boxlen
        implicit none
-       integer, intent(in) :: grid_level, nparts, nbits_patch
+       integer, intent(in) :: grid_level, nparts
+       integer, value, intent(in) :: nbits_patch
        real(dp), dimension(:, :), intent(inout) :: xpart
        real(dp), dimension(:), intent(in) :: mpart
      end subroutine mass_deposit
@@ -78,8 +79,7 @@ subroutine rho_fine(ilevel)
      do i=ilevel, nlevelmax
                                !        call cic_part(i)
         nparts = tailp(nlevelmax) - headp(i) + 1
-        nbits_patch = 3
-        call mass_deposit(xp(headp(i): tailp(nlevelmax), 1:ndim), mp(headp(i): tailp(nlevelmax)), nparts, i, nbits_patch)
+        call mass_deposit(xp(headp(i): tailp(nlevelmax), 1:ndim), mp(headp(i): tailp(nlevelmax)), nparts, i, part_patch_rho(i))
                                call timer('particles','start')
         call split_part(i)
      end do
@@ -575,7 +575,7 @@ subroutine split_part(ilevel)
   if(ilevel == nlevelmax .or. noct_tot(ilevel) == 0)return
   if(verbose)write(*,111)ilevel
 
-  nbits_patch = 3
+  nbits_patch = part_patch_ref(ilevel)
   patch_size = 2 ** nbits_patch
   dx = boxlen * 0.5d0 ** ilevel
 
@@ -585,7 +585,7 @@ subroutine split_part(ilevel)
   offset = headp(ilevel) - 1
   nparts = tailp(ilevel + 1) - offset
   call open_cache(operation_split, domain_decompos_amr)
-  allocate(refmap_tmp(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1))
+  allocate(refmap_tmp(0: patch_size - 1, 0: patch_size - 1, 0: patch_size - 1))
   call patched_particle_loop(xp(offset + 1: offset + nparts, 1: ndim), nparts, ilevel, nbits_patch, levelsort_particles_callback)
   deallocate(refmap_tmp)
   call close_cache(grid_dict)
@@ -629,7 +629,7 @@ contains
     integer(int_pre), dimension(1: nvector, 1:ndim) :: ix
     integer :: sweep_offset, sweep_nparts, ip, idim
 
-    call patch_to_AMR(grid_offset, patch_size, ilevel, load_refmap_tmp_callback, .false., .true.)
+    call patch_to_AMR(grid_offset, patch_size, 0, ilevel, load_refmap_tmp_callback, .false., .true.)
 
     ! Loop particles in nvector sweeps                                                                                                                                              
     do sweep_offset = 0, np - 1, nvector
@@ -675,7 +675,8 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
   use amr_commons,    only: ncpu, ind_table2, boxlen, operation_rho, domain_decompos_amr, grid_dict, noct_tot
   use pm_utils,       only: patched_particle_loop
   implicit none
-  integer, intent(in) :: grid_level, nparts, nbits_patch
+  integer, intent(in) :: grid_level, nparts
+  integer, value, intent(in) :: nbits_patch
   real(dp), dimension(:, :), intent(inout) :: xpart
   real(dp), dimension(:), intent(in) :: mpart
   
@@ -683,8 +684,9 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
   ! level grid_level. It uses a regular cartesian grid patch as
   ! a "3d-histogram" before accessing the hash table.
   
-  integer :: patch_size
+  integer :: patch_size, i,j,k
   real(dp), allocatable, dimension(:,:,:), target :: rho_tmp
+  logical, allocatable, dimension(:,:,:) :: comm_mask
   real(dp) :: dx
 
   if (noct_tot(grid_level) == 0) return
@@ -696,8 +698,9 @@ subroutine mass_deposit(xpart, mpart, nparts, grid_level, nbits_patch)
   ! Allocate two cell-thick boundaries to make the depostion onto the AMR grid
   ! simpler.
   allocate(rho_tmp(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1))
-  call patched_particle_loop(xpart, nparts, grid_level, 3, mass_deposit_callback)
-  deallocate(rho_tmp)
+  allocate(comm_mask(-1: patch_size / 2 , -1: patch_size / 2, -1: patch_size / 2))
+  call patched_particle_loop(xpart, nparts, grid_level, nbits_patch, mass_deposit_callback)
+  deallocate(rho_tmp, comm_mask)
 
   call close_cache(grid_dict)
   
@@ -739,8 +742,18 @@ contains
        end do
     end do
     rho_tmp(:,:,:) = rho_tmp(:,:,:) / (dx**3)
+
+    do i= -1, patch_size / 2
+       do j= -1, patch_size / 2
+          do k= -1, patch_size / 2
+             comm_mask(i,j,k)= sum(rho_tmp(2*i:2*i+1, 2*j:2*j+1, 2*k:2*k+1)) > 0.d0
+          end do
+       end do
+    end do
     
-    call patch_to_AMR(grid_offset, patch_size, grid_level, dump_rho_tmp_callback, .true., .false.)
+
+             
+    call patch_to_AMR(grid_offset, patch_size, 1, grid_level, dump_rho_tmp_callback, .true., .false., comm_mask)
   end subroutine mass_deposit_callback
   
   subroutine dump_rho_tmp_callback(i, grid_index)

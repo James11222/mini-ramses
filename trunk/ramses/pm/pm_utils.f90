@@ -69,14 +69,15 @@ contains
   
   
   
-  subroutine patch_to_AMR(grid_offset, patch_size, grid_level, interaction_callback, flush_cache, fetch_cache) 
+  subroutine patch_to_AMR(grid_offset, patch_size, boundary_grids, grid_level, interaction_callback, flush_cache, fetch_cache, comm_mask) 
     use amr_parameters,  only: ndim, dp, int_pre
     use amr_commons,     only: ind_table2, grid_dict
     implicit none
     
     integer(int_pre), dimension(1:ndim), intent(in) :: grid_offset
-    integer,value,                       intent(in) :: grid_level, patch_size
+    integer,value,                       intent(in) :: grid_level, patch_size, boundary_grids
     logical, value,                      intent(in) :: flush_cache, fetch_cache
+    logical, dimension(grid_offset(1) / 2 - boundary_grids:,grid_offset(2) / 2 - boundary_grids:,grid_offset(3) / 2 - boundary_grids:), optional :: comm_mask
     
     interface
        subroutine callback(cartesian_index, amr_index)
@@ -101,10 +102,15 @@ contains
     bitmask = key_space_size - 1
     hash_key(0) = int(grid_level, kind=int_pre)
 
+
     ! Loop over all octs in the grid patch
-    do i = grid_offset(1) / 2 - 1, grid_offset(1) / 2 +  patch_size / 2
-       do j = grid_offset(2) / 2  - 1, grid_offset(2) / 2 +  patch_size / 2
-          do k = grid_offset(3) / 2 - 1, grid_offset(3) / 2 +  patch_size / 2
+    do i = grid_offset(1) / 2 - boundary_grids, grid_offset(1) / 2 +  patch_size / 2 - 1 + boundary_grids
+       do j = grid_offset(2) / 2  - boundary_grids, grid_offset(2) / 2 +  patch_size / 2 - 1 + boundary_grids
+          do k = grid_offset(3) / 2 - boundary_grids, grid_offset(3) / 2 +  patch_size / 2 - 1 + boundary_grids
+
+             if (present(comm_mask)) then
+                if (.not. comm_mask(i,j,k))cycle
+             end if
              
              ! Construct the hash key
              hash_key(1: ndim) = (/ i, j, k /)
@@ -113,7 +119,7 @@ contains
              do idim = 1, ndim
                 hash_key(idim) = IAND(key_space_size + hash_key(idim), bitmask)
              end do
-
+                
              ! Dump the actual mass onto the grid
              grid_index = get_grid(hash_key, grid_dict, flush_cache, fetch_cache)
              ix(1:3) = 2 * (/ i, j, k /) - grid_offset(1:3)
@@ -122,6 +128,6 @@ contains
        end do
     end do
   end subroutine patch_to_AMR
-  
-
+     
+     
 end module pm_utils

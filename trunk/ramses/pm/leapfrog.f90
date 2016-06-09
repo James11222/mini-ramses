@@ -31,7 +31,7 @@ subroutine kick_part(xpart, vpart, levelp, nparts, grid_level, nbits_patch, prev
   allocate(f_tmp_fine(-2: patch_size + 1, -2: patch_size + 1, -2: patch_size + 1, 1:ndim))
   allocate(f_tmp_coarse(-2: patch_size_coarse + 1, -2: patch_size_coarse + 1, -2: patch_size_coarse + 1, 1:ndim))
 
-  call patched_particle_loop(xpart, nparts, grid_level, 3, kick_part_callback)
+  call patched_particle_loop(xpart, nparts, grid_level, nbits_patch, kick_part_callback)
 
   call close_cache(grid_dict)
 
@@ -59,9 +59,9 @@ contains
   
     grid_offset_coarse = grid_offset / 2
     f_tmp => f_tmp_fine
-    call patch_to_AMR(grid_offset, patch_size, grid_level, load_f_tmp_callback, .false., .true.)
+    call patch_to_AMR(grid_offset, patch_size, 1, grid_level, load_f_tmp_callback, .false., .true.)
     f_tmp => f_tmp_coarse
-    call patch_to_AMR(grid_offset_coarse, patch_size_coarse, grid_level - 1, load_f_tmp_callback, .false., .true.)
+    call patch_to_AMR(grid_offset_coarse, patch_size_coarse, 1, grid_level - 1, load_f_tmp_callback, .false., .true.)
 
     ! Loop particles in nvector sweeps
     do sweep_offset = 0, np - 1, nvector

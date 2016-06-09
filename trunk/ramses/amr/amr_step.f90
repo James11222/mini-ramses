@@ -1,6 +1,6 @@
 recursive subroutine amr_step(ilevel,icount)
   use amr_commons
-  use pm_commons, only: xp, vp, levelp, headp, tailp
+  use pm_commons, only: xp, vp, levelp, headp, tailp, part_patch_acc
   use hydro_commons
   use poisson_commons
   implicit none
@@ -122,7 +122,7 @@ recursive subroutine amr_step(ilevel,icount)
                                call timer('particles','start')
 !     call kick_drift_part(ilevel,action_kick_only)
      nparts = tailp(ilevel) - headp(ilevel) + 1
-     call kick_part(xp(headp(ilevel): tailp(ilevel), 1:ndim), vp(headp(ilevel): tailp(ilevel), 1:ndim), levelp(headp(ilevel): tailp(ilevel)), nparts, ilevel, 3, .true.)
+     call kick_part(xp(headp(ilevel): tailp(ilevel), 1:ndim), vp(headp(ilevel): tailp(ilevel), 1:ndim), levelp(headp(ilevel): tailp(ilevel)), nparts, ilevel, part_patch_acc(ilevel), .true.)
      call update_levelp(ilevel)
      ! Add gravity source term with half time step and new force
      if(hydro)then
@@ -205,7 +205,7 @@ recursive subroutine amr_step(ilevel,icount)
                                call timer('particles','start')
 !  call kick_drift_part(ilevel,action_kick_drift)
   nparts = tailp(ilevel) - headp(ilevel) + 1
-  call kick_part(xp(headp(ilevel): tailp(ilevel), 1:ndim), vp(headp(ilevel): tailp(ilevel), 1:ndim), levelp(headp(ilevel): tailp(ilevel)), nparts, ilevel, 3, .false.)
+  call kick_part(xp(headp(ilevel): tailp(ilevel), 1:ndim), vp(headp(ilevel): tailp(ilevel), 1:ndim), levelp(headp(ilevel): tailp(ilevel)), nparts, ilevel, part_patch_acc(ilevel), .false.)
   call drift(ilevel)
 
   !-----------------------

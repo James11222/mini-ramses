@@ -1,6 +1,7 @@
 subroutine read_params
   use amr_commons
   use pm_parameters
+  use pm_commons
   use poisson_parameters
   use hydro_parameters
   implicit none
@@ -25,7 +26,7 @@ subroutine read_params
   !--------------------------------------------------
   namelist/run_params/cosmo,pic,poisson,hydro,verbose,debug &
        & ,nrestart,ncontrol,nstepmax,nsubcycle,nremap,ordering &
-       & ,static,geom,overload,cost_weighting,nsuperoct
+       & ,static,geom,overload,cost_weighting,nsuperoct, part_patch_rho, part_patch_acc, part_patch_ref
   namelist/output_params/noutput,foutput,fbackup,aout,tout,output_mode &
        & ,tend,delta_tout,aend,delta_aout,gadget_output
   namelist/amr_params/levelmin,levelmax,ngridmax,ngridtot &
@@ -224,6 +225,9 @@ subroutine read_params
   do i=nlevelmax,levelmin,-1
      nexpand   (i)=nexpand   (i-levelmin+1)
      nsubcycle (i)=nsubcycle (i-levelmin+1)
+     part_patch_rho(i) = part_patch_rho(i-levelmin+1)
+     part_patch_acc(i) = part_patch_acc(i-levelmin+1)
+     part_patch_ref(i) = part_patch_ref(i-levelmin+1)
      r_refine  (i)=r_refine  (i-levelmin+1)
      a_refine  (i)=a_refine  (i-levelmin+1)
      b_refine  (i)=b_refine  (i-levelmin+1)
