@@ -21,6 +21,10 @@ module pm_commons
   integer :: action_kick_only = 1
   integer :: action_kick_drift = 2  
 
+  integer ,dimension(1:MAXLEVEL):: part_patch_acc=3 !
+  integer ,dimension(1:MAXLEVEL):: part_patch_rho=3 !
+  integer ,dimension(1:MAXLEVEL):: part_patch_ref=3 !
+  
 
   contains
     subroutine swap_parts(istart, iend, swap_table)
@@ -65,6 +69,90 @@ module pm_commons
          end do
       end do
     end subroutine swap_parts
+    subroutine apply_particle_permutation(istart, iend, build_workp)
+      use amr_commons,    only: dp, ndim
+      implicit none
+      integer, intent(in)                          :: istart, iend
+      logical, intent(in), value                   :: build_workp
+
+      integer                                      :: ipart, idim
+      
+      real(dp),        allocatable, dimension(:)   :: extra_storage_dp
+      integer(kind=8), allocatable, dimension(:)   :: extra_storage_i8
+      integer(kind=4), allocatable, dimension(:)   :: extra_storage_i4
+      
+      
+      ! The permutation sigma built during the radix sort sorts the index array I such that
+      ! key(sigma(i)) is sorted. We thus have to invert sigma and apply
+      ! this to the key array to get (sigma^-1(key))(i) sorted in memory
+
+      if (build_workp)then
+         do ipart = istart, iend
+            workp( sortp(ipart) ) = ipart
+         end do
+      end if
+      
+      ! Apply  particle_permutation2
+      
+      ! Rearrange float arrays
+      allocate(extra_storage_dp(istart: iend))
+      
+      do idim = 1, ndim       
+         do ipart = istart, iend
+            extra_storage_dp(workp(ipart)) = xp(ipart, idim) 
+         end do
+         xp(istart: iend, idim) = extra_storage_dp(istart: iend)
+      end do
+      
+      do idim = 1, ndim       
+         do ipart = istart, iend
+            extra_storage_dp(workp(ipart)) = vp(ipart, idim) 
+         end do
+         vp(istart: iend, idim) = extra_storage_dp(istart: iend)
+      end do
+      
+      do ipart = istart, iend
+         extra_storage_dp(workp(ipart)) = mp(ipart) 
+      end do
+      mp(istart: iend) = extra_storage_dp(istart: iend)
+
+      deallocate(extra_storage_dp)
+
+      ! Rearrange long integer arrays
+
+#if ID_PRECISION == 8
+      allocate(extra_storage_i8(istart: iend))
+      do ipart = istart, iend
+         extra_storage_i8(workp(ipart)) = idp(ipart)
+      end do
+      idp(istart: iend) = extra_storage_i8(istart: iend)
+      deallocate(extra_storage_i8)
+#endif
+
+
+
+      ! Rearrange short integer arrays
+      allocate(extra_storage_i4(istart: iend))
+#if ID_PRECISION == 4
+      do ipart = istart, iend
+         extra_storage_i4(workp(ipart)) = idp(ipart)
+      end do
+      idp(istart: iend) = extra_storage_i4(istart: iend)
+#endif
+
+      do ipart = istart, iend
+         extra_storage_i4(workp(ipart)) = levelp(ipart)
+      end do
+      levelp(istart: iend) = extra_storage_i4(istart: iend)
+
+      deallocate(extra_storage_i4)
+
+      !    ! Reset applied part of permutation
+      !    do ipart = offset + 1, offset + np
+      !       sortp(ipart) = ipart
+      !    end do
+
+    end subroutine apply_particle_permutation
 
 
 

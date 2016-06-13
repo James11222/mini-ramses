@@ -60,28 +60,21 @@ subroutine rho_fine(ilevel)
   !-------------------------------------------------------
   if(pic)then
      call timer('particles','start')
-     do i=ilevel,nlevelmax
-        ! Sort particle according to current level Hilbert key           
-        do ip = headp(i), tailp(i)
-           sortp(ip) = ip
-        end do
-        sort_level = max(i - 3, 1)
-        ix=0
-        call sort_hilbert(headp(i), tailp(i), ix, 0, 1, sort_level)
-        do ip = headp(i), tailp(i)
-           workp(sortp(ip)) = ip
-        end do
-        call swap_parts(headp(i), tailp(i), workp(headp(i): tailp(i)))
-     end do
+
 
      call timer('rho','start')
 
      do i=ilevel, nlevelmax
-                               !        call cic_part(i)
+        call sort_parts(headp(i),tailp(nlevelmax),i,part_patch_ref(i))
+        !        call cic_part(i)
         nparts = tailp(nlevelmax) - headp(i) + 1
         call mass_deposit(xp(headp(i): tailp(nlevelmax), 1:ndim), mp(headp(i): tailp(nlevelmax)), nparts, i, part_patch_rho(i))
                                call timer('particles','start')
-        call split_part(i)
+        if (i < nlevelmax)then
+           tailp(i + 1) = tailp(nlevelmax)
+           call split_part(i)
+        end if
+        call sort_parts(headp(i),tailp(i),i,part_patch_acc(i))
      end do
 !!$     if(ilevel==levelmin)then
 !!$        do i=ilevel,nlevelmax
@@ -613,7 +606,8 @@ subroutine split_part(ilevel)
      endif
   end do
 
-  call swap_parts(headp(ilevel), tailp(ilevel + 1), workp(headp(ilevel): tailp(ilevel + 1)))
+!  call swap_parts(headp(ilevel), tailp(ilevel + 1), workp(headp(ilevel): tailp(ilevel + 1)))
+  call apply_particle_permutation(headp(ilevel), tailp(ilevel + 1), .false.)
   
 111 format('   Entering split_part for level',i2)
 contains
@@ -796,3 +790,27 @@ subroutine add_particle_multipole
   end do
 
   end subroutine add_particle_multipole
+
+  subroutine sort_parts(istart, iend, ilevel, patch_bits)
+    use amr_parameters, only: ndim
+    use pm_commons, only:  sortp, workp, swap_parts, apply_particle_permutation
+    use hilbert, only: sort_hilbert
+    implicit none
+    integer, intent(in) :: istart, iend, ilevel, patch_bits
+
+    integer :: ip, sort_level
+    integer,dimension(1:ndim) :: ix
+
+    ! Sort particle according to current level Hilbert key           
+    sort_level = max(1, ilevel - patch_bits)
+    do ip = istart, iend
+       sortp(ip) = ip
+    end do
+    ix=0
+    call sort_hilbert(istart, iend, ix, 0, 1, sort_level)
+    do ip = istart, iend
+       workp(sortp(ip)) = ip
+    end do
+    !    call swap_parts(istart, iend, workp(istart: iend))
+    call apply_particle_permutation(istart, iend, .false.)
+  end subroutine sort_parts

@@ -622,12 +622,12 @@ contains
   !########################################################################
   !########################################################################
   
-  subroutine apply_particle_permutation(offset, limit, key_level)
+  subroutine apply_particle_permutation(istart, iend)
     use amr_commons,    only: dp, ndim
     use pm_commons
     implicit none
-    integer, intent(in)                          :: offset, np, key_level
-    integer, save                                :: ipart, ikey, idim
+    integer, intent(in)                          :: istart, iend
+    integer                                      :: ipart, idim
 
     real(dp),        allocatable, dimension(:)   :: extra_storage_dp
     integer(kind=8), allocatable, dimension(:)   :: extra_storage_i8
@@ -638,73 +638,69 @@ contains
     ! key(sigma(i)) is sorted. We thus have to invert sigma and apply
     ! this to the key array to get (sigma^-1(key))(i) sorted in memory
 
-    do ipart = offset + 1, offset + np
+    do ipart = istart, iend
        workp( sortp(ipart) ) = ipart
     end do
 
     ! Apply  particle_permutation2
 
     ! Rearrange float arrays
-    allocate(extra_storage_dp(offset + 1 : offset + np))
+    allocate(extra_storage_dp(istart: iend))
 
     do idim = 1, ndim       
-       do ipart = offset + 1, offset + np
+       do ipart = istart, iend
           extra_storage_dp(workp(ipart)) = xp(ipart, idim) 
        end do
-       xp(offset + 1 : offset + np, idim) = extra_storage_dp(offset + 1 : offset + np)
+       xp(istart: iend, idim) = extra_storage_dp(istart: iend)
     end do
 
     do idim = 1, ndim       
-       do ipart = offset + 1, offset + np
+       do ipart = istart, iend
           extra_storage_dp(workp(ipart)) = vp(ipart, idim) 
        end do
-       vp(offset + 1 : offset + np, idim) = extra_storage_dp(offset + 1 : offset + np)
+       vp(istart: iend, idim) = extra_storage_dp(istart: iend)
     end do
 
-    do ipart = offset + 1, offset + np
+    do ipart = istart, iend
        extra_storage_dp(workp(ipart)) = mp(ipart) 
     end do
-    mp(offset + 1 : offset + np) = extra_storage_dp(offset + 1 : offset + np)
+    mp(istart: iend) = extra_storage_dp(istart: iend)
 
     deallocate(extra_storage_dp)
 
     ! Rearrange long integer arrays
-    allocate(extra_storage_i8(offset+1 : offset + np))
 
 #if ID_PRECISION == 8
-    do ipart = offset + 1, offset + np
+    allocate(extra_storage_i8(istart: iend))
+    do ipart = istart, iend
        extra_storage_i8(workp(ipart)) = idp(ipart)
     end do
-    idp(offset + 1 : offset + np) = extra_storage_i8(offset + 1 : offset + np)
+    idp(istart: iend) = extra_storage_i8(istart: iend)
+    deallocate(extra_storage_i8)
 #endif
     
-    deallocate(extra_storage_i8)
+
 
     ! Rearrange short integer arrays
-    allocate(extra_storage_i4(offset+1 : offset + np))
+    allocate(extra_storage_i4(istart: iend))
 #if ID_PRECISION == 4
-    do ipart = offset + 1, offset + np
+    do ipart = istart, iend
        extra_storage_i4(workp(ipart)) = idp(ipart)
     end do
-    idp(offset + 1 : offset + np) = extra_storage_i4(offset + 1 : offset + np)
+    idp(istart: iend) = extra_storage_i4(istart: iend)
 #endif
 
-    do ipart = offset + 1, offset + np
+    do ipart = istart, iend
        extra_storage_i4(workp(ipart)) = levelp(ipart)
     end do
-    levelp(offset + 1 : offset + np) = extra_storage_i4(offset + 1 : offset + np)
+    levelp(istart: iend) = extra_storage_i4(istart: iend)
     
-    do ipart = offset + 1, offset + np
-       extra_storage_i4(workp(ipart)) = current_state(ipart)
-    end do
-    current_state(offset + 1 : offset + np) = extra_storage_i4(offset + 1 : offset + np)
-
     deallocate(extra_storage_i4)
 
-    ! Reset applied part of permutation
-    do ipart = offset + 1, offset + np
-       sortp(ipart) = ipart
-    end do
+!    ! Reset applied part of permutation
+!    do ipart = offset + 1, offset + np
+!       sortp(ipart) = ipart
+!    end do
     
   end subroutine apply_particle_permutation
 
