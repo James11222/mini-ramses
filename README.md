@@ -13,4 +13,4 @@ You can download the code by cloning the git repository using
 $ git clone https://bitbucket.org/ableuler/mini-ramses.git
 ```
 
-For more information, check out the [mini-ramses wiki][2].
+If you want to contribute to mini-ramses, you can either create a new branch in this repository, or you can fork this repository. To bring changes back into the `develop` branch of mini-ramses, simply issue a pull request.
