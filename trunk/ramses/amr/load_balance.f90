@@ -571,13 +571,13 @@ subroutine balance_part(ilevel)
               endif
 !              unbalance=MAX(unbalance,ABS(bound_key_right(1,icpu)-bound_key_left(1,icpu)))
               diff_key=difference_keys(bound_key_right(1:nhilbert,icpu),bound_key_left(1:nhilbert,icpu))
-#ifdef NHILBERT==1
+#if NHILBERT==1
               unbalance=MAX(unbalance,ABS(diff_key(1)))
 #endif
-#ifdef NHILBERT==2
+#if NHILBERT==2
               unbalance=MAX(unbalance,ABS(diff_key(1))+1000*ABS(diff_key(2)))
 #endif
-#ifdef NHILBERT==3
+#if NHILBERT==3
               unbalance=MAX(unbalance,ABS(diff_key(1))+1000*ABS(diff_key(2))+1000*ABS(diff_key(3)))
 #endif
            end do
