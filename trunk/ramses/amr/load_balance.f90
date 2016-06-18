@@ -577,7 +577,7 @@ subroutine balance_part(ilevel)
 #ifdef NHILBERT==2
               unbalance=MAX(unbalance,ABS(diff_key(1))+1000*ABS(diff_key(2)))
 #endif
-#ifdef NHILBERT==32
+#ifdef NHILBERT==3
               unbalance=MAX(unbalance,ABS(diff_key(1))+1000*ABS(diff_key(2))+1000*ABS(diff_key(3)))
 #endif
            end do
