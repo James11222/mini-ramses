@@ -440,6 +440,7 @@ subroutine balance_part(ilevel)
   integer,dimension(:),allocatable::i_recv_buf,i_send_buf
 
   integer(kind=8)::unbalance
+  integer(kind=8),dimension(1:nhilbert)::diff_key
   integer(kind=8),allocatable,dimension(:,:,:)::bound_key_part
   integer(kind=8),allocatable,dimension(:,:)::bound_key_target,bound_key_new
   integer(kind=8),allocatable,dimension(:,:)::bound_key_left,bound_key_right
@@ -560,13 +561,25 @@ subroutine balance_part(ilevel)
            do icpu=1,ncpu-1
               xcum_target=dble(icpu)*xpart_target
               if(npart_cum(icpu)>xcum_target)then
-                 bound_key_new(1:nhilbert,icpu)=(bound_key_left(1:nhilbert,icpu)+bound_key_target(1:nhilbert,icpu))/2
+!                 bound_key_new(1:nhilbert,icpu)=(bound_key_left(1:nhilbert,icpu)+bound_key_target(1:nhilbert,icpu))/2
+                 bound_key_new(1:nhilbert,icpu)=average_keys(bound_key_left(1:nhilbert,icpu),bound_key_target(1:nhilbert,icpu))
                  bound_key_right(1:nhilbert,icpu)=bound_key_target(1:nhilbert,icpu)
               else
-                 bound_key_new(1:nhilbert,icpu)=(bound_key_right(1:nhilbert,icpu)+bound_key_target(1:nhilbert,icpu))/2
+!                 bound_key_new(1:nhilbert,icpu)=(bound_key_right(1:nhilbert,icpu)+bound_key_target(1:nhilbert,icpu))/2
+                 bound_key_new(1:nhilbert,icpu)=average_keys(bound_key_right(1:nhilbert,icpu),bound_key_target(1:nhilbert,icpu))
                  bound_key_left(1:nhilbert,icpu)=bound_key_target(1:nhilbert,icpu)
               endif
-              unbalance=MAX(unbalance,ABS(bound_key_right(1,icpu)-bound_key_left(1,icpu)))
+!              unbalance=MAX(unbalance,ABS(bound_key_right(1,icpu)-bound_key_left(1,icpu)))
+              diff_key=difference_keys(bound_key_right(1:nhilbert,icpu),bound_key_left(1:nhilbert,icpu))
+#ifdef NHILBERT==1
+              unbalance=MAX(unbalance,ABS(diff_key(1)))
+#endif
+#ifdef NHILBERT==2
+              unbalance=MAX(unbalance,ABS(diff_key(1))+1000*ABS(diff_key(2)))
+#endif
+#ifdef NHILBERT==32
+              unbalance=MAX(unbalance,ABS(diff_key(1))+1000*ABS(diff_key(2))+1000*ABS(diff_key(3)))
+#endif
            end do
                             
            bound_key_target=bound_key_new
