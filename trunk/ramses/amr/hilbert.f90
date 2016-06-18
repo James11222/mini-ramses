@@ -516,8 +516,8 @@ contains
   function ge_keys(key_a, key_b)
     implicit none
     logical::ge_keys
-    integer(kind=8), intent(in), dimension(:) :: key_a, key_b
 
+    integer(kind=8), intent(in), dimension(:) :: key_a, key_b
 #if NHILBERT == 1
     ge_keys = (key_a(1) >= key_b(1))
 #endif
@@ -556,45 +556,6 @@ contains
 
   end function ge_keys
  
-  !================================================================
-  !================================================================
-  !================================================================
-  !================================================================
-
-  function average_keys(key_a, key_b)
-    use amr_parameters, only: ndim, nhilbert
-    implicit none
-    integer(kind=8), dimension(1:nhilbert) :: average_keys
-    integer(kind=8), intent(in), dimension(:) :: key_a, key_b
-
-#if NHILBERT == 1
-    average_keys(1) = (key_a(1) + key_b(1)) / 2
-#endif
-  
-  end function average_keys
- 
-  !================================================================
-  !================================================================
-  !================================================================
-  !================================================================
-
-  function difference_keys(key_a, key_b)
-    use amr_parameters, only: ndim, nhilbert
-    implicit none
-    integer(kind=8), dimension(1:nhilbert) :: difference_keys
-    integer(kind=8), intent(in), dimension(:) :: key_a, key_b
-
-#if NHILBERT == 1
-    difference_keys(1) = (key_a(1) - key_b(1))
-#endif
-  
-  end function difference_keys
- 
-  !================================================================
-  !================================================================
-  !================================================================
-  !================================================================
-
   function gt_keys(key_a, key_b)
     implicit none
     logical::gt_keys
@@ -637,11 +598,6 @@ contains
 #endif
   end function gt_keys
 
-  !================================================================
-  !================================================================
-  !================================================================
-  !================================================================
-
   function eq_keys(key_a, key_b)
     implicit none
     logical::eq_keys
@@ -658,7 +614,6 @@ contains
 #if NHILBERT == 3
     eq_keys = (key_a(1) == key_b(1)) .AND. (key_a(2) == key_b(2)) .AND. (key_a(3) == key_b(3))
 #endif
-
   end function eq_keys
   
   !================================================================
