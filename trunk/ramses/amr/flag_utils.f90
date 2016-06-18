@@ -46,9 +46,8 @@ subroutine flag_fine(ilevel,icount)
   
   ! Step 2: make one cubic buffer around flagged cells,
   ! in order to enforce numerical rule.
-!!$  call build_smooth(ilevel)
-!!$  call smooth_fine_fast(ilevel)
-  call smooth_fine(ilevel)
+  call build_smooth(ilevel)
+  call smooth_fine_fast(ilevel)
 #ifndef WITHOUTMPI
   call MPI_ALLREDUCE(nflag,nflag_tot,1,MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,info)
   if(verbose)write(*,*) '  ==> end step 2',nflag_tot
@@ -68,10 +67,9 @@ subroutine flag_fine(ilevel,icount)
 
   ! Step 4: make nexpand cubic buffers around flagged cells.
   do iexpand=1,nexpand(ilevel)
-!     call smooth_fine_fast(ilevel)
-     call smooth_fine(ilevel)
+     call smooth_fine_fast(ilevel)
   end do
-!  call clean_smooth
+  call clean_smooth
 #ifndef WITHOUTMPI
   call MPI_ALLREDUCE(nflag,nflag_tot,1,MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,info)
   if(verbose)write(*,*) '  ==> end step 4',nflag_tot

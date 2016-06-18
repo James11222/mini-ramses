@@ -583,16 +583,11 @@ subroutine split_part(ilevel)
      icell=1+ii(1)+2*ii(2)+4*ii(3)
 #endif
      ! Increase counter if cell is not refined
-     if(igrid==0)then
+     if(.NOT.grid(igrid)%refined(icell))then
         npart_coarse=npart_coarse+1
         levelp(ipart)=-levelp(ipart)
      else
-        if(.NOT.grid(igrid)%refined(icell))then
-           npart_coarse=npart_coarse+1
-           levelp(ipart)=-levelp(ipart)
-        else
-           sortp(i)=-sortp(i)
-        endif
+        sortp(i)=-sortp(i)
      endif
 
   end do
