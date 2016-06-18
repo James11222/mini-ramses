@@ -566,32 +566,40 @@ subroutine split_part(ilevel)
         ix_ref=ix
      endif
 
-     ! Rescale particle position at level ilevel
-     do idim=1,ndim
-        x(idim)=xp(ipart,idim)/dx_loc
-     end do
-     
-     ! Shift particle position to to 2x2x2 grid corner
-     do idim=1,ndim
-        ii(idim)=x(idim)-2*ix_ref(idim)
-     end do
-     
-     ! Compute parent cell
-#if NDIM==1
-     icell=1+ii(1)
-#endif
-#if NDIM==2
-     icell=1+ii(1)+2*ii(2)
-#endif
-#if NDIM==3
-     icell=1+ii(1)+2*ii(2)+4*ii(3)
-#endif
-     ! Increase counter if cell is not refined
-     if(.NOT.grid(igrid)%refined(icell))then
+     ! If particle sits outside current level,
+     ! then it is clearly not in a refined cell.
+     ! This can happen during second adaptive step
+     if(igrid==0)then
         npart_coarse=npart_coarse+1
         levelp(ipart)=-levelp(ipart)
      else
-        sortp(i)=-sortp(i)
+        ! Rescale particle position at level ilevel
+        do idim=1,ndim
+           x(idim)=xp(ipart,idim)/dx_loc
+        end do
+        
+        ! Shift particle position to to 2x2x2 grid corner
+        do idim=1,ndim
+           ii(idim)=x(idim)-2*ix_ref(idim)
+        end do
+        
+        ! Compute parent cell
+#if NDIM==1
+        icell=1+ii(1)
+#endif
+#if NDIM==2
+        icell=1+ii(1)+2*ii(2)
+#endif
+#if NDIM==3
+        icell=1+ii(1)+2*ii(2)+4*ii(3)
+#endif
+        ! Increase counter if cell is not refined
+        if(.NOT.grid(igrid)%refined(icell))then
+           npart_coarse=npart_coarse+1
+           levelp(ipart)=-levelp(ipart)
+        else
+           sortp(i)=-sortp(i)
+        endif
      endif
 
   end do
