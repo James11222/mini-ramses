@@ -21,7 +21,7 @@ subroutine phi_fine_cg(ilevel,icount)
   ! x  : stored in phi
   ! b  : stored in rho
   !=========================================================
-  integer::i,igrid,idim,info,ind,iter,itermax
+  integer::i,igrid,idim,info,ind,iter,itermax,ilev,icnt
   real(dp)::error,error_ini
   real(dp)::dx2,fourpi,oneoversix,fact,fact2
   real(dp)::r2_old,alpha_cg,beta_cg
@@ -31,144 +31,151 @@ subroutine phi_fine_cg(ilevel,icount)
   if(noct_tot(ilevel)==0)return
   if(verbose)write(*,111)ilevel
 
-  ! Set constants
-  dx2=(boxlen/2**ilevel)**2
-  fourpi=4.D0*ACOS(-1.0D0)
-  if(cosmo)fourpi=1.5D0*omega_m*aexp
-  oneoversix=1.0D0/dble(twondim)
-  fact=oneoversix*fourpi*dx2
-  fact2=fact*fact
+  do ilev=ilevel,nlevelmax
+     if (noct_tot(ilev)==0) cycle
+     icnt = merge(icount,1,ilev==ilevel)
 
-  !===============================
-  ! Compute initial phi
-  !===============================
-  call make_initial_phi(ilevel,icount)
+     ! Set constants
+     dx2=(boxlen/2**ilev)**2
+     fourpi=4.D0*ACOS(-1.0D0)
+     if(cosmo)fourpi=1.5D0*omega_m*aexp
+     oneoversix=1.0D0/dble(twondim)
+     fact=oneoversix*fourpi*dx2
+     fact2=fact*fact
 
-  !===============================
-  ! Compute right-hand side norm
-  !===============================
-  rhs_norm=0.d0
-  do igrid=head(ilevel),tail(ilevel)
-     do ind=1,twotondim
-        rhs_norm=rhs_norm+fact2*(grid(igrid)%rho(ind)-rho_tot)**2
-     end do
-  end do
-  ! Compute global norms
-#ifndef WITHOUTMPI
-  call MPI_ALLREDUCE(rhs_norm,rhs_norm_all,1,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
-  rhs_norm=rhs_norm_all
-#endif
-  rhs_norm=DSQRT(rhs_norm/dble(twotondim*noct_tot(ilevel)))
+     !===============================
+     ! Compute initial phi
+     !===============================
+     call make_initial_phi(ilev,icnt)
 
-  !==============================================
-  ! Compute r = b - Ax and store it into f(i,1)
-  ! Also set p = r and store it into f(i,2)
-  !==============================================
-  call cmp_residual_cg(ilevel,icount)
-
-  call build_cg(ilevel)
-
-  !====================================
-  ! Main iteration loop
-  !====================================
-  iter=0; itermax=10000
-  error=1.0D0; error_ini=1.0D0
-  do while(error>epsilon*error_ini.and.iter<itermax)
-
-     iter=iter+1
-
-     !====================================
-     ! Compute residual norm
-     !====================================
-     r2=0.0d0
-     do igrid=head(ilevel),tail(ilevel)
+     !===============================
+     ! Compute right-hand side norm
+     !===============================
+     rhs_norm=0.d0
+     do igrid=head(ilev),tail(ilev)
         do ind=1,twotondim
-           r2=r2+grid(igrid)%f(ind,1)**2
+           rhs_norm=rhs_norm+fact2*(grid(igrid)%rho(ind)-rho_tot)**2
         end do
      end do
-     ! Compute global norm
+     ! Compute global norms
 #ifndef WITHOUTMPI
-     call MPI_ALLREDUCE(r2,r2_all,1,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
-     r2=r2_all
+     call MPI_ALLREDUCE(rhs_norm,rhs_norm_all,1,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
+     rhs_norm=rhs_norm_all
 #endif
+     rhs_norm=DSQRT(rhs_norm/dble(twotondim*noct_tot(ilev)))
+
+     !==============================================
+     ! Compute r = b - Ax and store it into f(i,1)
+     ! Also set p = r and store it into f(i,2)
+     !==============================================
+     call cmp_residual_cg(ilev,icnt)
+
+     call build_cg(ilev)
 
      !====================================
-     ! Compute beta factor
+     ! Main iteration loop
      !====================================
-     if(iter==1)then
-        beta_cg=0.
-     else
-        beta_cg=r2/r2_old
+     iter=0; itermax=10000
+     error=1.0D0; error_ini=1.0D0
+     do while(error>epsilon*error_ini.and.iter<itermax)
+
+        iter=iter+1
+
+        !====================================
+        ! Compute residual norm
+        !====================================
+        r2=0.0d0
+        do igrid=head(ilev),tail(ilev)
+           do ind=1,twotondim
+              r2=r2+grid(igrid)%f(ind,1)**2
+           end do
+        end do
+        ! Compute global norm
+#ifndef WITHOUTMPI
+        call MPI_ALLREDUCE(r2,r2_all,1,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
+        r2=r2_all
+#endif
+
+        !====================================
+        ! Compute beta factor
+        !====================================
+        if(iter==1)then
+           beta_cg=0.
+        else
+           beta_cg=r2/r2_old
+        end if
+        r2_old=r2
+
+        !====================================
+        ! Recurrence on p
+        !====================================
+        do igrid=head(ilev),tail(ilev)
+           do ind=1,twotondim
+              grid(igrid)%f(ind,2)=grid(igrid)%f(ind,1)+beta_cg*grid(igrid)%f(ind,2)
+           end do
+        end do
+
+        !==============================================
+        ! Compute z = Ap and store it into f(i,3)
+        !==============================================
+!        call cmp_Ap_cg(ilev)
+        call cmp_Ap_cg_fast(ilev)
+
+        !====================================
+        ! Compute p.Ap scalar product
+        !====================================
+        pAp=0.0d0
+        do igrid=head(ilev),tail(ilev)
+           do ind=1,twotondim
+              pAp=pAp+grid(igrid)%f(ind,2)*grid(igrid)%f(ind,3)
+           end do
+        end do
+        ! Compute global sum
+#ifndef WITHOUTMPI
+        call MPI_ALLREDUCE(pAp,pAp_all,1,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
+        pAp=pAp_all
+#endif
+
+        !====================================
+        ! Compute alpha factor
+        !====================================
+        alpha_cg = r2/pAp
+
+        !====================================
+        ! Recurrence on x
+        !====================================
+        do igrid=head(ilev),tail(ilev)
+           do ind=1,twotondim
+              grid(igrid)%phi(ind)=grid(igrid)%phi(ind)+alpha_cg*grid(igrid)%f(ind,2)
+           end do
+        end do
+
+        !====================================
+        ! Recurrence on r
+        !====================================
+        do igrid=head(ilev),tail(ilev)
+           do ind=1,twotondim
+              grid(igrid)%f(ind,1)=grid(igrid)%f(ind,1)-alpha_cg*grid(igrid)%f(ind,3)
+           end do
+        end do
+
+        ! Compute error
+        error=DSQRT(r2/dble(twotondim*noct_tot(ilev)))
+        if(iter==1)error_ini=error
+        if(verbose)write(*,112)iter,error/rhs_norm,error/error_ini
+
+     end do
+     ! End main iteration loop
+
+     if(myid==1)write(*,115)ilev,iter,error/rhs_norm,error/error_ini
+     if(iter>=itermax)then
+        if(myid==1)write(*,*)'Poisson failed to converge...'
      end if
-     r2_old=r2
 
-     !====================================
-     ! Recurrence on p
-     !====================================
-     do igrid=head(ilevel),tail(ilevel)
-        do ind=1,twotondim
-           grid(igrid)%f(ind,2)=grid(igrid)%f(ind,1)+beta_cg*grid(igrid)%f(ind,2)
-        end do
-     end do
+     call clean_cg
 
-     !==============================================
-     ! Compute z = Ap and store it into f(i,3)
-     !==============================================
-!     call cmp_Ap_cg(ilevel)
-     call cmp_Ap_cg_fast(ilevel)
-
-     !====================================
-     ! Compute p.Ap scalar product
-     !====================================
-     pAp=0.0d0
-     do igrid=head(ilevel),tail(ilevel)
-        do ind=1,twotondim
-           pAp=pAp+grid(igrid)%f(ind,2)*grid(igrid)%f(ind,3)
-        end do
-     end do
-     ! Compute global sum
-#ifndef WITHOUTMPI
-     call MPI_ALLREDUCE(pAp,pAp_all,1,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
-     pAp=pAp_all
-#endif
-
-     !====================================
-     ! Compute alpha factor
-     !====================================
-     alpha_cg = r2/pAp
-
-     !====================================
-     ! Recurrence on x
-     !====================================
-     do igrid=head(ilevel),tail(ilevel)
-        do ind=1,twotondim
-           grid(igrid)%phi(ind)=grid(igrid)%phi(ind)+alpha_cg*grid(igrid)%f(ind,2)
-        end do
-     end do
-
-     !====================================
-     ! Recurrence on r
-     !====================================
-     do igrid=head(ilevel),tail(ilevel)
-        do ind=1,twotondim
-           grid(igrid)%f(ind,1)=grid(igrid)%f(ind,1)-alpha_cg*grid(igrid)%f(ind,3)
-        end do
-     end do
-
-     ! Compute error
-     error=DSQRT(r2/dble(twotondim*noct_tot(ilevel)))
-     if(iter==1)error_ini=error
-     if(verbose)write(*,112)iter,error/rhs_norm,error/error_ini
-
-  end do
-  ! End main iteration loop
-
-  if(myid==1)write(*,115)ilevel,iter,error/rhs_norm,error/error_ini
-  if(iter>=itermax)then
-     if(myid==1)write(*,*)'Poisson failed to converge...'
-  end if
-
-  call clean_cg
+    end do
+    ! End loop over levels
 
 111 format('   Entering phi_fine_cg for level ',I2)
 112 format('   ==> Step=',i5,' Error=',2(1pe10.3,1x))

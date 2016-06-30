@@ -123,6 +123,8 @@ subroutine read_params
   rewind(1)
   read(1,NML=poisson_params,END=81)
 81 continue
+  cg_levelmin = max( levelmin+1,cg_levelmin)        ! force using multi-grid solver on root grid
+  cg_levelmin = min(nlevelmax+1,cg_levelmin)        ! max possible value of cg_levelmin
 
   !-------------------------------------------------
   ! Read optional nrestart command-line argument

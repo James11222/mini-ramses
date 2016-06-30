@@ -86,30 +86,25 @@ recursive subroutine amr_step(ilevel,icount)
      ! Save old potential for time-extrapolation at level boundaries
      call save_phi_old(ilevel)
 
-     do ilev=ilevel,nlevelmax
-       if (ilev==ilevel) then
-          icnt = icount
-       else
-          icnt = 1
-       endif
-     ! Compute new gravitational potential
-     if(ilev > levelmin)then
-        if(ilev >= cg_levelmin) then
-           call phi_fine_cg(ilev,icnt)
-        else
+     if (cg_levelmin > ilevel) then
+        do ilev=ilevel,cg_levelmin-1
+           if (ilev==ilevel) then
+              icnt = icount
+           else
+              icnt = 1
+           endif
+           ! Compute new gravitational potential
            call multigrid(ilev,icnt)
-        end if
-     else
-        call multigrid(levelmin,icnt)
-     end if
-
-     end do
+        end do
+     endif
+     !if (cg_levelmin > ilevel)     call multigrid(ilevel, cg_levelmin-1, icount)
+     if (cg_levelmin <= nlevelmax) call phi_fine_cg(max(cg_levelmin,ilevel), merge(icount,1,cg_levelmin<=ilevel))
 
      ! Initial old potential
      if (nstep==0)call save_phi_old(ilevel)
 
      ! Compute gravitational acceleration
-     call force_fine(ilevel,icnt)
+     call force_fine(ilevel,icount)
 
      ! Perform second kick for particles
                                call timer('particles','start')
