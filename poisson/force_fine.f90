@@ -14,7 +14,7 @@ subroutine force_fine(ilevel,icount)
   ! This routine computes the gravitational acceleration,
   ! the maximum density rho_max, and the potential energy
   !----------------------------------------------------------
-  integer::igrid,ind,i,ngrid,info,idim,nstride
+  integer::igrid,ind,i,ngrid,info,idim,nstride,ilev
   real(dp)::dx,fact,fourpi
   real(kind=8)::rho_loc,rho_all,epot_loc,epot_all
   real(dp),dimension(1:nvector,1:ndim),save::xx,ff
@@ -27,31 +27,34 @@ subroutine force_fine(ilevel,icount)
   !-------------------------------------
   if(gravity_type>0)then 
      ! Mesh size at level ilevel in code units
-     dx=boxlen/2**ilevel
-     ! Loop over grids by vector sweeps
-     do igrid=head(ilevel),tail(ilevel),nvector
-        ngrid=MIN(nvector,tail(ilevel)-igrid+1)
-        ! Loop over cells
-        do ind=1,twotondim
-           ! Compute cell centre position in code units
-           do idim=1,ndim
-              nstride=2**(idim-1)
-              do i=1,ngrid
-                 xx(i,idim)=(2*grid(igrid+i-1)%ckey(idim)+MOD((ind-1)/nstride,2)+0.5)*dx
+     do ilev=ilevel,nlevelmax
+        dx=boxlen/2**ilev
+        ! Loop over grids by vector sweeps
+        do igrid=head(ilev),tail(ilev),nvector
+           ngrid=MIN(nvector,tail(ilev)-igrid+1)
+           ! Loop over cells
+           do ind=1,twotondim
+              ! Compute cell centre position in code units
+              do idim=1,ndim
+                 nstride=2**(idim-1)
+                 do i=1,ngrid
+                    xx(i,idim)=(2*grid(igrid+i-1)%ckey(idim)+MOD((ind-1)/nstride,2)+0.5)*dx
+                 end do
+              end do
+              ! Call analytical gravity routine
+              call gravana(xx,ff,dx,ngrid)
+              ! Scatter variables to main memory
+              do idim=1,ndim
+                 do i=1,ngrid
+                    grid(igrid+i-1)%f(ind,idim)=ff(i,idim)
+                 end do
               end do
            end do
-           ! Call analytical gravity routine
-           call gravana(xx,ff,dx,ngrid)
-           ! Scatter variables to main memory
-           do idim=1,ndim
-              do i=1,ngrid
-                 grid(igrid+i-1)%f(ind,idim)=ff(i,idim)
-              end do
-           end do
+           ! End loop over cells
         end do
-        ! End loop over cells
+        ! End loop over grids
      end do
-     ! End loop over grids
+     ! End loop over levels
 
   !------------------------------
   ! Compute gradient of potential
@@ -63,30 +66,33 @@ subroutine force_fine(ilevel,icount)
   !----------------------------------------------
   ! Compute gravity potential and maximum density
   !----------------------------------------------
-  ! Mesh size at level ilevel in code units
-  dx=boxlen/2**ilevel
-  ! Initialise global variables
-  rho_loc=0.0; rho_all=0.0
-  epot_loc=0.0; epot_all=0.0
-  fourpi=4.0D0*ACOS(-1.0D0)
-  if(cosmo)fourpi=1.5D0*omega_m*aexp
-  fact=-dx**ndim/fourpi/2.0D0
 
-  ! Loop over myid grids by vector sweeps
-  do igrid=head(ilevel),tail(ilevel)
-     ! Loop over cells
-     do ind=1,twotondim
-        ! Loop over dimensions
-        do idim=1,ndim
-           if(.not.grid(igrid)%refined(ind))then
-              epot_loc=epot_loc+fact*grid(igrid)%f(ind,idim)**2
-           endif
+  do ilev=ilevel,nlevelmax
+
+     ! Mesh size at level ilev in code units
+     dx=boxlen/2**ilev
+     ! Initialise global variables
+     rho_loc=0.0; rho_all=0.0
+     epot_loc=0.0; epot_all=0.0
+     fourpi=4.0D0*ACOS(-1.0D0)
+     if(cosmo)fourpi=1.5D0*omega_m*aexp
+     fact=-dx**ndim/fourpi/2.0D0
+
+     ! Loop over myid grids by vector sweeps
+     do igrid=head(ilev),tail(ilev)
+        ! Loop over cells
+        do ind=1,twotondim
+           ! Loop over dimensions
+           do idim=1,ndim
+              if(.not.grid(igrid)%refined(ind))then
+                 epot_loc=epot_loc+fact*grid(igrid)%f(ind,idim)**2
+              endif
+           end do
+           rho_loc=MAX(rho_loc,dble(abs(grid(igrid)%rho(ind))))
         end do
-        rho_loc=MAX(rho_loc,dble(abs(grid(igrid)%rho(ind))))
+        ! End loop over cells
      end do
-     ! End loop over cells
-  end do
-  ! End loop over grids
+     ! End loop over grids
 
 #ifndef WITHOUTMPI
      call MPI_ALLREDUCE(epot_loc,epot_all,1,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
@@ -95,7 +101,9 @@ subroutine force_fine(ilevel,icount)
      rho_loc=rho_all
 #endif
      epot_tot=epot_tot+epot_loc
-     rho_max(ilevel)=rho_loc
+     rho_max(ilev)=rho_loc
+
+  end do
 
 #endif  
 111 format('   Entering force_fine for level ',I2)
@@ -116,7 +124,7 @@ subroutine gradient_phi(ilevel,icount)
   ! 5 nodes kernel (5 points FDA).
   !-------------------------------------------------
   integer::get_grid
-  integer::i_nbor,igrid,idim,ind,igridn
+  integer::i_nbor,igrid,idim,ind,igridn,ilev
   integer::id1,id2,id3,id4
   integer::ig1,ig2,ig3,ig4
   integer,dimension(1:3,1:4,1:8)::ggg,hhh
@@ -130,12 +138,6 @@ subroutine gradient_phi(ilevel,icount)
   real(dp)::phi1,phi2,phi3,phi4
   real(dp),dimension(1:twotondim,0:twondim),save::phi_nbor
 #ifdef GRAV
-  ! Mesh size at level ilevel in code units
-  dx=boxlen/2**ilevel
-
-  ! Rescaling factor
-  a=0.50D0*4.0D0/3.0D0/dx
-  b=0.25D0*1.0D0/3.0D0/dx
   !   |dim
   !   | |node
   !   | | |cell
@@ -175,19 +177,29 @@ subroutine gradient_phi(ilevel,icount)
      call clean_stop
   endif
 
+  call open_cache(operation_interpol,domain_decompos_amr)
+
+  do ilev=ilevel,nlevelmax
+
+  ! Mesh size at level ilev in code units
+  dx=boxlen/2**ilev
+
+  ! Rescaling factor
+  a=0.50D0*4.0D0/3.0D0/dx
+  b=0.25D0*1.0D0/3.0D0/dx
+
   ! Compute fraction of time steps for interpolation
-  if (dtnew(ilevel-1)>0.0)then
-     tfrac=dtnew(ilevel)/dtnew(ilevel-1)*(icount-1)
+  ! only first level in sweep can be sub-cycling
+  if (dtnew(ilev-1)>0.0 .and. ilev==ilevel)then
+     tfrac=dtnew(ilev)/dtnew(ilev-1)*(icount-1)
   else
      tfrac=0.0
   end if
 
-  call open_cache(operation_interpol,domain_decompos_amr)
-
-  hash_nbor(0)=ilevel
+  hash_nbor(0)=ilev
 
   ! Loop over grids
-  do igrid=head(ilevel),tail(ilevel)
+  do igrid=head(ilev),tail(ilev)
      
      ! Get central oct potential
      do ind=1,twotondim
@@ -201,8 +213,8 @@ subroutine gradient_phi(ilevel,icount)
         hash_nbor(1:ndim)=grid(igrid)%ckey(1:ndim)+shift(1:ndim,i_nbor)
         ! Periodic boundary conditons
         do idim=1,ndim
-           if(hash_nbor(idim)<0)hash_nbor(idim)=ckey_max(ilevel)-1
-           if(hash_nbor(idim)==ckey_max(ilevel))hash_nbor(idim)=0
+           if(hash_nbor(idim)<0)hash_nbor(idim)=ckey_max(ilev)-1
+           if(hash_nbor(idim)==ckey_max(ilev))hash_nbor(idim)=0
         enddo
         igridn=get_grid(hash_nbor,grid_dict,.false.,.true.)
 
@@ -254,6 +266,9 @@ subroutine gradient_phi(ilevel,icount)
 
   end do
   ! End loop over grids
+
+  end do
+  ! End loop over levels
 
   call close_cache(grid_dict)
 #endif

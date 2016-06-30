@@ -18,6 +18,8 @@ recursive subroutine amr_step(ilevel,icount)
   if(noct_tot(ilevel)==0)return
   if(verbose)write(*,999)icount,ilevel
 
+  if(ilevel==levelmin.or.icount>1)then
+
   !---------------------
   ! Make new refinements
   !---------------------
@@ -66,10 +68,8 @@ recursive subroutine amr_step(ilevel,icount)
   ! Poisson source term
   !--------------------
   if(poisson)then
-     if(ilevel==levelmin.or.icount>1)then
                                call timer('rho','start')
-        call rho_fine(ilevel)
-     endif
+     call rho_fine(ilevel)
   endif
 
   !---------------
@@ -77,7 +77,6 @@ recursive subroutine amr_step(ilevel,icount)
   !---------------
 #ifdef GRAV
   if(poisson)then
-     if(ilevel==levelmin.or.icount>1)then
                                call timer('poisson','start')
      ! Remove gravity source term with half time step and old force
      if(hydro)then
@@ -110,14 +109,7 @@ recursive subroutine amr_step(ilevel,icount)
      if (nstep==0)call save_phi_old(ilevel)
 
      ! Compute gravitational acceleration
-     do ilev=ilevel,nlevelmax
-       if (ilev==ilevel) then
-          icnt = icount
-       else
-          icnt = 1
-       endif
-     call force_fine(ilev,icnt)
-     end do
+     call force_fine(ilevel,icnt)
 
      ! Perform second kick for particles
                                call timer('particles','start')
@@ -129,8 +121,6 @@ recursive subroutine amr_step(ilevel,icount)
         call synchro_hydro_fine(ilevel,nlevelmax,+0.5_dp)
      end if
 
-     end if
-
   end if
 #endif
 
@@ -138,21 +128,18 @@ recursive subroutine amr_step(ilevel,icount)
   ! Compute new time step
   !----------------------
                                call timer('courant','start')
-  if(ilevel==levelmin.or.icount>1)then
-     call newdt_fine(ilevel)
-     do ilev=max(ilevel,levelmin+1), nlevelmax
-        dtnew(ilev)=MIN(dtnew(ilev-1)/real(nsubcycle(ilev-1)),dtnew(ilev))
-     end do
-  end if
+  call newdt_fine(ilevel)
+  do ilev=max(ilevel,levelmin+1), nlevelmax
+     dtnew(ilev)=MIN(dtnew(ilev-1)/real(nsubcycle(ilev-1)),dtnew(ilev))
+  end do
   
   !-----------------------
   ! Set unew equal to uold
   !-----------------------
                                call timer('hydro - set unew','start')
-  if(ilevel==levelmin.or.icount>1)then
-     if(hydro)call set_unew(ilevel)
-  end if
+  if(hydro)call set_unew(ilevel)
 
+  end if
   !---------------------------
   ! Recursive call to amr_step
   !---------------------------
