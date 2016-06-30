@@ -7,7 +7,7 @@ recursive subroutine amr_step(ilevel,icount)
 #ifndef WITHOUTMPI
   include 'mpif.h'
 #endif
-  integer::ilevel,icount,ilev
+  integer::ilevel,icount,ilev,icnt
   !-------------------------------------------------------------------!
   ! This routine is the adaptive-mesh/adaptive-time-step main driver. !
   ! Each routine is called using a specific order, don't change it,   !
@@ -54,7 +54,7 @@ recursive subroutine amr_step(ilevel,icount)
   !----------------------------
   ! Output frame to movie dump
   !----------------------------
-  if(movie) then
+  if(movie .and. ilevel==levelmin) then
      if(imov.le.imovout)then 
         if(aexp>=amovout(imov).or.t>=tmovout(imov))then
            call output_frame()
@@ -77,40 +77,50 @@ recursive subroutine amr_step(ilevel,icount)
   !---------------
 #ifdef GRAV
   if(poisson)then
+     if(ilevel==levelmin.or.icount>1)then
+     do ilev=ilevel,nlevelmax
+       if (ilev==ilevel) then
+          icnt = icount
+       else
+          icnt = 1
+       endif
                                call timer('poisson','start')
      ! Remove gravity source term with half time step and old force
      if(hydro)then
-        call synchro_hydro_fine(ilevel,-0.5*dtnew(ilevel))
+           call synchro_hydro_fine(ilev,-0.5*dtnew(ilev))
      endif
 
      ! Save old potential for time-extrapolation at level boundaries
-     call save_phi_old(ilevel)
+     call save_phi_old(ilev)
 
      ! Compute new gravitational potential
-     if(ilevel > levelmin)then
-        if(ilevel >= cg_levelmin) then
-           call phi_fine_cg(ilevel,icount)
+     if(ilev > levelmin)then
+        if(ilev >= cg_levelmin) then
+           call phi_fine_cg(ilev,icnt)
         else
-           call multigrid(ilevel,icount)
+           call multigrid(ilev,icnt)
         end if
      else
-        call multigrid(levelmin,icount)
+        call multigrid(levelmin,icnt)
      end if
 
      ! Initial old potential
-     if (nstep==0)call save_phi_old(ilevel)
+     if (nstep==0)call save_phi_old(ilev)
 
      ! Compute gravitational acceleration
-     call force_fine(ilevel,icount)
+     call force_fine(ilev,icnt)
 
      ! Perform second kick for particles
                                call timer('particles','start')
-     if(pic)call kick_drift_part(ilevel,action_kick_only)
+     if(pic)call kick_drift_part(ilev,action_kick_only)
 
      ! Add gravity source term with half time step and new force
      if(hydro)then
                                call timer('poisson','start')
-        call synchro_hydro_fine(ilevel,+0.5*dtnew(ilevel))
+        call synchro_hydro_fine(ilev,+0.5*dtnew(ilev))
+     end if
+
+     end do
      end if
 
   end if
@@ -120,16 +130,26 @@ recursive subroutine amr_step(ilevel,icount)
   ! Compute new time step
   !----------------------
                                call timer('courant','start')
-  call newdt_fine(ilevel)
-  if(ilevel>levelmin)then
-     dtnew(ilevel)=MIN(dtnew(ilevel-1)/real(nsubcycle(ilevel-1)),dtnew(ilevel))
+  if(ilevel==levelmin.or.icount>1)then
+  do ilev=ilevel,nlevelmax
+
+  call newdt_fine(ilev)
+  if(ilev>levelmin)then
+     dtnew(ilev)=MIN(dtnew(ilev-1)/real(nsubcycle(ilev-1)),dtnew(ilev))
+  end if
+
+  end do
   end if
   
   !-----------------------
   ! Set unew equal to uold
   !-----------------------
                                call timer('hydro - set unew','start')
-  if(hydro)call set_unew(ilevel)
+  if(ilevel==levelmin.or.icount>1)then
+  do ilev=ilevel,nlevelmax
+     if(hydro)call set_unew(ilev)
+  end do
+  end if
 
   !---------------------------
   ! Recursive call to amr_step
