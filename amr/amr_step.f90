@@ -78,21 +78,21 @@ recursive subroutine amr_step(ilevel,icount)
 #ifdef GRAV
   if(poisson)then
      if(ilevel==levelmin.or.icount>1)then
+                               call timer('poisson','start')
+     ! Remove gravity source term with half time step and old force
+     if(hydro)then
+        call synchro_hydro_fine(ilevel,nlevelmax,-0.5_dp)
+     endif
+
+     ! Save old potential for time-extrapolation at level boundaries
+     call save_phi_old(ilevel)
+
      do ilev=ilevel,nlevelmax
        if (ilev==ilevel) then
           icnt = icount
        else
           icnt = 1
        endif
-                               call timer('poisson','start')
-     ! Remove gravity source term with half time step and old force
-     if(hydro)then
-           call synchro_hydro_fine(ilev,-0.5*dtnew(ilev))
-     endif
-
-     ! Save old potential for time-extrapolation at level boundaries
-     call save_phi_old(ilev)
-
      ! Compute new gravitational potential
      if(ilev > levelmin)then
         if(ilev >= cg_levelmin) then
@@ -104,23 +104,31 @@ recursive subroutine amr_step(ilevel,icount)
         call multigrid(levelmin,icnt)
      end if
 
+     end do
+
      ! Initial old potential
-     if (nstep==0)call save_phi_old(ilev)
+     if (nstep==0)call save_phi_old(ilevel)
 
      ! Compute gravitational acceleration
+     do ilev=ilevel,nlevelmax
+       if (ilev==ilevel) then
+          icnt = icount
+       else
+          icnt = 1
+       endif
      call force_fine(ilev,icnt)
+     end do
 
      ! Perform second kick for particles
                                call timer('particles','start')
-     if(pic)call kick_drift_part(ilev,action_kick_only)
+     if(pic)call kick_drift_part(ilevel,nlevelmax,action_kick_only)
 
      ! Add gravity source term with half time step and new force
      if(hydro)then
                                call timer('poisson','start')
-        call synchro_hydro_fine(ilev,+0.5*dtnew(ilev))
+        call synchro_hydro_fine(ilevel,nlevelmax,+0.5_dp)
      end if
 
-     end do
      end if
 
   end if
@@ -184,7 +192,7 @@ recursive subroutine amr_step(ilevel,icount)
      ! Add gravity source terms to uold with half time step
      ! to complete the time step (will be removed later)
                                call timer('poisson - synchro','start')
-     if(poisson)call synchro_hydro_fine(ilevel,+0.5*dtnew(ilevel))
+     if(poisson)call synchro_hydro_fine(ilevel,ilevel,+0.5_dp)
      ! Restriction operator
                                call timer('hydro - upload','start')
      call upload_fine(ilevel)
@@ -200,7 +208,7 @@ recursive subroutine amr_step(ilevel,icount)
   ! Perform first kick and drift for particles
   !-------------------------------------------
                                call timer('particles','start')
-  if(pic)call kick_drift_part(ilevel,action_kick_drift)
+  if(pic)call kick_drift_part(ilevel,ilevel,action_kick_drift)
 
   !-----------------------
   ! Compute refinement map

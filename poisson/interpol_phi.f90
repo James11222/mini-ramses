@@ -57,7 +57,7 @@ subroutine save_phi_old(ilevel)
   integer::ind,igrid
 #ifdef GRAV
   ! Loop over level grids
-  do igrid=head(ilevel),tail(ilevel)
+  do igrid=head(ilevel),tail(nlevelmax)
      ! Loop over cells
      do ind=1,twotondim
         ! Save phi      

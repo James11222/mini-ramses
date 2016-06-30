@@ -2,53 +2,58 @@
 !################################################################
 !################################################################
 !################################################################
-subroutine synchro_hydro_fine(ilevel,dteff)
+subroutine synchro_hydro_fine(ilevel,ilevelmax,pre_dt)
   use amr_commons
   use hydro_commons
   implicit none
-  integer::ilevel
-  real(dp)::dteff
+  integer::ilevel,ilevelmax
+  real(dp)::pre_dt
   !--------------------------------------------------------------
   ! Add gravity source terms to uold with time step dteff.
   !--------------------------------------------------------------
-  integer::igrid,ind
+  integer::igrid,ind,ilev
   integer::idim,neul=ndim+2
-  real(dp)::ener
+  real(dp)::ener,dteff
 
 #ifdef HYDRO
 
   if(.not. poisson)return
   if(noct_tot(ilevel)==0)return
-  if(verbose)write(*,111)ilevel,dteff
+  if(verbose)write(*,111)ilevel,pre_dt
 
-  ! Loop over octs
-  do igrid=head(ilevel),tail(ilevel)
-     ! Loop over cells
-     do ind=1,twotondim
-
-        ! Remove kinetic energy from total energy
-        ener=grid(igrid)%uold(ind,neul)
-        do idim=1,ndim
-           ener=ener-0.5*grid(igrid)%uold(ind,idim+1)**2/max(grid(igrid)%uold(ind,1),smallr)
-        end do
-  
-        ! Update momentum
+  ! Loop over levels and then octs
+  do ilev=ilevel,ilevelmax
+     dteff = pre_dt * dtnew(ilev)
+     do igrid=head(ilev),tail(ilev)
+        
+        ! Loop over cells
+        do ind=1,twotondim
+ 
+           ! Remove kinetic energy from total energy
+           ener=grid(igrid)%uold(ind,neul)
+           do idim=1,ndim
+              ener=ener-0.5*grid(igrid)%uold(ind,idim+1)**2/max(grid(igrid)%uold(ind,1),smallr)
+           end do
+     
+           ! Update momentum
 #ifdef GRAV
-        do idim=1,ndim
-           grid(igrid)%uold(ind,idim+1)=grid(igrid)%uold(ind,idim+1)+&
-                & max(grid(igrid)%uold(ind,1),smallr)*grid(igrid)%f(ind,idim)*dteff
-        end do
+           do idim=1,ndim
+              grid(igrid)%uold(ind,idim+1)=grid(igrid)%uold(ind,idim+1)+&
+                   & max(grid(igrid)%uold(ind,1),smallr)*grid(igrid)%f(ind,idim)*dteff
+           end do
 #endif
-        ! Update total energy
-        do idim=1,ndim
-           ener=ener+0.5*grid(igrid)%uold(ind,idim+1)**2/max(grid(igrid)%uold(ind,1),smallr)
+           ! Update total energy
+           do idim=1,ndim
+              ener=ener+0.5*grid(igrid)%uold(ind,idim+1)**2/max(grid(igrid)%uold(ind,1),smallr)
+           end do
+           grid(igrid)%uold(ind,neul)=ener
+     
         end do
-        grid(igrid)%uold(ind,neul)=ener
-
+        ! End loop over cells
      end do
-     ! End loop over cells
+     ! End loop over grids
   end do
-  ! End loop over grids
+  ! End loop over levels
 
 #endif
 

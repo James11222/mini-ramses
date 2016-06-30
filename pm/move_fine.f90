@@ -2,11 +2,11 @@
 !#########################################################################
 !#########################################################################
 !#########################################################################
-subroutine kick_drift_part(ilevel,action_part)
+subroutine kick_drift_part(ilevel,ilevelmax,action_part)
   use amr_commons
   use pm_commons
   implicit none
-  integer::ilevel
+  integer::ilevel,ilevelmax
   integer::action_part
   !
   !
@@ -16,7 +16,7 @@ subroutine kick_drift_part(ilevel,action_part)
   integer,dimension(1:ndim,1:twotondim),save::ckey
   integer,dimension(1:twotondim),save::igrid,icell
   integer(kind=8),dimension(0:ndim),save::hash_nbor
-  integer::i,ipart,inbor,ind,idim
+  integer::ilev,i,ipart,inbor,ind,idim
   integer::parent_cell,get_parent_cell
   real(kind=8)::dx_loc,vol_loc,dteff
   real(dp),dimension(1:ndim),save::ff
@@ -25,15 +25,17 @@ subroutine kick_drift_part(ilevel,action_part)
   if(noct_tot(ilevel)==0)return
   if(verbose)write(*,111)ilevel
 
-  ! Mesh spacing in that level
-  dx_loc=boxlen/2**ilevel 
-  vol_loc=dx_loc**ndim
-
   ! Open read-only cache
   call open_cache(operation_kick,domain_decompos_amr)
 
+  do ilev=ilevel,ilevelmax
+
   ! Loop over particles
-  do ipart=headp(ilevel),tailp(ilevel)
+  do ipart=headp(ilev),tailp(ilev)
+
+     ! Mesh spacing in that level
+     dx_loc=boxlen/2**ilev
+     vol_loc=dx_loc**ndim
      
      ! Rescale particle position at level ilevel
      do idim=1,ndim
@@ -51,8 +53,8 @@ subroutine kick_drift_part(ilevel,action_part)
      
      ! Periodic boundary conditions
      do idim=1,ndim
-        if(ig(idim)<0)ig(idim)=ckey_max(ilevel+1)-1
-        if(id(idim)==ckey_max(ilevel+1))id(idim)=0
+        if(ig(idim)<0)ig(idim)=ckey_max(ilev+1)-1
+        if(id(idim)==ckey_max(ilev+1))id(idim)=0
      enddo
      
      ! Compute cells Cartesian key
@@ -80,7 +82,7 @@ subroutine kick_drift_part(ilevel,action_part)
      ! Get parent cell at level ilevel using read-only cache
      ok_level=.true.
      igrid=0; icell=0
-     hash_nbor(0)=ilevel+1
+     hash_nbor(0)=ilev+1
      do ind=1,twotondim
         hash_nbor(1:ndim)=ckey(1:ndim,ind)
         parent_cell=get_parent_cell(hash_nbor,grid_dict,.false.,.true.)
@@ -116,8 +118,8 @@ subroutine kick_drift_part(ilevel,action_part)
         
         ! Periodic boundary conditions
         do idim=1,ndim
-           if(ig(idim)<0)ig(idim)=ckey_max(ilevel)-1
-           if(id(idim)==ckey_max(ilevel))id(idim)=0
+           if(ig(idim)<0)ig(idim)=ckey_max(ilev)-1
+           if(id(idim)==ckey_max(ilev))id(idim)=0
         enddo
         
         ! Compute cells Cartesian key
@@ -144,7 +146,7 @@ subroutine kick_drift_part(ilevel,action_part)
         
         ! Get parent cell at level ilevel-1 using read-only cache
         ok_level=.true.
-        hash_nbor(0)=ilevel
+        hash_nbor(0)=ilev
         igrid=0; icell=0
         do ind=1,twotondim
            hash_nbor(1:ndim)=ckey(1:ndim,ind)
@@ -199,22 +201,22 @@ subroutine kick_drift_part(ilevel,action_part)
      if(action_part==action_kick_drift)then
 
         ! Update velocity
-        vp(ipart,1:ndim)=vp(ipart,1:ndim)+ff(1:ndim)*0.5d0*dtnew(ilevel)
+        vp(ipart,1:ndim)=vp(ipart,1:ndim)+ff(1:ndim)*0.5d0*dtnew(ilev)
         
         ! Update position
-        xp(ipart,1:ndim)=xp(ipart,1:ndim)+vp(ipart,1:ndim)*dtnew(ilevel)
+        xp(ipart,1:ndim)=xp(ipart,1:ndim)+vp(ipart,1:ndim)*dtnew(ilev)
 
      else if(action_part.EQ.action_kick_only)then
 
         ! Compute proper time step for second kick
-        if (levelp(ipart)>=ilevel)then
+        if (levelp(ipart)>=ilev)then
            dteff=dtnew(levelp(ipart))
         else
-           dteff=dtold(levelp(ipart))
+           dteff=dtnew(levelp(ipart))
         endif
 
         ! Update level
-        levelp(ipart)=ilevel
+        levelp(ipart)=ilev
 
         ! Update velocity
         vp(ipart,1:ndim)=vp(ipart,1:ndim)+ff(1:ndim)*0.5d0*dteff
@@ -223,12 +225,15 @@ subroutine kick_drift_part(ilevel,action_part)
 
   end do
   ! End loop over particles
+
+  end do
+  ! End loop over levels
   
   call close_cache(grid_dict)
 
   ! Periodic boundary conditions
   if(action_part==action_kick_drift)then
-     do ipart=headp(ilevel),tailp(ilevel)
+     do ipart=headp(ilevel),tailp(ilevelmax)
         do idim=1,ndim
            if(xp(ipart,idim)>boxlen)then
               xp(ipart,idim)=xp(ipart,idim)-boxlen

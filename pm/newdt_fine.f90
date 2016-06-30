@@ -43,6 +43,7 @@ subroutine newdt_fine(ilevel)
        fourpi=4.0d0*ACOS(-1.0d0)
        if(cosmo)fourpi=1.5d0*omega_m*aexp
        threepi2=3.0d0*ACOS(-1.0d0)**2
+       if (myid==1 .and. rho_max(ilev)==0) write(*,*) ilev, rho_max
        tff=sqrt(threepi2/8./fourpi/rho_max(ilev))
        dtnew(ilev)=MIN(dtnew(ilev),courant_factor*tff)
     end if

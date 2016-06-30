@@ -176,8 +176,8 @@ subroutine gradient_phi(ilevel,icount)
   endif
 
   ! Compute fraction of time steps for interpolation
-  if (dtold(ilevel-1)>0.0)then
-     tfrac=dtnew(ilevel)/dtold(ilevel-1)*(icount-1)
+  if (dtnew(ilevel-1)>0.0)then
+     tfrac=dtnew(ilevel)/dtnew(ilevel-1)*(icount-1)
   else
      tfrac=0.0
   end if
