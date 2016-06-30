@@ -22,10 +22,23 @@
 ! ########################################################################
 #ifdef GRAV
 ! ------------------------------------------------------------------------
-! Main multigrid routine, called by amr_step
+! Driver for main multigrid routine, called by amr_step
 ! ------------------------------------------------------------------------
+subroutine multigrid(ilevel,ilevelmax,icount)
+  implicit none
+  integer :: ilevel, ilevelmax, icount
+  integer :: ilev
+  do ilev=ilevel,ilevelmax
+     call multigrid_main_loop(ilev, merge(icount,1,ilev==ilevel))
+  end do
+end subroutine multigrid
 
-subroutine multigrid(ilevel,icount)
+! ########################################################################
+! ########################################################################
+! ########################################################################
+! ########################################################################
+
+subroutine multigrid_main_loop(ilevel,icount)
   use amr_commons
   use poisson_commons
   use poisson_parameters
@@ -218,7 +231,7 @@ subroutine multigrid(ilevel,icount)
   ! ---------------------------------------------------------------------
   call cleanup_mg
   
-end subroutine multigrid
+end subroutine multigrid_main_loop
 
 ! ########################################################################
 ! ########################################################################

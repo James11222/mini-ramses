@@ -27,6 +27,7 @@ subroutine phi_fine_cg(ilevel,icount)
   real(dp)::r2_old,alpha_cg,beta_cg
   real(kind=8)::r2,pAp,rhs_norm,r2_all,pAp_all,rhs_norm_all
 
+  if(ilevel>nlevelmax)return
   if(gravity_type>0)return
   if(noct_tot(ilevel)==0)return
   if(verbose)write(*,111)ilevel

@@ -7,7 +7,7 @@ recursive subroutine amr_step(ilevel,icount)
 #ifndef WITHOUTMPI
   include 'mpif.h'
 #endif
-  integer::ilevel,icount,ilev,icnt
+  integer::ilevel,icount,ilev
   !-------------------------------------------------------------------!
   ! This routine is the adaptive-mesh/adaptive-time-step main driver. !
   ! Each routine is called using a specific order, don't change it,   !
@@ -86,19 +86,10 @@ recursive subroutine amr_step(ilevel,icount)
      ! Save old potential for time-extrapolation at level boundaries
      call save_phi_old(ilevel)
 
-     if (cg_levelmin > ilevel) then
-        do ilev=ilevel,cg_levelmin-1
-           if (ilev==ilevel) then
-              icnt = icount
-           else
-              icnt = 1
-           endif
-           ! Compute new gravitational potential
-           call multigrid(ilev,icnt)
-        end do
-     endif
-     !if (cg_levelmin > ilevel)     call multigrid(ilevel, cg_levelmin-1, icount)
-     if (cg_levelmin <= nlevelmax) call phi_fine_cg(max(cg_levelmin,ilevel), merge(icount,1,cg_levelmin<=ilevel))
+     ! Gravity solver depends on level
+     ! Multigrid [levelmin:cglevelmin-1], Conjugate gradient [cg_levelmin:nlevelmax]
+     call multigrid(ilevel, cg_levelmin-1, icount)
+     call phi_fine_cg(max(cg_levelmin,ilevel), merge(icount,1,cg_levelmin<=ilevel))
 
      ! Initial old potential
      if (nstep==0)call save_phi_old(ilevel)
