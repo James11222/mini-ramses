@@ -104,7 +104,7 @@ subroutine set_unew(ilevel)
   if(verbose)write(*,111)ilevel
 
   ! Set unew to uold for myid cells
-  do i=head(ilevel),tail(ilevel)
+  do i=head(ilevel),tail(nlevelmax)
      grid(i)%unew = grid(i)%uold
 #ifdef DUALENER
      do ind=1,twotondim

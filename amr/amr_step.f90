@@ -146,9 +146,7 @@ recursive subroutine amr_step(ilevel,icount)
   !-----------------------
                                call timer('hydro - set unew','start')
   if(ilevel==levelmin.or.icount>1)then
-  do ilev=ilevel,nlevelmax
-     if(hydro)call set_unew(ilev)
-  end do
+     if(hydro)call set_unew(ilevel)
   end if
 
   !---------------------------
