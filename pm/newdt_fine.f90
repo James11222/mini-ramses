@@ -31,27 +31,31 @@ subroutine newdt_fine(ilevel)
   if(noct_tot(ilevel)==0)return
   if(verbose)write(*,111)ilevel
 
-  ! Save old time step
-  dtold(ilevel)=dtnew(ilevel)
+  do ilev=ilevel,nlevelmax
+     if (noct_tot(ilev)==0) cycle
 
-  ! Maximum time step
-  dtnew(ilevel)=boxlen/smallc
-  if(poisson.and.gravity_type<=0)then
-     fourpi=4.0d0*ACOS(-1.0d0)
-     if(cosmo)fourpi=1.5d0*omega_m*aexp
-     threepi2=3.0d0*ACOS(-1.0d0)**2
-     tff=sqrt(threepi2/8./fourpi/rho_max(ilevel))
-     dtnew(ilevel)=MIN(dtnew(ilevel),courant_factor*tff)
-  end if
-  if(cosmo)then
-     dtnew(ilevel)=MIN(dtnew(ilevel),0.1/hexp)
-  end if
+    ! Save old time step
+    dtold(ilev)=dtnew(ilev)
 
-  ! Particle-based Courant condition
-  if(pic)call newdt_part(ilevel)
+    ! Maximum time step
+    dtnew(ilev)=boxlen/smallc
+    if(poisson.and.gravity_type<=0)then
+       fourpi=4.0d0*ACOS(-1.0d0)
+       if(cosmo)fourpi=1.5d0*omega_m*aexp
+       threepi2=3.0d0*ACOS(-1.0d0)**2
+       tff=sqrt(threepi2/8./fourpi/rho_max(ilev))
+       dtnew(ilev)=MIN(dtnew(ilev),courant_factor*tff)
+    end if
+    if(cosmo)then
+       dtnew(ilev)=MIN(dtnew(ilev),0.1/hexp)
+    end if
 
-  ! Hydro-based Courant condition
-  if(hydro)call courant_fine(ilevel)
+    ! Particle-based Courant condition
+    if(pic)call newdt_part(ilev)
+
+    ! Hydro-based Courant condition
+    if(hydro)call courant_fine(ilev)
+  end do
   
 111 format('   Entering newdt_fine for level ',I2)
 

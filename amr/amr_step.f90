@@ -131,14 +131,10 @@ recursive subroutine amr_step(ilevel,icount)
   !----------------------
                                call timer('courant','start')
   if(ilevel==levelmin.or.icount>1)then
-  do ilev=ilevel,nlevelmax
-
-  call newdt_fine(ilev)
-  if(ilev>levelmin)then
-     dtnew(ilev)=MIN(dtnew(ilev-1)/real(nsubcycle(ilev-1)),dtnew(ilev))
-  end if
-
-  end do
+     call newdt_fine(ilevel)
+     do ilev=max(ilevel,levelmin+1), nlevelmax
+        dtnew(ilev)=MIN(dtnew(ilev-1)/real(nsubcycle(ilev-1)),dtnew(ilev))
+     end do
   end if
   
   !-----------------------
