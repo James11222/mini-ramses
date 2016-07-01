@@ -7,7 +7,7 @@ recursive subroutine amr_step(ilevel,icount)
 #ifndef WITHOUTMPI
   include 'mpif.h'
 #endif
-  integer::ilevel,icount,ilev
+  integer::ilevel,icount,ilev,icnt
   !-------------------------------------------------------------------!
   ! This routine is the adaptive-mesh/adaptive-time-step main driver. !
   ! Each routine is called using a specific order, don't change it,   !
@@ -151,57 +151,64 @@ recursive subroutine amr_step(ilevel,icount)
   !-----------
   ! Hydro step
   !-----------
+
+  if (ilevel==levelmin .or. (icount==1 .and. nsubcycle(ilevel-1)==2)) then
+
+  do ilev=nlevelmax,ilevel,-1
+    if (noct_tot(ilev)==0) cycle
+    icnt = merge(2,1,ilev > ilevel)
+
   if(hydro)then
      ! Hyperbolic solver
                                call timer('hydro - godunov','start')
-     call godunov_fine(ilevel)
+     call godunov_fine(ilev)
      ! Add gravity source terms to unew with half time step
                                call timer('poisson - synchro','start')
-     if(poisson)call add_gravity_source_terms(ilevel)
+     if(poisson)call add_gravity_source_terms(ilev)
 
      ! Set uold equal to unew
                                call timer('hydro - set uold','start')
-     call set_uold(ilevel)
+     call set_uold(ilev)
      ! Add gravity source terms to uold with half time step
      ! to complete the time step (will be removed later)
                                call timer('poisson - synchro','start')
-     if(poisson)call synchro_hydro_fine(ilevel,ilevel,+0.5_dp)
+     if(poisson)call synchro_hydro_fine(ilev,ilev,+0.5_dp)
      ! Restriction operator
                                call timer('hydro - upload','start')
-     call upload_fine(ilevel)
+     call upload_fine(ilev)
   endif
 
   !----------------------------
   ! Compute cooling/heating
   !----------------------------
                                call timer('cooling','start')
-  if(cooling)call cooling_fine(ilevel)
+  if(cooling)call cooling_fine(ilev)
 
   !-------------------------------------------
   ! Perform first kick and drift for particles
   !-------------------------------------------
                                call timer('particles','start')
-  if(pic)call kick_drift_part(ilevel,ilevel,action_kick_drift)
+  if(pic)call kick_drift_part(ilev,ilev,action_kick_drift)
 
   !-----------------------
   ! Compute refinement map
   !-----------------------
                                call timer('flag','start')
-  if(.not.static) call flag_fine(ilevel,icount)
+  if(.not.static) call flag_fine(ilev,icnt)
 
   !-------------------------------
   ! Update coarser level time-step
   !-------------------------------
                                call timer('recursive call','start')
-  if(ilevel>levelmin)then
-     if(nsubcycle(ilevel-1)==1)dtnew(ilevel-1)=dtnew(ilevel)
-     if(icount==2)dtnew(ilevel-1)=dtold(ilevel)+dtnew(ilevel)
+  if(ilev>levelmin)then
+     if(nsubcycle(ilev-1)==1)dtnew(ilev-1)=dtnew(ilev)
+     if(icnt==2)dtnew(ilev-1)=dtold(ilev)+dtnew(ilev)
+  end if
+
+  enddo
+
   end if
 
 999 format(' Entering amr_step',i1,' for level',i2)
 
 end subroutine amr_step
-
-
-
-
