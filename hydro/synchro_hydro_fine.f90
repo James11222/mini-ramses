@@ -85,7 +85,7 @@ subroutine add_gravity_source_terms(ilevel)
   if(verbose)write(*,111)ilevel
 
   ! Add gravity source term at time t with half time step
-  do igrid=head(ilevel),tail(ilevel)
+  do igrid=head(ilevel),tail(nlevelmax)
      do ind=1,twotondim
 
         d=max(grid(igrid)%unew(ind,1),smallr)

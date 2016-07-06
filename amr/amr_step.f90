@@ -153,29 +153,40 @@ recursive subroutine amr_step(ilevel,icount)
   !-----------
 
   if (ilevel==levelmin .or. (icount==1 .and. nsubcycle(ilevel-1)==2)) then
-
+  !-------------------------------
+  ! Update coarser level time-step
+  !-------------------------------
   do ilev=nlevelmax,ilevel,-1
-    if (noct_tot(ilev)==0) cycle
-    icnt = merge(2,1,ilev > ilevel)
+     if (noct_tot(ilev)==0) cycle
+     icnt = merge(2,1,ilev > ilevel)
+     if(ilev>levelmin)then
+        if(nsubcycle(ilev-1)==1)dtnew(ilev-1)=dtnew(ilev)
+        if(icnt==2)dtnew(ilev-1)=dtold(ilev)+dtnew(ilev)
+     end if
+  end do
 
   if(hydro)then
+
      ! Hyperbolic solver
                                call timer('hydro - godunov','start')
-     call godunov_fine(ilev)
+     call godunov_fine(ilevel)
+
      ! Add gravity source terms to unew with half time step
                                call timer('poisson - synchro','start')
-     if(poisson)call add_gravity_source_terms(ilev)
+     if(poisson)call add_gravity_source_terms(ilevel)
 
      ! Set uold equal to unew
                                call timer('hydro - set uold','start')
-     call set_uold(ilev)
+     call set_uold(ilevel)
+
      ! Add gravity source terms to uold with half time step
      ! to complete the time step (will be removed later)
                                call timer('poisson - synchro','start')
-     if(poisson)call synchro_hydro_fine(ilev,ilev,+0.5_dp)
+     if(poisson)call synchro_hydro_fine(ilevel,nlevelmax,+0.5_dp)
+
      ! Restriction operator
                                call timer('hydro - upload','start')
-     call upload_fine(ilev)
+     call upload_fine(ilevel)
   endif
 
   !----------------------------
@@ -188,24 +199,19 @@ recursive subroutine amr_step(ilevel,icount)
   ! Perform first kick and drift for particles
   !-------------------------------------------
                                call timer('particles','start')
-  if(pic)call kick_drift_part(ilev,ilev,action_kick_drift)
+  if(pic)call kick_drift_part(ilevel,nlevelmax,action_kick_drift)
 
+  do ilev=nlevelmax,ilevel,-1
+    if (noct_tot(ilev)==0) cycle
+    icnt = merge(2,1,ilev > ilevel)
   !-----------------------
   ! Compute refinement map
   !-----------------------
                                call timer('flag','start')
   if(.not.static) call flag_fine(ilev,icnt)
 
-  !-------------------------------
-  ! Update coarser level time-step
-  !-------------------------------
-                               call timer('recursive call','start')
-  if(ilev>levelmin)then
-     if(nsubcycle(ilev-1)==1)dtnew(ilev-1)=dtnew(ilev)
-     if(icnt==2)dtnew(ilev-1)=dtold(ilev)+dtnew(ilev)
-  end if
-
   enddo
+                               call timer('recursive call','start')
 
   end if
 

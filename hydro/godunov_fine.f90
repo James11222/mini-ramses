@@ -13,7 +13,7 @@ subroutine godunov_fine(ilevel)
   ! hydro solver. On entry, hydro variables are gathered from array uold.
   ! On exit, unew has been updated. 
   !--------------------------------------------------------------------------
-  integer::i,ivar,igrid
+  integer::i,ivar,igrid,ilev
 
   if(noct_tot(ilevel)==0)return
   if(static)return
@@ -21,60 +21,63 @@ subroutine godunov_fine(ilevel)
 
   call open_cache(operation_godunov,domain_decompos_amr)
 
-  ! Loop over active grids by vector sweeps
-  igrid=head(ilevel)
-  do while(igrid.LE.tail(ilevel))
-     SELECT CASE (grid(igrid)%superoct)
-     CASE(1)
-        call godfine1(igrid,ilevel,&
-             & uloc,gloc,qloc,cloc,&
-             & okloc,childloc,parentloc,nborloc,&
-             & flux,tmp,dq,qm,qp,fx,tx,divu,&
-             & iu1,iu2,ju1,ju2,ku1,ku2,&
-             & io1,io2,jo1,jo2,ko1,ko2,&
-             & if1,if2,jf1,jf2,kf1,kf2)
-     CASE(2**ndim)
-        call godfine1(igrid,ilevel,&
-             & uloc_2,gloc_2,qloc_2,cloc_2,&
-             & okloc_2,childloc_2,parentloc_2,nborloc_2,&
-             & flux_2,tmp_2,dq_2,qm_2,qp_2,fx_2,tx_2,divu_2,&
-             & iu1_2,iu2_2,ju1_2,ju2_2,ku1_2,ku2_2,&
-             & io1_2,io2_2,jo1_2,jo2_2,ko1_2,ko2_2,&
-             & if1_2,if2_2,jf1_2,jf2_2,kf1_2,kf2_2)
-     CASE(4**ndim)
-        call godfine1(igrid,ilevel,&
-             & uloc_4,gloc_4,qloc_4,cloc_4,&
-             & okloc_4,childloc_4,parentloc_4,nborloc_4,&
-             & flux_4,tmp_4,dq_4,qm_4,qp_4,fx_4,tx_4,divu_4,&
-             & iu1_4,iu2_4,ju1_4,ju2_4,ku1_4,ku2_4,&
-             & io1_4,io2_4,jo1_4,jo2_4,ko1_4,ko2_4,&
-             & if1_4,if2_4,jf1_4,jf2_4,kf1_4,kf2_4)
-     CASE(8**ndim)
-        call godfine1(igrid,ilevel,&
-             & uloc_8,gloc_8,qloc_8,cloc_8,&
-             & okloc_8,childloc_8,parentloc_8,nborloc_8,&
-             & flux_8,tmp_8,dq_8,qm_8,qp_8,fx_8,tx_8,divu_8,&
-             & iu1_8,iu2_8,ju1_8,ju2_8,ku1_8,ku2_8,&
-             & io1_8,io2_8,jo1_8,jo2_8,ko1_8,ko2_8,&
-             & if1_8,if2_8,jf1_8,jf2_8,kf1_8,kf2_8)
-     CASE(16**ndim)
-        call godfine1(igrid,ilevel,&
-             & uloc_16,gloc_16,qloc_16,cloc_16,&
-             & okloc_16,childloc_16,parentloc_16,nborloc_16,&
-             & flux_16,tmp_16,dq_16,qm_16,qp_16,fx_16,tx_16,divu_16,&
-             & iu1_16,iu2_16,ju1_16,ju2_16,ku1_16,ku2_16,&
-             & io1_16,io2_16,jo1_16,jo2_16,ko1_16,ko2_16,&
-             & if1_16,if2_16,jf1_16,jf2_16,kf1_16,kf2_16)
-     CASE(32**ndim)
-        call godfine1(igrid,ilevel,&
-             & uloc_32,gloc_32,qloc_32,cloc_32,&
-             & okloc_32,childloc_32,parentloc_32,nborloc_32,&
-             & flux_32,tmp_32,dq_32,qm_32,qp_32,fx_32,tx_32,divu_32,&
-             & iu1_32,iu2_32,ju1_32,ju2_32,ku1_32,ku2_32,&
-             & io1_32,io2_32,jo1_32,jo2_32,ko1_32,ko2_32,&
-             & if1_32,if2_32,jf1_32,jf2_32,kf1_32,kf2_32)
-     END SELECT
-     igrid=igrid+grid(igrid)%superoct
+  do ilev=ilevel,nlevelmax
+     ! Loop over active grids by vector sweeps
+     igrid=head(ilev)
+     do while(igrid.LE.tail(ilev))
+        SELECT CASE (grid(igrid)%superoct)
+        CASE(1)
+           call godfine1(igrid,ilev,&
+                & uloc,gloc,qloc,cloc,&
+                & okloc,childloc,parentloc,nborloc,&
+                & flux,tmp,dq,qm,qp,fx,tx,divu,&
+                & iu1,iu2,ju1,ju2,ku1,ku2,&
+                & io1,io2,jo1,jo2,ko1,ko2,&
+                & if1,if2,jf1,jf2,kf1,kf2)
+        CASE(2**ndim)
+           call godfine1(igrid,ilev,&
+                & uloc_2,gloc_2,qloc_2,cloc_2,&
+                & okloc_2,childloc_2,parentloc_2,nborloc_2,&
+                & flux_2,tmp_2,dq_2,qm_2,qp_2,fx_2,tx_2,divu_2,&
+                & iu1_2,iu2_2,ju1_2,ju2_2,ku1_2,ku2_2,&
+                & io1_2,io2_2,jo1_2,jo2_2,ko1_2,ko2_2,&
+                & if1_2,if2_2,jf1_2,jf2_2,kf1_2,kf2_2)
+        CASE(4**ndim)
+           call godfine1(igrid,ilev,&
+                & uloc_4,gloc_4,qloc_4,cloc_4,&
+                & okloc_4,childloc_4,parentloc_4,nborloc_4,&
+                & flux_4,tmp_4,dq_4,qm_4,qp_4,fx_4,tx_4,divu_4,&
+                & iu1_4,iu2_4,ju1_4,ju2_4,ku1_4,ku2_4,&
+                & io1_4,io2_4,jo1_4,jo2_4,ko1_4,ko2_4,&
+                & if1_4,if2_4,jf1_4,jf2_4,kf1_4,kf2_4)
+        CASE(8**ndim)
+           call godfine1(igrid,ilev,&
+                & uloc_8,gloc_8,qloc_8,cloc_8,&
+                & okloc_8,childloc_8,parentloc_8,nborloc_8,&
+                & flux_8,tmp_8,dq_8,qm_8,qp_8,fx_8,tx_8,divu_8,&
+                & iu1_8,iu2_8,ju1_8,ju2_8,ku1_8,ku2_8,&
+                & io1_8,io2_8,jo1_8,jo2_8,ko1_8,ko2_8,&
+                & if1_8,if2_8,jf1_8,jf2_8,kf1_8,kf2_8)
+        CASE(16**ndim)
+           call godfine1(igrid,ilev,&
+                & uloc_16,gloc_16,qloc_16,cloc_16,&
+                & okloc_16,childloc_16,parentloc_16,nborloc_16,&
+                & flux_16,tmp_16,dq_16,qm_16,qp_16,fx_16,tx_16,divu_16,&
+                & iu1_16,iu2_16,ju1_16,ju2_16,ku1_16,ku2_16,&
+                & io1_16,io2_16,jo1_16,jo2_16,ko1_16,ko2_16,&
+                & if1_16,if2_16,jf1_16,jf2_16,kf1_16,kf2_16)
+        CASE(32**ndim)
+           call godfine1(igrid,ilev,&
+                & uloc_32,gloc_32,qloc_32,cloc_32,&
+                & okloc_32,childloc_32,parentloc_32,nborloc_32,&
+                & flux_32,tmp_32,dq_32,qm_32,qp_32,fx_32,tx_32,divu_32,&
+                & iu1_32,iu2_32,ju1_32,ju2_32,ku1_32,ku2_32,&
+                & io1_32,io2_32,jo1_32,jo2_32,ko1_32,ko2_32,&
+                & if1_32,if2_32,jf1_32,jf2_32,kf1_32,kf2_32)
+        END SELECT
+        igrid=igrid+grid(igrid)%superoct
+     end do
+
   end do
 
   call close_cache(grid_dict)
@@ -143,48 +146,49 @@ subroutine set_uold(ilevel)
   integer::ilevel
   !---------------------------------------------------------
   ! This routine sets array uold to its new value unew 
-  ! after the hydro step.
+  ! after the hydro step in levels [ilevel:nlevelmax]
   !---------------------------------------------------------
-  integer::i,ivar,irad,ind,iskip,nx_loc,ind_cell
+  integer::i,ivar,irad,ind,iskip,nx_loc,ind_cell,ilev
   real(dp)::scale,d,u,v,w
   real(dp)::e_kin,e_cons,e_prim,e_trunc,div,dx,fact,d_old
 
 #ifdef HYDRO
 
-  if(noct_tot(ilevel)==0)return
   if(verbose)write(*,111)ilevel
 
-  dx=boxlen/2**ilevel
+  do ilev=nlevelmax,ilevel,-1
+     dx=boxlen/2**ilev
 
-  ! Set uold to unew
-  do i=head(ilevel),tail(ilevel)
-     grid(i)%uold=grid(i)%unew
+     ! Set uold to unew
+     do i=head(ilev),tail(ilev)
+        grid(i)%uold=grid(i)%unew
 #ifdef DUALENER
-     do ind=1,twotondim
-        ! Correct total energy if internal energy is too small
-        d=max(grid(i)%uold(ind,1),smallr)
-        u=0.0; v=0.0; w=0.0
-        if(ndim>0)u=grid(i)%uold(ind,2)/d
-        if(ndim>1)v=grid(i)%uold(ind,3)/d
-        if(ndim>2)w=grid(i)%uold(ind,4)/d
-        e_kin=0.5*d*(u**2+v**2+w**2)
+        do ind=1,twotondim
+           ! Correct total energy if internal energy is too small
+           d=max(grid(i)%uold(ind,1),smallr)
+           u=0.0; v=0.0; w=0.0
+           if(ndim>0)u=grid(i)%uold(ind,2)/d
+           if(ndim>1)v=grid(i)%uold(ind,3)/d
+           if(ndim>2)w=grid(i)%uold(ind,4)/d
+           e_kin=0.5*d*(u**2+v**2+w**2)
 #if NENER>0
-        do irad=1,nener
-           e_kin=e_kin+grid(i)%uold(ind,ndim+2+irad)
+           do irad=1,nener
+              e_kin=e_kin+grid(i)%uold(ind,ndim+2+irad)
+           end do
+#endif
+           e_cons=grid(i)%uold(ind,ndim+2)-e_kin
+           e_prim=grid(i)%enew(ind)
+           ! Note: here divu=-div.u*dt
+           div=abs(grid(i)%divu(ind))*dx/dtnew(ilev)
+           !           e_trunc=beta_fix*d*max(div,3.0*hexp*dx)**2
+           if(e_cons<e_trunc)then
+              grid(i)%uold(ind,ndim+2)=e_prim+e_kin
+           end if
         end do
 #endif
-        e_cons=grid(i)%uold(ind,ndim+2)-e_kin
-        e_prim=grid(i)%enew(ind)
-        ! Note: here divu=-div.u*dt
-        div=abs(grid(i)%divu(ind))*dx/dtnew(ilevel)
-        !           e_trunc=beta_fix*d*max(div,3.0*hexp*dx)**2
-        if(e_cons<e_trunc)then
-           grid(i)%uold(ind,ndim+2)=e_prim+e_kin
-        end if
      end do
-#endif
-  end do
 
+     end do
 #endif
 
 111 format('   Entering set_uold for level ',i2)

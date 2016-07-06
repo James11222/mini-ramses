@@ -21,7 +21,7 @@ subroutine cooling_fine(ilevel)
   ! Conversion factor from user units to cgs units
   call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
 
-  do igrid=head(ilevel),tail(ilevel)
+  do igrid=head(ilevel),tail(nlevelmax)
      do ind=1,twotondim
 
         if(.NOT. grid(igrid)%refined(ind))then

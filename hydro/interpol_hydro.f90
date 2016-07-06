@@ -12,7 +12,7 @@ subroutine upload_fine(ilevel)
   ! for the hydro variables.
   !----------------------------------------------------------------------
   integer::ioct,parent_cell,get_parent_cell
-  integer::ind,ivar,igrid,icell,idim
+  integer::ind,ivar,igrid,icell,idim,ilev
   integer(kind=8),dimension(0:ndim)::hash_key
   real(dp)::average,ekin,erad
 
@@ -21,9 +21,9 @@ subroutine upload_fine(ilevel)
   if(noct_tot(ilevel)==0)return
   if(noct_tot(ilevel+1)==0)return
   if(verbose)write(*,111)ilevel
- 
+
   ! Set conservative variable to zero in refined cells
-  do ioct=head(ilevel),tail(ilevel)
+  do ioct=head(ilevel),tail(nlevelmax-1)
      do ivar=1,nvar
         do ind=1,twotondim
            if(grid(ioct)%refined(ind))then
@@ -33,61 +33,65 @@ subroutine upload_fine(ilevel)
      end do
   end do
 
-  call open_cache(operation_upload,domain_decompos_amr)
+  do ilev=nlevelmax-1,ilevel,-1
+     if(noct_tot(ilev)==0 .or. noct_tot(ilev+1)==0)cycle
 
-  ! Loop over finer level grids
-  hash_key(0)=ilevel+1
-  do ioct=head(ilevel+1),tail(ilevel+1)
+     call open_cache(operation_upload,domain_decompos_amr)
 
-     ! Get cell and grid index
-     hash_key(1:ndim)=grid(ioct)%ckey(1:ndim)
-     parent_cell=get_parent_cell(hash_key,grid_dict,.true.,.false.)
-     igrid=(parent_cell-1)/twotondim+1
-     icell=parent_cell-(igrid-1)*twotondim
+     ! Loop over finer level grids
+     hash_key(0)=ilev+1
+     do ioct=head(ilev+1),tail(ilev+1)
 
-     ! Average conservative variables
-     do ivar=1,nvar
-        average=0.0d0
-        do ind=1,twotondim
-           average=average+grid(ioct)%uold(ind,ivar)
+        ! Get cell and grid index
+        hash_key(1:ndim)=grid(ioct)%ckey(1:ndim)
+        parent_cell=get_parent_cell(hash_key,grid_dict,.true.,.false.)
+        igrid=(parent_cell-1)/twotondim+1
+        icell=parent_cell-(igrid-1)*twotondim
+
+        ! Average conservative variables
+        do ivar=1,nvar
+           average=0.0d0
+           do ind=1,twotondim
+              average=average+grid(ioct)%uold(ind,ivar)
+           end do
+           ! Scatter result to cell
+           grid(igrid)%uold(icell,ivar)=average/dble(twotondim)
         end do
-        ! Scatter result to cell
-        grid(igrid)%uold(icell,ivar)=average/dble(twotondim)
-     end do
 
-     ! Average internal energy instead of total energy
-     if(interpol_var==1 .or. interpol_var==2)then
-        average=0.0d0
-        do ind=1,twotondim
+        ! Average internal energy instead of total energy
+        if(interpol_var==1 .or. interpol_var==2)then
+           average=0.0d0
+           do ind=1,twotondim
+              ekin=0.0d0
+              do idim=1,ndim
+                 ekin=ekin+0.5d0*grid(ioct)%uold(ind,idim+1)**2/max(grid(ioct)%uold(ind,1),smallr)
+              end do
+              erad=0.0d0
+#if NENER>0
+              do irad=1,nener
+                 erad=erad+grid(ioct)%uold(ind,ndim+2+irad)
+              end do
+#endif
+              average=average+grid(ioct)%uold(ind,ndim+2)-ekin-erad
+           end do
+           ! Scatter result to cell
            ekin=0.0d0
            do idim=1,ndim
-              ekin=ekin+0.5d0*grid(ioct)%uold(ind,idim+1)**2/max(grid(ioct)%uold(ind,1),smallr)
+              ekin=ekin+0.5d0*grid(igrid)%uold(icell,idim+1)**2/max(grid(igrid)%uold(icell,1),smallr)
            end do
            erad=0.0d0
 #if NENER>0
            do irad=1,nener
-              erad=erad+grid(ioct)%uold(ind,ndim+2+irad)
+              erad=erad+grid(igrid)%uold(icell,ndim+2+irad)
            end do
 #endif
-           average=average+grid(ioct)%uold(ind,ndim+2)-ekin-erad
-        end do
-        ! Scatter result to cell
-        ekin=0.0d0
-        do idim=1,ndim
-           ekin=ekin+0.5d0*grid(igrid)%uold(icell,idim+1)**2/max(grid(igrid)%uold(icell,1),smallr)
-        end do
-        erad=0.0d0
-#if NENER>0
-        do irad=1,nener
-           erad=erad+grid(igrid)%uold(icell,ndim+2+irad)
-        end do
-#endif
-        grid(igrid)%uold(icell,ndim+2)=average/dble(twotondim)+ekin+erad
-     endif
+           grid(igrid)%uold(icell,ndim+2)=average/dble(twotondim)+ekin+erad
+        endif
+     end do
+
+     call close_cache(grid_dict)
+
   end do
-
-  call close_cache(grid_dict)
-
 #endif
 
 111 format('   Entering upload_fine for level',i2)
