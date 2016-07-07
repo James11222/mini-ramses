@@ -2,11 +2,11 @@
 !################################################################
 !################################################################
 !################################################################
-subroutine synchro_hydro_fine(ilevel,ilevelmax,pre_dt)
+subroutine synchro_hydro_fine(ilevel,pre_dt)
   use amr_commons
   use hydro_commons
   implicit none
-  integer::ilevel,ilevelmax
+  integer::ilevel
   real(dp)::pre_dt
   !--------------------------------------------------------------
   ! Add gravity source terms to uold with time step dteff.
@@ -22,7 +22,7 @@ subroutine synchro_hydro_fine(ilevel,ilevelmax,pre_dt)
   if(verbose)write(*,111)ilevel,pre_dt
 
   ! Loop over levels and then octs
-  do ilev=ilevel,ilevelmax
+  do ilev=ilevel,nlevelmax
      dteff = pre_dt * dtnew(ilev)
      do igrid=head(ilev),tail(ilev)
         

@@ -2,11 +2,11 @@
 !#########################################################################
 !#########################################################################
 !#########################################################################
-subroutine kick_drift_part(ilevel,ilevelmax,action_part)
+subroutine kick_drift_part(ilevel,nlevelmax,action_part)
   use amr_commons
   use pm_commons
   implicit none
-  integer::ilevel,ilevelmax
+  integer::ilevel,nlevelmax
   integer::action_part
   !
   !
@@ -28,7 +28,7 @@ subroutine kick_drift_part(ilevel,ilevelmax,action_part)
   ! Open read-only cache
   call open_cache(operation_kick,domain_decompos_amr)
 
-  do ilev=ilevel,ilevelmax
+  do ilev=ilevel,nlevelmax
 
   ! Loop over particles
   do ipart=headp(ilev),tailp(ilev)
@@ -233,7 +233,7 @@ subroutine kick_drift_part(ilevel,ilevelmax,action_part)
 
   ! Periodic boundary conditions
   if(action_part==action_kick_drift)then
-     do ipart=headp(ilevel),tailp(ilevelmax)
+     do ipart=headp(ilevel),tailp(nlevelmax)
         do idim=1,ndim
            if(xp(ipart,idim)>boxlen)then
               xp(ipart,idim)=xp(ipart,idim)-boxlen
