@@ -17,7 +17,7 @@ module amr_parameters
   integer,parameter::qdp=kind(1.0_8) ! real*8
 #endif
   integer,parameter::MAXOUT=1000
-  integer,parameter::MAXLEVEL=100
+  integer,parameter::MAXLEVEL=64
   
   ! Define integer types (for particle IDs mostly)
   integer,parameter::i4b=4
@@ -79,10 +79,11 @@ module amr_parameters
   logical::cost_weighting=.true. ! Activate load balancing according to cpu time
 
   ! Time evolution
-  integer::ntimegroup=0       ! Max number of time groups
-  logical::do_timegroup=.false. ! Use time groups and individual timestepping of octs?
+  integer(kind=8), parameter::tg_max=63       ! Max possible number of time groups
+  integer::ntimegroup=0                       ! Max number of time groups in simulation
+  logical::do_timegroup=.false.               ! Use time groups and individual timestepping of octs?
   integer ,dimension(1:MAXLEVEL)::nsubcycle=2 ! Subcycling at each level
-  real(dp),dimension(1:MAXLEVEL)::dtold,dtnew ! Time step at each level
+  real(dp),dimension(1:tg_max)  ::dtold,dtnew ! dt in each time-group
 
   ! Step parameters
   integer::nrestart=0         ! New run or backup file number

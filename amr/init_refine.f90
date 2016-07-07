@@ -127,7 +127,7 @@ subroutine init_refine_adaptive
      call rho_fine(levelmin)
 
      do ilevel=nlevelmax,levelmin,-1
-        call flag_fine(ilevel,2)
+        call flag_fine(ilevel,.false.)
      end do
 
   end do

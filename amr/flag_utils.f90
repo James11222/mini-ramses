@@ -9,7 +9,7 @@ subroutine flag
 
   if(verbose)write(*,*)'Entering flag'
   do ilevel=nlevelmax-1,levelmin,-1
-     call flag_fine(ilevel,2)
+     call flag_fine(ilevel,.false.)
   end do
   if(verbose)write(*,*)'Complete flag'
 
@@ -18,13 +18,14 @@ end subroutine flag
 !################################################################
 !################################################################
 !################################################################
-subroutine flag_fine(ilevel,icount)
+subroutine flag_fine(ilevel,ensure_refinement)
   use amr_commons
   implicit none
 #ifndef WITHOUTMPI
   include 'mpif.h'
 #endif
-  integer::ilevel,icount
+  integer::ilevel
+  logical::ensure_refinement
   !--------------------------------------------------------
   ! This routine builds the refinement map at level ilevel.
   !--------------------------------------------------------
@@ -85,10 +86,8 @@ subroutine flag_fine(ilevel,icount)
 #endif
 
   ! In case of adaptive time step ONLY, check for refinement rules.
-  if(ilevel>levelmin)then
-     if(icount<nsubcycle(ilevel-1))then
-        call ensure_ref_rules(ilevel)
-     end if
+  if(ilevel>levelmin .and. ensure_refinement)then
+     call ensure_ref_rules(ilevel)
   end if
 
 111 format('   Entering flag_fine for level ',I2)

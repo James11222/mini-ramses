@@ -1,4 +1,93 @@
-recursive subroutine amr_step(ilevel,icount)
+subroutine amr_step
+  USE amr_parameters, only :: tg_max, max_active_time_group, dt_old, dt_new
+  implicit none
+  !=============================================================================
+  ! Basic time step driver routine for looping through time-step groups in one explicit loop
+  !=============================================================================
+  ! Time is measured as integer steps, with each time group having 2^tgroup sub-steps inside the full step.
+  ! To allow the number of time-groups to change during a step but use exact integer arithmetics,
+  ! one full step is equal to a very large integer (base=2^63) allowing effectively for 63 time-group levels.
+  integer(kind=8), parameter         :: base=2**tg_max ! integer unit used for one full time-step
+  integer(kind=8)                    :: t_int          ! current time inside timestep
+  integer(kind=8), dimension(tg_max) :: now, future    ! integer current and future time for each time-group
+  integer(kind=8), dimension(tg_max) :: dt_int         ! integer dt for each time group
+  integer(kind=8) :: tgroup, tgroup_fut
+  !
+  ! Set up integer time-steps
+  t_int = 0
+  now   = 0
+  do ig=1_8,tg_max
+     future(ig) = base / 2_8**(ig-1)
+  enddo
+  dt_int = future - now
+
+  ! Main loop over one full time-step
+  do while (t_int .ne. base)
+     !-------------------------------
+     ! Determine which groups have reached current time, and have to prepare things
+     ! for updating the time-step. This is done at time "now" (e.g. calculating the gravitational potential).
+     !-------------------------------
+     do tgroup=1,tg_max
+        if (now(tgroup)==t_int) exit
+     end do
+     call amr_prepare(tgroup)
+
+     !----------------------
+     ! Compute new real time step and update time-group distribution
+     !----------------------
+                                  call timer('courant','start')
+     call newdt_fine(tgroup)
+     call refine_time_groups(tgroup)
+     do ig=max(tgroup,2), max_active_time_group
+        dtnew(ig)=MIN(dtnew(ig-1)/2.,dtnew(ig))
+     end do
+
+     !-------------------------------
+     ! Update integer time-step with dt of the highest active time-group
+     !-------------------------------
+     t_int = t_int + dt(max_active_time_group)
+
+     !-------------------------------
+     ! Update real time of simulation with real dt of higest active time-group
+     !-------------------------------
+     !dtold(ilevel+1)=dtnew(ilevel)/dble(nsubcycle(ilevel))
+     !dtnew(ilevel+1)=dtnew(ilevel)/dble(nsubcycle(ilevel))
+     call update_time(max_active_time_group)
+
+     !-------------------------------
+     ! Determine which groups will evolve to current time
+     !-------------------------------
+     do tgroup_fut=1,tg_max
+        if (future(tgroup_fut)==t_int) exit
+     end do
+
+     !-------------------------------
+     ! Update coarser time-groups time-step
+     !-------------------------------
+     do ig=max_active_time_group,tgroup_fut+1,-1
+        dtnew(ig-1)=dtold(ig)+dtnew(ig)
+     end do
+
+     !-------------------------------
+     ! Load balance cells across timegroups
+     !-------------------------------
+     if (do_timegroup) call load_balance(tgroup_fut,tgroup)
+
+     !-------------------------------
+     ! Evolve time groups
+     !-------------------------------
+     call amr_evolve(tgroup_fut)
+                               call timer('recursive call','start')
+
+     !-------------------------------
+     ! Update integer timestep counters to account for updated time
+     !-------------------------------
+     now(tgroup:tg_max)    = t_int
+     future(tgroup:tg_max) = future(tgroup:tg_max) + dt(tgroup:tg_max)
+  end do
+end subroutine amr_step
+
+subroutine amr_prepare(tgroup)
   use amr_commons
   use pm_commons
   use hydro_commons
@@ -7,28 +96,39 @@ recursive subroutine amr_step(ilevel,icount)
 #ifndef WITHOUTMPI
   include 'mpif.h'
 #endif
-  integer::ilevel,icount,ilev,icnt
-  !-------------------------------------------------------------------!
-  ! This routine is the adaptive-mesh/adaptive-time-step main driver. !
-  ! Each routine is called using a specific order, don't change it,   !
-  ! unless you check all consequences first                           !
-  !-------------------------------------------------------------------!
+  integer, intent(in)::tgroup
+  !-----------------------------------------------------------------!
+  ! This is the first adaptive-mesh/adaptive-time-step main driver. !
+  ! It prepares everything for the actual time-step.                !
+  ! Each routine is called using a specific order, don't change it, !
+  ! unless you check all consequences first.                        !
+  !-----------------------------------------------------------------!
+  integer::ilevel,ilev,ig,icount
   logical,save::first_step=.true.
 
-  if(noct_tot(ilevel)==0)return
-  if(verbose)write(*,999)icount,ilevel
+  if(verbose)write(*,999)tgroup
 
-  if(ilevel==levelmin.or.icount>1)then
+  !---------------------
+  ! check if timegroups are bound to levels through nsubcycle
+  !---------------------
+  if (.not. do_timegroups) then
+     ig=1; ilevel=levelmin
+     do while (ig < tgroup)
+        ilevel = ilevel + 1
+        ig = ig + nsubcycle(ilevel-1)-1
+     end do
+  endif
+
+  icount = merge(1,2,tgroup==1)
 
   !---------------------
   ! Make new refinements
   !---------------------
-  if(ilevel==levelmin.or.icount>1)then
                                call timer('refine','start')
-     call refine_fine(ilevel)
+  call refine_fine(ilevel)
                                call timer('load balance','start')
-     call load_balance(ilevel)
-  endif
+  call load_balance(ilevel)
+  !call load_balance(tgroup,tgroup)
 
   !------------------------------
   ! Balance particles across cpus
@@ -37,7 +137,7 @@ recursive subroutine amr_step(ilevel,icount)
   if(first_step)then
      first_step=.false.
   else
-     if(ilevel==levelmin)then
+     if(tgroup==1)then
                                call timer('particles','start')
         if(pic)call balance_part(ilevel)
      endif
@@ -47,7 +147,7 @@ recursive subroutine amr_step(ilevel,icount)
   ! Output results to files
   !------------------------
                                call timer('output','start')
-  if(ilevel==levelmin)then
+  if(tgroup==1)then
      if(mod(nstep_coarse,foutput)==0.or.aexp>=aout(iout).or.t>=tout(iout))then
         call dump_all
      endif
@@ -56,7 +156,7 @@ recursive subroutine amr_step(ilevel,icount)
   !----------------------------
   ! Output frame to movie dump
   !----------------------------
-  if(movie .and. ilevel==levelmin) then
+  if(movie .and. tgroup==1) then
      if(imov.le.imovout)then 
         if(aexp>=amovout(imov).or.t>=tmovout(imov))then
            call output_frame()
@@ -80,7 +180,7 @@ recursive subroutine amr_step(ilevel,icount)
                                call timer('poisson','start')
      ! Remove gravity source term with half time step and old force
      if(hydro)then
-        call synchro_hydro_fine(ilevel,nlevelmax,-0.5_dp)
+        call synchro_hydro_fine(ilevel,-0.5_dp)
      endif
 
      ! Save old potential for time-extrapolation at level boundaries
@@ -99,25 +199,16 @@ recursive subroutine amr_step(ilevel,icount)
 
      ! Perform second kick for particles
                                call timer('particles','start')
-     if(pic)call kick_drift_part(ilevel,nlevelmax,action_kick_only)
+     if(pic)call kick_drift_part(ilevel,action_kick_only)
 
      ! Add gravity source term with half time step and new force
      if(hydro)then
                                call timer('poisson','start')
-        call synchro_hydro_fine(ilevel,nlevelmax,+0.5_dp)
+        call synchro_hydro_fine(ilevel,+0.5_dp)
      end if
 
   end if
 #endif
-
-  !----------------------
-  ! Compute new time step
-  !----------------------
-                               call timer('courant','start')
-  call newdt_fine(ilevel)
-  do ilev=max(ilevel,levelmin+1), nlevelmax
-     dtnew(ilev)=MIN(dtnew(ilev-1)/real(nsubcycle(ilev-1)),dtnew(ilev))
-  end do
   
   !-----------------------
   ! Set unew equal to uold
@@ -125,46 +216,40 @@ recursive subroutine amr_step(ilevel,icount)
                                call timer('hydro - set unew','start')
   if(hydro)call set_unew(ilevel)
 
-  end if
-  !---------------------------
-  ! Recursive call to amr_step
-  !---------------------------
-                               call timer('recursive call','start')
-  if(ilevel<nlevelmax)then
-     if(noct_tot(ilevel+1)>0)then
-        if(nsubcycle(ilevel)==2)then
-           call amr_step(ilevel+1,1)
-           call amr_step(ilevel+1,2)
-        else
-           call amr_step(ilevel+1,1)
-        endif
-     else 
-        ! Otherwise, update time and finer level time-step
-        dtold(ilevel+1)=dtnew(ilevel)/dble(nsubcycle(ilevel))
-        dtnew(ilevel+1)=dtnew(ilevel)/dble(nsubcycle(ilevel))
-        call update_time(ilevel)
-     end if
-  else
-     call update_time(ilevel)
-  end if
+end subroutine amr_prepare
+
+subroutine amr_evolve(tgroup)
+  use amr_commons
+  use pm_commons
+  use hydro_commons
+  use poisson_commons
+  implicit none
+#ifndef WITHOUTMPI
+  include 'mpif.h'
+#endif
+  integer::tgroup
+  !------------------------------------------------------------------!
+  ! This is the second adaptive-mesh/adaptive-time-step main driver. !
+  ! It evolves all the cells in time-groups >= tgroup                !
+  ! Each routine is called using a specific order, don't change it,  !
+  ! unless you check all consequences first.                         !
+  !------------------------------------------------------------------!
+  integer::ilevel,ilev,ig
+
+  !---------------------
+  ! check if timegroups are bound to levels through nsubcycle
+  !---------------------
+  if (.not. do_timegroups) then
+     ig=1; ilevel=levelmin
+     do while (ig < tgroup)
+        ilevel = ilevel + 1
+        ig = ig + nsubcycle(ilevel-1)-1
+     end do
+  endif
 
   !-----------
   ! Hydro step
   !-----------
-
-  if (ilevel==levelmin .or. (icount==1 .and. nsubcycle(ilevel-1)==2)) then
-  !-------------------------------
-  ! Update coarser level time-step
-  !-------------------------------
-  do ilev=nlevelmax,ilevel,-1
-     if (noct_tot(ilev)==0) cycle
-     icnt = merge(2,1,ilev > ilevel)
-     if(ilev>levelmin)then
-        if(nsubcycle(ilev-1)==1)dtnew(ilev-1)=dtnew(ilev)
-        if(icnt==2)dtnew(ilev-1)=dtold(ilev)+dtnew(ilev)
-     end if
-  end do
-
   if(hydro)then
 
      ! Hyperbolic solver
@@ -182,7 +267,7 @@ recursive subroutine amr_step(ilevel,icount)
      ! Add gravity source terms to uold with half time step
      ! to complete the time step (will be removed later)
                                call timer('poisson - synchro','start')
-     if(poisson)call synchro_hydro_fine(ilevel,nlevelmax,+0.5_dp)
+     if(poisson)call synchro_hydro_fine(ilevel,+0.5_dp)
 
      ! Restriction operator
                                call timer('hydro - upload','start')
@@ -193,28 +278,22 @@ recursive subroutine amr_step(ilevel,icount)
   ! Compute cooling/heating
   !----------------------------
                                call timer('cooling','start')
-  if(cooling)call cooling_fine(ilev)
+  if(cooling)call cooling_fine(ilevel)
 
   !-------------------------------------------
   ! Perform first kick and drift for particles
   !-------------------------------------------
                                call timer('particles','start')
-  if(pic)call kick_drift_part(ilevel,nlevelmax,action_kick_drift)
+  if(pic)call kick_drift_part(ilevel,action_kick_drift)
 
   do ilev=nlevelmax,ilevel,-1
     if (noct_tot(ilev)==0) cycle
-    icnt = merge(2,1,ilev > ilevel)
   !-----------------------
   ! Compute refinement map
   !-----------------------
                                call timer('flag','start')
-  if(.not.static) call flag_fine(ilev,icnt)
+  if(.not.static) call flag_fine(ilev,ilev==ilevel)
 
   enddo
-                               call timer('recursive call','start')
+end subroutine amr_evolve
 
-  end if
-
-999 format(' Entering amr_step',i1,' for level',i2)
-
-end subroutine amr_step
