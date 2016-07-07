@@ -78,6 +78,12 @@ module amr_parameters
   character(len=128)::ordering='hilbert'
   logical::cost_weighting=.true. ! Activate load balancing according to cpu time
 
+  ! Time evolution
+  integer::ntimegroup=0       ! Max number of time groups
+  logical::do_timegroup=.false. ! Use time groups and individual timestepping of octs?
+  integer ,dimension(1:MAXLEVEL)::nsubcycle=2 ! Subcycling at each level
+  real(dp),dimension(1:MAXLEVEL)::dtold,dtnew ! Time step at each level
+
   ! Step parameters
   integer::nrestart=0         ! New run or backup file number
   integer::nstepmax=1000000   ! Maximum number of time steps

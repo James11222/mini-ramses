@@ -42,6 +42,7 @@ subroutine init_refine_basegrid
      grid(igrid)%ckey(1:ndim)=ix(1,1:ndim)
      grid(igrid)%hkey(1:nhilbert)=hk(1,1:nhilbert)
      grid(igrid)%refined(1:twotondim)=.false.
+     grid(igrid)%tgroup=1
      ! Insert new grid in hash table
      hash_key(0)=levelmin
      hash_key(1:ndim)=ix(1,1:ndim)
@@ -348,6 +349,7 @@ subroutine init_refine_restart
            grid(igrid)%lev=ilevel
            grid(igrid)%ckey=ckey
            grid(igrid)%refined=refined
+           grid(igrid)%tgroup=1
 #ifdef HYDRO
            if(hydro)then
               grid(igrid)%uold=uold

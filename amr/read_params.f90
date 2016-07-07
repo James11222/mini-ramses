@@ -25,7 +25,7 @@ subroutine read_params
   !--------------------------------------------------
   namelist/run_params/cosmo,pic,poisson,hydro,verbose,debug &
        & ,nrestart,ncontrol,nstepmax,nsubcycle,nremap,ordering &
-       & ,static,geom,overload,cost_weighting,nsuperoct
+       & ,static,geom,overload,cost_weighting,nsuperoct,ntimegroup,do_timegroup
   namelist/output_params/noutput,foutput,fbackup,aout,tout,output_mode &
        & ,tend,delta_tout,aend,delta_aout,gadget_output
   namelist/amr_params/levelmin,levelmax,ngridmax,ngridtot &
@@ -249,6 +249,9 @@ subroutine read_params
      exp_refine(i)= 2.0
      initfile  (i)= ' '
   end do
+
+  if(ntimegroup==0 .or. do_timegroup)  ntimegroup=sum(nsubcycle-1)
+  if(ntimegroup==0 .and. do_timegroup) ntimegroup=1
      
   if(.not. nml_ok)then
      if(myid==1)write(*,*)'Too many errors in the namelist'

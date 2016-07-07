@@ -45,9 +45,7 @@ module amr_commons
   integer ,dimension(1:MAXLEVEL)::n1,n2,n3
 
   ! Level related arrays
-  real(dp),dimension(1:MAXLEVEL)::dtold,dtnew ! Time step at each level
   real(dp),dimension(1:MAXLEVEL)::rho_max     ! Maximum density at each level
-  integer ,dimension(1:MAXLEVEL)::nsubcycle=2 ! Subcycling at each level
 
   ! Oct structure
   type oct
@@ -58,6 +56,7 @@ module amr_commons
      integer(kind=4),dimension(1:twotondim)::flag2
      logical,dimension(1:twotondim)::refined
      integer(kind=4)::superoct
+     integer(kind=4)::tgroup
 #ifdef GRAV
      real(kind=dp),dimension(1:twotondim)::rho
      real(kind=dp),dimension(1:twotondim)::phi

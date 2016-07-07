@@ -435,6 +435,11 @@ subroutine make_new_oct(iparent,icell,ilevel)
   grid(ichild)%flag1(1:twotondim)=0
   grid(ichild)%flag2(1:twotondim)=0
   grid(ichild)%superoct=1
+  if (do_timegroup) then ! use oct-based time stepping
+     grid(ichild)%tgroup=min(grid(iparent)%tgroup + 1, ntimegroup)
+  else                   ! rely on nsubcycle. Inc tgroup if parent level is subcycled
+     grid(ichild)%tgroup=grid(iparent)%tgroup + nsubcycle(ilevel-1) - 1
+  endif
 
   ! Insert new grid in hash table
   hash_key(0)=ilevel
