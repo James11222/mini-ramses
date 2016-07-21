@@ -51,7 +51,7 @@ subroutine newdt_fine(ilevel)
   if(pic)call newdt_part(ilevel)
 
   ! Hydro-based Courant condition
-  if(hydro)call courant_fine(ilevel)
+  if(hydro)call courant_fine_vec(ilevel)
   
 111 format('   Entering newdt_fine for level ',I2)
 

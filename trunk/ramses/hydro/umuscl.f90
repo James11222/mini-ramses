@@ -58,15 +58,17 @@ subroutine unsplit(uin,gravin,qin,cin,flux,tmp,dq,qm,qp,fx,tx,divu,&
 
   ! Local scalar variables
   integer::i,j,k,l,ivar
-  integer::ilo,ihi,jlo,jhi,klo,khi
+  integer::ilo,ihi,jlo,jhi,klo,khi,ncube
 
   ilo=MIN(1,iu1+2); ihi=MAX(1,iu2-2)
   jlo=MIN(1,ju1+2); jhi=MAX(1,ju2-2)
   klo=MIN(1,ku1+2); khi=MAX(1,ku2-2)
+  ncube=(iu2-iu1+1)*(ju2-ju1+1)*(ku2-ku1+1)
 
   ! Translate to primative variables, compute sound speeds  
-  call ctoprim(uin,qin,cin,gravin,dt,&
-     & iu1,iu2,ju1,ju2,ku1,ku2)
+!!$  call ctoprim(uin,qin,cin,gravin,dt,&
+!!$     & iu1,iu2,ju1,ju2,ku1,ku2)
+  call ctoprim2(uin,qin,cin,gravin,dt,ncube)
 
   ! Compute TVD slopes
   call uslope(qin,dq,dx,dt,&
@@ -100,10 +102,10 @@ subroutine unsplit(uin,gravin,qin,cin,flux,tmp,dq,qm,qp,fx,tx,divu,&
         end do
      end do
   end do
-  do k=klo,khi
-     do j=jlo,jhi
-        do i=if1,if2
-           do ivar=1,2
+  do ivar=1,2
+     do k=klo,khi
+        do j=jlo,jhi
+           do i=if1,if2
               tmp (i,j,k,ivar,1)=tx(i,j,k,ivar)*dt/dx
            end do
         end do
@@ -901,6 +903,97 @@ end subroutine ctoprim
 !###########################################################
 !###########################################################
 !###########################################################
+subroutine ctoprim2(uin,q,c,gravin,dt,ncube)
+  use amr_parameters
+  use hydro_parameters
+  use const
+  implicit none
+
+  real(dp)::dt
+  integer::ncube
+  real(dp),dimension(1:ncube,1:nvar)::uin
+  real(dp),dimension(1:ncube,1:ndim)::gravin
+  real(dp),dimension(1:ncube,1:nvar)::q  
+  real(dp),dimension(1:ncube)::c  
+
+  integer ::i, j, k,  n, idim, irad
+  real(dp)::eint, smalle, dtxhalf, oneoverrho
+  real(dp)::eken, erad
+
+  smalle = smallc**2/gamma/(gamma-one)
+  dtxhalf = dt*half
+
+  ! Convert to primitive variable
+  do i = 1, ncube
+
+     ! Compute density
+     q(i,1) = max(uin(i,1),smallr)
+     
+     ! Compute velocities
+     oneoverrho = one/q(i,1)
+     q(i,2) = uin(i,2)*oneoverrho
+#if NDIM>1
+     q(i,3) = uin(i,3)*oneoverrho
+#endif
+#if NDIM>2
+     q(i,4) = uin(i,4)*oneoverrho
+#endif
+     
+     ! Compute specific kinetic energy
+     eken = half*q(i,2)*q(i,2)
+#if NDIM>1
+     eken = eken + half*q(i,3)*q(i,3)
+#endif
+#if NDIM>2
+     eken = eken + half*q(i,4)*q(i,4)
+#endif
+     ! Compute non-thermal pressure
+     erad = zero
+#if NENER>0
+     do irad = 1,nener
+        q(i,ndim+2+irad) = (gamma_rad(irad)-one)*uin(i,ndim+2+irad)
+        erad = erad+uin(i,ndim+2+irad)*oneoverrho
+     enddo
+#endif
+     ! Compute thermal pressure
+     eint = MAX(uin(i,ndim+2)*oneoverrho-eken-erad,smalle)
+     q(i,ndim+2) = (gamma-one)*q(i,1)*eint
+     
+     ! Compute sound speed
+     c(i)=gamma*q(i,ndim+2)
+#if NENER>0
+     do irad=1,nener
+        c(i)=c(i)+gamma_rad(irad)*q(i,ndim+2+irad)
+     enddo
+#endif
+     c(i)=sqrt(c(i)*oneoverrho)
+     
+     ! Gravity predictor step
+     q(i,2) = q(i,2) + gravin(i,1)*dtxhalf
+#if NDIM>1
+     q(i,3) = q(i,3) + gravin(i,2)*dtxhalf
+#endif
+#if NDIM>2
+     q(i,4) = q(i,4) + gravin(i,3)*dtxhalf
+#endif
+     
+  end do
+
+#if NVAR > NDIM + 2 + NENER
+  ! Passive scalar
+  do n = ndim+nener+3, nvar
+     do i = 1, ncube
+        oneoverrho = one/q(i,1)
+        q(i,n) = uin(i,n)*oneoverrho
+     end do
+  end do
+#endif
+ 
+end subroutine ctoprim2
+!###########################################################
+!###########################################################
+!###########################################################
+!###########################################################
 subroutine uslope(q,dq,dx,dt,&
      & iu1,iu2,ju1,ju2,ku1,ku2)
   use amr_parameters
@@ -927,10 +1020,7 @@ subroutine uslope(q,dq,dx,dt,&
   jlo=MIN(1,ju1+1); jhi=MAX(1,ju2-1)
   klo=MIN(1,ku1+1); khi=MAX(1,ku2-1)
 
-  if(slope_type==0)then
-     dq=zero
-     return
-  end if
+  if(slope_type==0)return
 
 #if NDIM==1
   do n = 1, nvar

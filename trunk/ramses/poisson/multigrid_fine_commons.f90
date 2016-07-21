@@ -28,8 +28,7 @@
 subroutine multigrid(ilevel,icount)
   use amr_commons
   use poisson_commons
-  use poisson_parameters
-  
+  use poisson_parameters  
   implicit none
 #ifndef WITHOUTMPI
   include "mpif.h"
@@ -57,7 +56,7 @@ subroutine multigrid(ilevel,icount)
   ! ---------------------------------------------------------------------
   call make_initial_phi(ilevel,icount)  ! Initial guess
   call make_mask(ilevel)                ! Fill the fine level mask
-  call make_bc_rhs(ilevel,icount)       ! Fill BC-modified RHS
+  call make_bc_rhs_vec(ilevel,icount)       ! Fill BC-modified RHS
 
   ! ---------------------------------------------------------------------
   ! Initialize Domain Decomposition and Hash Table for Multigrid
@@ -142,7 +141,7 @@ subroutine multigrid(ilevel,icount)
      if(ilevel>1) then
 
         ! Restrict residual to coarser level
-        call restrict_residual(ilevel)
+        call restrict_residual_vec(ilevel)
 
         ! Reset correction from upper level before solve
         do igrid=head_mg(ilevel-1),tail_mg(ilevel-1)
@@ -153,7 +152,7 @@ subroutine multigrid(ilevel,icount)
         call recursive_multigrid(ilevel-1, safe_mode(ilevel))
         
         ! Interpolate coarse solution and correct fine solution
-        call interpolate_and_correct(ilevel)
+        call interpolate_and_correct_vec(ilevel)
 
      end if
      
@@ -284,7 +283,7 @@ recursive subroutine recursive_multigrid(ifinelevel, safe)
      endif
 
      ! Restrict residual to coarser level
-     call restrict_residual(ifinelevel)
+     call restrict_residual_vec(ifinelevel)
      
      ! Reset correction from upper level before solve
      do igrid=head_mg(ifinelevel-1),tail_mg(ifinelevel-1)
@@ -295,7 +294,7 @@ recursive subroutine recursive_multigrid(ifinelevel, safe)
      call recursive_multigrid(ifinelevel-1, safe)
      
      ! Interpolate coarse solution and correct back into fine solution
-     call interpolate_and_correct(ifinelevel)
+     call interpolate_and_correct_vec(ifinelevel)
      
      ! Post-smoothing
      do i=1,ngs_coarse
@@ -405,12 +404,14 @@ subroutine build_mg(ifinelevel)
      do inbor=1,twotondim
 
 #ifndef WITHOUTMPI
-        ! If counter is good, check on incoming messages and perform actions
-        if(mail_counter==32)then
-           call check_mail(MPI_REQUEST_NULL,mg_dict)
-           mail_counter=0
+        if(ncpu>1)then
+           ! If counter is good, check on incoming messages and perform actions
+           if(mail_counter==32)then
+              call check_mail(MPI_REQUEST_NULL,mg_dict)
+              mail_counter=0
+           endif
+           mail_counter=mail_counter+1
         endif
-        mail_counter=mail_counter+1
 #endif
 
         hash_nbor(1:ndim)=hash_key(1:ndim)+shift_oct(1:ndim,inbor)
@@ -748,6 +749,198 @@ end subroutine make_bc_rhs
 ! ########################################################################
 ! ########################################################################
 
+subroutine make_bc_rhs_vec(ilevel,icount)
+
+  use amr_commons
+  use pm_commons
+  use poisson_commons
+  implicit none
+  integer, intent(in) :: ilevel,icount
+  
+  integer, dimension(1:3,1:2,1:8) :: iii, jjj
+  integer::igrid,idim,ind,inbor,ig,id,i,ngrid
+  integer::get_grid
+  integer,dimension(1:8,1:8)::ccc
+  real(dp)::aa,bb,cc,dd,tfrac
+  real(dp),dimension(1:8)::bbb
+  integer(kind=8),dimension(0:ndim)::hash_key
+  integer,dimension(1:threetondim),save::igrid_nbor,ind_nbor
+  real(dp),dimension(1:twotondim,0:twondim),save::phi_int
+  integer,dimension(1:3,1:6),save::shift=reshape(&
+       & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))
+
+  integer,dimension(1:nvector),save::igridn
+  integer(kind=8),dimension(1:nvector,0:ndim),save::hash_nbor
+  real(dp),dimension(1:nvector,1:twotondim,0:twondim),save::phi_nbor,dis_nbor
+
+  real(dp) :: dx, oneoverdx2, phi_b, nb_mask, nb_phi, w
+  real(dp) :: scale, fourpi
+  
+  ! Set constants
+  fourpi = 4.D0*ACOS(-1.0D0)
+  if(cosmo) fourpi = 1.5D0*omega_m*aexp
+  
+  dx  = boxlen/2**ilevel
+  oneoverdx2 = 1.0d0/(dx*dx)
+  
+  iii(1,1,1:8)=(/1,0,1,0,1,0,1,0/); jjj(1,1,1:8)=(/2,1,4,3,6,5,8,7/)
+  iii(1,2,1:8)=(/0,2,0,2,0,2,0,2/); jjj(1,2,1:8)=(/2,1,4,3,6,5,8,7/)
+  iii(2,1,1:8)=(/3,3,0,0,3,3,0,0/); jjj(2,1,1:8)=(/3,4,1,2,7,8,5,6/)
+  iii(2,2,1:8)=(/0,0,4,4,0,0,4,4/); jjj(2,2,1:8)=(/3,4,1,2,7,8,5,6/)
+  iii(3,1,1:8)=(/5,5,5,5,0,0,0,0/); jjj(3,1,1:8)=(/5,6,7,8,1,2,3,4/)
+  iii(3,2,1:8)=(/0,0,0,0,6,6,6,6/); jjj(3,2,1:8)=(/5,6,7,8,1,2,3,4/)
+  
+  ! CIC method constants
+  aa = 1.0D0/4.0D0**ndim
+  bb = 3.0D0*aa
+  cc = 9.0D0*aa
+  dd = 27.D0*aa
+  bbb(:)  =(/aa ,bb ,bb ,cc ,bb ,cc ,cc ,dd/)
+
+  ! Sampling positions in the 3x3x3 father cell cube
+  ccc(:,1)=(/1 ,2 ,4 ,5 ,10,11,13,14/)
+  ccc(:,2)=(/3 ,2 ,6 ,5 ,12,11,15,14/)
+  ccc(:,3)=(/7 ,8 ,4 ,5 ,16,17,13,14/)
+  ccc(:,4)=(/9 ,8 ,6 ,5 ,18,17,15,14/)
+  ccc(:,5)=(/19,20,22,23,10,11,13,14/)
+  ccc(:,6)=(/21,20,24,23,12,11,15,14/)
+  ccc(:,7)=(/25,26,22,23,16,17,13,14/)
+  ccc(:,8)=(/27,26,24,23,18,17,15,14/)
+
+  if (icount .ne. 1 .and. icount .ne. 2)then
+     write(*,*)'icount has bad value'
+     call clean_stop
+  endif
+
+  ! Compute fraction of time steps for interpolation
+  if (dtold(ilevel-1)>0.0)then
+     tfrac=dtnew(ilevel)/dtold(ilevel-1)*(icount-1)
+  else
+     tfrac=0.0
+  end if
+
+  call open_cache(operation_interpol,domain_decompos_amr)
+
+  hash_nbor(1:nvector,0)=ilevel
+
+  ! Loop over grids
+  do igrid=head(ilevel),tail(ilevel),nvector
+
+     ngrid=MIN(nvector,tail(ilevel)-igrid+1)
+     
+     ! Get central oct potential
+     do ind=1,twotondim
+        do i=1,ngrid
+           phi_nbor(i,ind,0)=grid(igrid+i-1)%phi(ind)
+           dis_nbor(i,ind,0)=grid(igrid+i-1)%f(ind,3)
+        end do
+     end do
+     
+     ! Get neighboring octs potential
+     do inbor=1,twondim
+        
+        ! Get neighboring grid
+        do idim=1,ndim
+           do i=1,ngrid
+              hash_nbor(i,idim)=grid(igrid+i-1)%ckey(idim)+shift(idim,inbor)
+           end do
+        end do
+        
+        ! Periodic boundary conditons
+        do idim=1,ndim
+           do i=1,ngrid
+              if(hash_nbor(i,idim)<0)hash_nbor(i,idim)=ckey_max(ilevel)-1
+              if(hash_nbor(i,idim)==ckey_max(ilevel))hash_nbor(i,idim)=0
+           end do
+        enddo
+
+        ! Get neighbouring grid using read-only cache
+        call get_grid_vec(hash_nbor,grid_dict,igridn,.false.,.true.,ngrid)
+
+        ! Unlock possible cache grids
+        do i=1,ngrid
+           if(igridn(i)>ngridmax)locked(igridn(i)-ngridmax)=.false.
+        end do
+
+        ! If grid exists, then copy into array
+        do ind=1,twotondim
+           do i=1,ngrid
+              if(igridn(i)>0)then
+                 phi_nbor(i,ind,inbor)=grid(igridn(i))%phi(ind)
+                 dis_nbor(i,ind,inbor)=grid(igridn(i))%f(ind,3)
+              endif
+           end do
+        end do
+
+        ! Otherwise interpolate from coarser level
+        do i=1,ngrid
+           if(igridn(i)<=0)then
+              ! Get 3**ndim neighbouring parent cells using read-only cache
+              hash_key=hash_nbor(i,0:ndim)
+              call get_threetondim_nbor_parent_cell(hash_key,grid_dict,igrid_nbor,ind_nbor,.false.,.true.)
+              call interpol_phi(igrid_nbor,ind_nbor,ccc,bbb,tfrac,phi_int(1,inbor))
+              do ind=1,threetondim
+                 if(igrid_nbor(ind)>ngridmax)locked(igrid_nbor(ind)-ngridmax)=.false.
+              end do
+              do ind=1,twotondim
+                 dis_nbor(i,ind,inbor)=-1.0
+                 phi_nbor(i,ind,inbor)=phi_int(ind,inbor)
+              end do
+           endif
+        end do
+
+     end do
+     ! End loop over neighboring octs
+
+     ! Loop over cells
+     do ind=1,twotondim
+        
+        ! Init BC-modified RHS to rho - rho_tot :
+        do i=1,ngrid
+           grid(igrid+i-1)%f(ind,2) = fourpi*(grid(igrid+i-1)%rho(ind) - rho_tot)
+        end do
+
+        ! Separate directions
+        do idim=1,ndim
+
+           ! Loop over the 2 neighbors
+           do inbor=1,2
+
+              do i=1,ngrid
+
+                 ! Do not process masked cells
+                 if(grid(igrid+i-1)%f(ind,3)<=0.0) cycle 
+        
+                 id=jjj(idim,inbor,ind); ig=iii(idim,inbor,ind)
+                 
+                 nb_mask=dis_nbor(i,id,ig)
+                 if(nb_mask>0.0)cycle
+
+                 ! phi(#) interpolated with mask:
+                 nb_phi = phi_nbor(i,id,ig)
+                 w = nb_mask/(nb_mask-grid(igrid+i-1)%f(ind,3)) ! Linear parameter
+                 phi_b = ((1.0d0-w)*nb_phi + w*grid(igrid+i-1)%phi(ind))
+
+                 ! Increment correction for current cell
+                 grid(igrid+i-1)%f(ind,2) = grid(igrid+i-1)%f(ind,2) - 2.0d0*oneoverdx2*phi_b
+
+              end do
+
+           end do
+        end do
+
+     end do
+  end do
+
+  call close_cache(grid_dict)
+
+end subroutine make_bc_rhs_vec
+
+! ########################################################################
+! ########################################################################
+! ########################################################################
+! ########################################################################
+
 ! ---------------------------------------------------------------------
 ! ---------------------------------------------------------------------
   
@@ -765,9 +958,11 @@ subroutine build_comm_mg(hash_dict,ilevel)
   type(hash_table)::hash_dict
   !
   integer::get_grid
-  integer::icoarselevel,igrid,inbor,idim,ipos,ichild,icpu,grid_cpu,ind,info
-  integer::i,igridn,iremote
-  integer(kind=8),dimension(0:ndim)::hash_key,hash_father,hash_nbor
+  integer::icoarselevel,igrid,inbor,idim,ichild,icpu,grid_cpu,ind,info
+  integer::i,igridn,iremote,ngrid
+  integer(kind=8),dimension(1:nvector,0:ndim),save::hash_key
+  integer(kind=4),dimension(1:nvector),save::ipos
+  integer(kind=8),dimension(0:ndim)::hash_father,hash_nbor
   integer,dimension(1:ndim)::cart_key
   integer,dimension(1:3,1:6),save::shift=reshape(&
        & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))
@@ -957,13 +1152,18 @@ subroutine build_comm_mg(hash_dict,ilevel)
 
   allocate(buffer_mg(ilevel)%grid_recv_buf(1:buffer_mg(ilevel)%recv_tot))
 
-  hash_key(0)=ilevel
-  do i=1,buffer_mg(ilevel)%recv_tot
-     hash_key(1)=x_recv_buf(i)
-     hash_key(2)=y_recv_buf(i)
-     hash_key(3)=z_recv_buf(i)
-     ipos=hash_get(hash_dict,hash_key)
-     buffer_mg(ilevel)%grid_recv_buf(i)=ipos
+  hash_key(1:nvector,0)=ilevel
+  do igrid=1,buffer_mg(ilevel)%recv_tot,nvector
+     ngrid=MIN(nvector,buffer_mg(ilevel)%recv_tot-igrid+1)
+     do i=1,ngrid
+        hash_key(i,1)=x_recv_buf(igrid+i-1)
+        hash_key(i,2)=y_recv_buf(igrid+i-1)
+        hash_key(i,3)=z_recv_buf(igrid+i-1)
+     end do
+     call hash_get_vec(hash_dict,hash_key,ipos,ngrid)
+     do i=1,ngrid
+        buffer_mg(ilevel)%grid_recv_buf(igrid+i-1)=ipos(i)
+     end do
   end do
   deallocate(x_recv_buf)
   deallocate(y_recv_buf)

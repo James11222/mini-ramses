@@ -779,6 +779,250 @@ end subroutine gauss_seidel_mg_fast
 ! ########################################################################
 
 ! ------------------------------------------------------------------------
+! Gauss-Seidel Red-Black sweeps
+! ------------------------------------------------------------------------
+
+subroutine gauss_seidel_mg_vec(hash_dict,ilevel,safe,redstep)
+  use amr_commons
+  use poisson_commons
+  use hilbert
+  implicit none
+#ifndef WITHOUTMPI
+  include "mpif.h"
+  integer,dimension(MPI_STATUS_SIZE,ncpu)::statuses
+#endif
+  integer, intent(in) :: ilevel
+  logical, intent(in) :: safe
+  logical, intent(in) :: redstep
+  type(hash_table) :: hash_dict
+
+  ! Perform a Gauss-Seidel update of grid(igrid)%phi(ind).
+  ! The domain mask is also needed.
+  
+  integer, dimension(1:3,1:2,1:8) :: iii, jjj
+  integer,dimension(1:3,1:6),save::shift=reshape(&
+       & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))
+
+  real(dp),dimension(1:nvector,1:twotondim,0:twondim),save::phi_nbor,dis_nbor
+  real(dp),dimension(1:nvector),save::phi_c, dis_c, nb_sum, weight
+  integer,dimension(1:nvector),save::ind_ok, igridn
+  logical,dimension(1:nvector),save::ok_scan, ok_cycle
+
+  real(dp) :: dx, oneoverdx2, dx2
+  integer  :: igrid, ind, inbor, idim, id, ig, ind0, ipos
+  integer  :: ngrid, ii, n_ok
+  real(dp) :: dtwondim = (twondim)
+  integer  :: icpu,info,i,istart,nbuffer,countrecv,countsend,tag=101
+  integer,dimension(ncpu) :: reqsend,reqrecv  
+
+  integer, dimension(1:4) :: ired, iblack
+  
+  ! Set constants
+  dx2  = (boxlen/2**ilevel)**2
+  
+  ired  (1:4)=(/1,4,6,7/)
+  iblack(1:4)=(/2,3,5,8/)
+  
+  iii(1,1,1:8)=(/1,0,1,0,1,0,1,0/); jjj(1,1,1:8)=(/2,1,4,3,6,5,8,7/)
+  iii(1,2,1:8)=(/0,2,0,2,0,2,0,2/); jjj(1,2,1:8)=(/2,1,4,3,6,5,8,7/)
+  iii(2,1,1:8)=(/3,3,0,0,3,3,0,0/); jjj(2,1,1:8)=(/3,4,1,2,7,8,5,6/)
+  iii(2,2,1:8)=(/0,0,4,4,0,0,4,4/); jjj(2,2,1:8)=(/3,4,1,2,7,8,5,6/)
+  iii(3,1,1:8)=(/5,5,5,5,0,0,0,0/); jjj(3,1,1:8)=(/5,6,7,8,1,2,3,4/)
+  iii(3,2,1:8)=(/0,0,0,0,6,6,6,6/); jjj(3,2,1:8)=(/5,6,7,8,1,2,3,4/)
+  
+#ifndef WITHOUTMPI
+
+  ! Update boundary conditions
+  countrecv=0
+  do icpu=1,ncpu
+     nbuffer=buffer_mg(ilevel)%send_cnt(icpu)
+     if(nbuffer>0)then
+        countrecv=countrecv+1
+        istart=buffer_mg(ilevel)%send_oft(icpu)*twotondim+1
+        call MPI_IRECV(buffer_mg(ilevel)%phi_send_buf(istart),nbuffer*twotondim, &
+             & MPI_DOUBLE_PRECISION,icpu-1,tag,MPI_COMM_WORLD,reqrecv(countrecv),info)
+     endif
+  end do
+
+  do ind=1,twotondim
+     do i=1,buffer_mg(ilevel)%recv_tot
+        igrid=buffer_mg(ilevel)%grid_recv_buf(i)
+        istart=(i-1)*twotondim+ind
+        buffer_mg(ilevel)%phi_recv_buf(istart)=grid(igrid)%phi(ind)
+     end do
+  end do
+
+  countsend=0
+  do icpu=1,ncpu
+     nbuffer=buffer_mg(ilevel)%recv_cnt(icpu)
+     if(nbuffer>0) then
+        countsend=countsend+1
+        istart=buffer_mg(ilevel)%recv_oft(icpu)*twotondim+1
+        call MPI_ISEND(buffer_mg(ilevel)%phi_recv_buf(istart),nbuffer*twotondim, &
+            & MPI_DOUBLE_PRECISION,icpu-1,tag,MPI_COMM_WORLD,reqsend(countsend),info)
+     end if
+  end do
+
+  ! Wait for full completion of receives
+  call MPI_WAITALL(countrecv,reqrecv,statuses,info)
+
+  do ind=1,twotondim
+     do i=1,buffer_mg(ilevel)%send_tot
+        istart=(i-1)*twotondim+ind
+        buffer_mg(ilevel)%phi_remote(i,ind)=buffer_mg(ilevel)%phi_send_buf(istart)
+     end do
+  end do
+
+  ! Wait for full completion of sends
+  call MPI_WAITALL(countsend,reqsend,statuses,info)
+
+#endif
+
+  ! Loop over tiles
+  do igrid=head_mg(ilevel),tail_mg(ilevel),nvector
+
+     ngrid=MIN(nvector,tail_mg(ilevel)-igrid+1)
+     
+     ! Loop over cells
+     do ind=1,twotondim
+
+        ! Get central oct potential and distance
+        do i=1,ngrid
+           phi_nbor(i,ind,0)=grid(igrid+i-1)%phi(ind)
+           dis_nbor(i,ind,0)=grid(igrid+i-1)%f(ind,3)
+        end do
+
+     end do
+
+     ! Get neighboring octs potential
+     do inbor=1,twondim
+
+        ! Get neighbouring grid using communicator
+        do i=1,ngrid
+           igridn(i)=buffer_mg(ilevel)%nbor_indx(igrid+i-1,inbor)
+        end do
+
+        ! If grid exists, then copy into array
+        do ind=1,twotondim
+           do i=1,ngrid
+              if(igridn(i)>0)then
+                 phi_nbor(i,ind,inbor)=grid(igridn(i))%phi(ind)
+                 dis_nbor(i,ind,inbor)=grid(igridn(i))%f(ind,3)
+              else if (igridn(i)==0)then
+                 phi_nbor(i,ind,inbor)=0.0
+                 dis_nbor(i,ind,inbor)=-1.0
+              else
+                 phi_nbor(i,ind,inbor)=buffer_mg(ilevel)%phi_remote(-igridn(i),ind)
+                 dis_nbor(i,ind,inbor)=buffer_mg(ilevel)%dis_remote(-igridn(i),ind)
+              end if
+           end do           
+        end do
+
+     end do
+     ! End loop over neighboring octs
+
+     ! Loop over cells, with red/black ordering
+     do ind0=1,twotondim/2      ! Only half of the cells for a red or black sweep
+
+        if(redstep) then
+           ind = ired  (ind0)
+        else
+           ind = iblack(ind0)
+        end if
+
+        ! Compute residual using 6 neighbors potential
+        do i=1,ngrid
+           phi_c(i)=grid(igrid+i-1)%phi(ind)
+           dis_c(i)=grid(igrid+i-1)%f(ind,3)
+        end do
+
+        ! Scan needed ?
+        n_ok=0
+        do i=1,ngrid
+           ok_scan(i)=btest(grid(igrid+i-1)%flag2(ind),0)
+           if(ok_scan(i))then
+              n_ok=n_ok+1
+              ind_ok(n_ok)=i
+           endif
+        end do
+
+        nb_sum(1:ngrid)=0.0
+
+        ! Loop over neighbours
+        do inbor=1,2
+           do idim=1,ndim
+              id=jjj(idim,inbor,ind); ig=iii(idim,inbor,ind)
+              do i=1,ngrid
+                 if(.not. ok_scan(i))then
+                    nb_sum(i)=nb_sum(i)+phi_nbor(i,id,ig)
+                 end if
+              end do
+           end do
+        end do
+        
+        ! Update the potential, solving for potential on icell_amr
+        do i=1,ngrid
+           if(.not. ok_scan(i))then
+              grid(igrid+i-1)%phi(ind)=(nb_sum(i)-dx2*grid(igrid+i-1)%f(ind,2))/dtwondim
+           endif
+        end do
+
+        ! For cells where scan is required
+
+        ! Central weight for "Solve G-S"
+        weight(1:n_ok)=0.0d0
+        nb_sum(1:n_ok)=0.0d0
+
+        ! If cell is outside, don't update phi
+        ok_cycle(1:n_ok)=.false.
+        do ii=1,n_ok
+           i=ind_ok(ii)
+           if(dis_c(i)<=0.0)ok_cycle(ii)=.true.
+        end do
+        if(safe)then
+           do ii=1,n_ok
+              i=ind_ok(ii)
+              if(dis_c(i)<1.0)ok_cycle(ii)=.true.
+           end do
+        endif
+
+        ! Loop over neighbours
+        do inbor=1,2
+           do idim=1,ndim
+              id=jjj(idim,inbor,ind); ig=iii(idim,inbor,ind)
+              do ii=1,n_ok
+                 i=ind_ok(ii)
+                 if(dis_nbor(i,id,ig)<=0.0)then
+                    weight(ii)=weight(ii)+dis_nbor(i,id,ig)/dis_c(i)
+                 else
+                    nb_sum(ii)=nb_sum(ii)+phi_nbor(i,id,ig)
+                 endif
+              end do
+           end do
+        end do
+
+        ! Update the potential
+        do ii=1,n_ok
+           i=ind_ok(ii)
+           if(.not. ok_cycle(ii))then
+              grid(igrid+i-1)%phi(ind)=(nb_sum(ii)-dx2*grid(igrid+i-1)%f(ind,2))/(dtwondim - weight(ii))
+           endif
+        end do
+
+     end do
+     ! End loop over cells
+
+  end do
+  ! End loop over grids
+
+end subroutine gauss_seidel_mg_vec
+
+! ########################################################################
+! ########################################################################
+! ########################################################################
+! ########################################################################
+
+! ------------------------------------------------------------------------
 ! Residual restriction
 ! ------------------------------------------------------------------------
 
@@ -836,6 +1080,93 @@ subroutine restrict_residual(ifinelevel)
   call close_cache(mg_dict)
 
 end subroutine restrict_residual
+
+! ########################################################################
+! ########################################################################
+! ########################################################################
+! ########################################################################
+
+! ------------------------------------------------------------------------
+! Residual restriction
+! ------------------------------------------------------------------------
+
+subroutine restrict_residual_vec(ifinelevel)
+  use amr_commons
+  use poisson_commons
+  implicit none
+  integer, intent(in) :: ifinelevel
+
+  ! Restrict the residual of the fine level (stored in grid(ichild)%f(ind,1))
+  ! into the rhs of the coarse level (stored in grid(igrid)%f(icell,2))
+  ! For interior coarse cell only (we need the mask stored in grid(igrid)%f(icell,3))
+  
+  integer :: ichild, ioct, ind, i, ngrid, ii, n_ok, idim
+  real(dp) :: dtwotondim = (twotondim)
+
+  integer,dimension(1:nvector),save :: igrid, icell, ind_ok
+  integer(kind=8),dimension(1:nvector,0:ndim),save :: hash_key
+  
+  ! Set rhs to zero in coarse cells
+  do ioct=head_mg(ifinelevel-1),tail_mg(ifinelevel-1)
+     do ind=1,twotondim
+        grid(ioct)%f(ind,2)=0.0
+     end do
+  end do
+
+  hash_key(1:nvector,0)=ifinelevel
+
+  call open_cache(operation_restrict_res,domain_decompos_mg)
+  
+  ! Loop over grids
+  do ichild=head_mg(ifinelevel),tail_mg(ifinelevel),nvector
+     
+     ngrid=MIN(nvector,tail_mg(ifinelevel)-ichild+1)
+
+     ! Loop over cells
+     do ind=1,twotondim        
+        
+        ! Is fine cell masked?
+        n_ok=0
+        do i=1,ngrid
+           if(grid(ichild+i-1)%f(ind,3)>0d0)then
+              n_ok=n_ok+1
+              ind_ok(n_ok)=i
+           endif
+        end do
+
+        ! Compute hash key
+        do idim=1,ndim
+           do ii=1,n_ok
+              i=ind_ok(ii)
+              hash_key(ii,idim)=grid(ichild+i-1)%ckey(idim)
+           end do
+        end do
+
+        ! Get parent cell using read-write cache
+        call get_parent_cell_vec(hash_key,mg_dict,igrid,icell,.true.,.true.,n_ok)
+
+        ! Stack fine cell residual in coarse cell rhs
+        do ii=1,n_ok
+           i=ind_ok(ii)
+           ! Is coarse cell masked?
+           if(grid(igrid(ii))%f(icell(ii),3)>0d0)then
+              grid(igrid(ii))%f(icell(ii),2)= &
+                   & grid(igrid(ii))%f(icell(ii),2)+ &
+                   & grid(ichild+i-1)%f(ind,1)/dtwotondim
+           end if
+        end do
+        
+        ! Unlock possible cache grids
+        do ii=1,n_ok
+           if(igrid(ii)>ngridmax)locked(igrid(ii)-ngridmax)=.false.
+        end do
+
+     end do
+  end do
+  
+  call close_cache(mg_dict)
+
+end subroutine restrict_residual_vec
 
 ! ########################################################################
 ! ########################################################################
@@ -934,6 +1265,121 @@ subroutine interpolate_and_correct(ifinelevel)
   call close_cache(mg_dict)
 
  end subroutine interpolate_and_correct
+
+! ########################################################################
+! ########################################################################
+! ########################################################################
+! ########################################################################
+
+! ------------------------------------------------------------------------
+! Interpolation and correction
+! ------------------------------------------------------------------------
+
+subroutine interpolate_and_correct_vec(ifinelevel)
+  use amr_commons
+  use poisson_commons
+  implicit none
+  integer, intent(in) :: ifinelevel
+  
+  ! Interpolate the solution of the coarse level (stored in grid(igrid)%phi(icell))
+  ! and corrct the solutionn of the fine level (stored in grid(ichild)%phi(ind))
+  
+  integer  :: ichild, ind, idim, i, ngrid
+  real(dp) :: aa, bb, cc, dd, coeff
+  real(dp), dimension(1:8)     :: bbb
+  integer,  dimension(1:8,1:8) :: ccc
+  integer::ind_average,ind_father
+  integer::igrid_nbr,ind_nbr,igrid_cen,ind_cen
+
+  integer(kind=8),dimension(1:nvector,0:ndim),save :: hash_key
+  integer,dimension(1:nvector,1:threetondim),save :: igrid_nbor,ind_nbor
+  real(dp),dimension(1:nvector,1:twotondim),save :: corr
+  
+  ! Local constants
+  aa = 1.0D0/4.0D0**ndim
+  bb = 3.0D0*aa
+  cc = 9.0D0*aa
+  dd = 27.D0*aa 
+  bbb(:)  =(/aa ,bb ,bb ,cc ,bb ,cc ,cc ,dd/)
+  
+  ccc(:,1)=(/1 ,2 ,4 ,5 ,10,11,13,14/)
+  ccc(:,2)=(/3 ,2 ,6 ,5 ,12,11,15,14/)
+  ccc(:,3)=(/7 ,8 ,4 ,5 ,16,17,13,14/)
+  ccc(:,4)=(/9 ,8 ,6 ,5 ,18,17,15,14/)
+  ccc(:,5)=(/19,20,22,23,10,11,13,14/)
+  ccc(:,6)=(/21,20,24,23,12,11,15,14/)
+  ccc(:,7)=(/25,26,22,23,16,17,13,14/)
+  ccc(:,8)=(/27,26,24,23,18,17,15,14/)
+  
+  if(verbose)write(*,*)'entering interpolate  and correct ',ifinelevel
+
+  call open_cache(operation_phi,domain_decompos_mg)
+
+  hash_key(1:nvector,0)=ifinelevel
+
+  ! Loop over grids
+  do ichild=head_mg(ifinelevel),tail_mg(ifinelevel),nvector
+
+     ngrid=MIN(nvector,tail_mg(ifinelevel)-ichild+1)
+
+     ! For fine level, correction is interpolated from coarser level solution
+     do idim=1,ndim
+        do i=1,ngrid
+           hash_key(i,idim)=grid(ichild+i-1)%ckey(idim)
+        end do
+     end do
+
+     ! Get 3**ndim neighbouring parent cell using a read-only cache
+     call get_threetondim_nbor_parent_cell_vec(hash_key,mg_dict,igrid_nbor,ind_nbor,.false.,.true.,ngrid)
+     
+     ! Loop over cells
+     do ind=1,twotondim
+
+        ! Set correction to zero
+        do i=1,ngrid
+           corr(i,ind)=0d0
+        end do
+
+        ! Loop over relevant parent cells
+        do ind_average=1,twotondim
+           ind_father=ccc(ind_average,ind)
+           coeff=bbb(ind_average)
+           do i=1,ngrid
+              ! Fine cell is masked as "outside": no correction
+              if(grid(ichild+i-1)%f(ind,3)>0.0)then
+                 igrid_nbr=igrid_nbor(i,ind_father)
+                 ind_nbr=ind_nbor(i,ind_father)
+                 if (igrid_nbr>0) then
+                    corr(i,ind)=corr(i,ind)+coeff*grid(igrid_nbr)%phi(ind_nbr)
+                 endif
+              endif
+           end do
+        end do
+
+     end do
+     ! End loop over cells
+        
+     ! Unlock possible cache grids
+     do ind=1,threetondim
+        do i=1,ngrid
+           igrid_nbr=igrid_nbor(i,ind)
+           if(igrid_nbr>ngridmax)locked(igrid_nbr-ngridmax)=.false.
+        end do
+     end do
+     
+     ! Add correction to fine level solution
+     do ind=1,twotondim
+        do i=1,ngrid
+           grid(ichild+i-1)%phi(ind)=grid(ichild+i-1)%phi(ind)+corr(i,ind)
+        end do
+     end do
+
+  end do
+  ! End loop over grids
+
+  call close_cache(mg_dict)
+
+end subroutine interpolate_and_correct_vec
 
 ! ########################################################################
 ! ########################################################################

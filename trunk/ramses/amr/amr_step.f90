@@ -159,7 +159,8 @@ recursive subroutine amr_step(ilevel,icount)
   if(hydro)then
      ! Hyperbolic solver
                                call timer('hydro - godunov','start')
-     call godunov_fine(ilevel)
+!     call godunov_fine(ilevel)
+     call godunov_fine_vec_orig(ilevel)
      ! Add gravity source terms to unew with half time step
                                call timer('poisson - synchro','start')
      if(poisson)call add_gravity_source_terms(ilevel)

@@ -106,7 +106,10 @@ subroutine set_unew(ilevel)
   ! Set unew to uold for myid cells
   do i=head(ilevel),tail(ilevel)
      grid(i)%unew = grid(i)%uold
+  end do
+
 #ifdef DUALENER
+  do i=head(ilevel),tail(ilevel)
      do ind=1,twotondim
         grid(i)%divu(ind) = 0.0
         d=max(grid(i)%uold(ind,1),smallr)
@@ -122,8 +125,8 @@ subroutine set_unew(ilevel)
 #endif          
         grid(i)%enew(ind) = e
      end do
-#endif
   end do
+#endif
 
 #endif
 
@@ -159,7 +162,10 @@ subroutine set_uold(ilevel)
   ! Set uold to unew
   do i=head(ilevel),tail(ilevel)
      grid(i)%uold=grid(i)%unew
+  end do
+
 #ifdef DUALENER
+  do i=head(ilevel),tail(ilevel)
      do ind=1,twotondim
         ! Correct total energy if internal energy is too small
         d=max(grid(i)%uold(ind,1),smallr)
@@ -182,8 +188,8 @@ subroutine set_uold(ilevel)
            grid(i)%uold(ind,ndim+2)=e_prim+e_kin
         end if
      end do
-#endif
   end do
+#endif
 
 #endif
 
@@ -252,6 +258,14 @@ subroutine godfine1(ind_grid,ilevel,&
   real(dp),dimension(1:twotondim,1:nvar)::u2
   logical::okx=.true.,oky=.true.,okz=.true.
 
+  integer(kind=8),dimension(1:nvector,0:ndim),save::hash_vec
+  integer,dimension(1:nvector),save::ioct_vec
+  
+  integer::n_bound,i_bound,ngrid
+  integer,parameter::nboundmax=10000
+  integer(kind=8),dimension(1:nboundmax,0:ndim),save::hash_bound
+  integer,dimension(1:nboundmax),save::ioct_bound
+  
 #ifdef HYDRO
 
   oneontwotondim = 1.d0/dble(twotondim)
@@ -274,6 +288,66 @@ subroutine godfine1(ind_grid,ilevel,&
   ! Reset gravitational acceleration
   gloc=0.0
 
+  !-------------------------
+  ! Gather neighboring grids
+  !-------------------------
+  hash_bound(1:nboundmax,0)=grid(ind_grid)%lev
+  ckey_corner(1:ndim)=(grid(ind_grid)%ckey(1:ndim)/(i1max-1))*(i1max-1)
+
+  ! Loop over 3x3x3 neighboring father cells
+  n_bound=0
+  do k1=k1min,k1max
+#if NDIM>2
+     okz=(k1<=k1min.or.k1>=k1max)
+#endif
+     do j1=j1min,j1max
+#if NDIM>1
+        oky=(j1<=j1min.or.j1>=j1max)
+#endif
+        do i1=i1min,i1max     
+#if NDIM>0
+           okx=(i1<=i1min.or.i1>=i1max)
+#endif
+           ! For boundary octs only
+           if(okx.or.oky.or.okz)then
+
+              n_bound=n_bound+1
+
+              ! Compute neighboring grid Cartesian index
+#if NDIM>0
+              hash_bound(n_bound,1)=ckey_corner(1)+i1-1.0
+#endif
+#if NDIM>1
+              hash_bound(n_bound,2)=ckey_corner(2)+j1-1.0
+#endif
+#if NDIM>2
+              hash_bound(n_bound,3)=ckey_corner(3)+k1-1.0
+#endif
+              ! Periodic boundary conditons
+              do idim=1,ndim
+                 if(hash_bound(n_bound,idim)<0)hash_bound(n_bound,idim)=ckey_max(ilevel)-1
+                 if(hash_bound(n_bound,idim)==ckey_max(ilevel))hash_bound(n_bound,idim)=0
+              enddo
+
+           end if
+        end do
+     end do
+  end do
+              
+  ! Get neighboring grid index with read-only cache
+  do i_bound=1,n_bound,nvector
+     ngrid=MIN(nvector,n_bound-i_bound+1)
+     do idim=0,ndim
+        do i=1,ngrid
+           hash_vec(i,idim)=hash_bound(i_bound+i-1,idim)
+        end do
+     end do
+     call get_grid_vec(hash_vec,grid_dict,ioct_vec,.false.,.true.,ngrid)
+     do i=1,ngrid
+        ioct_bound(i_bound+i-1)=ioct_vec(i)
+     end do
+  end do
+
   !---------------------
   ! Gather hydro stencil
   !---------------------
@@ -281,6 +355,7 @@ subroutine godfine1(ind_grid,ilevel,&
   hash_nbor(0)=grid(ind_grid)%lev
   ckey_corner(1:ndim)=(grid(ind_grid)%ckey(1:ndim)/(i1max-1))*(i1max-1)
   ind_oct=ind_grid
+  n_bound=0
 
   ! Loop over 3x3x3 neighboring father cells
   do k1=k1min,k1max
@@ -351,29 +426,20 @@ subroutine godfine1(ind_grid,ilevel,&
 
            ! For boundary octs only
            else
-              ! Compute neighboring grid Cartesian index
-#if NDIM>0
-              hash_nbor(1)=ckey_corner(1)+i1-1.0
-#endif
-#if NDIM>1
-              hash_nbor(2)=ckey_corner(2)+j1-1.0
-#endif
-#if NDIM>2
-              hash_nbor(3)=ckey_corner(3)+k1-1.0
-#endif
-              ! Periodic boundary conditons
-              do idim=1,ndim
-                 if(hash_nbor(idim)<0)hash_nbor(idim)=ckey_max(ilevel)-1
-                 if(hash_nbor(idim)==ckey_max(ilevel))hash_nbor(idim)=0
-              enddo
-              
+
+              n_bound=n_bound+1
+
               ! Get neighboring grid index with read-only cache
-              ichild=get_grid(hash_nbor,grid_dict,.false.,.true.)
+              ichild=ioct_bound(n_bound)
               parent_cell=0
               igrid_nbor=0
-              if(ichild>0)then
-                 call lock_cache(ichild)
-              else
+              ! Lock cache grid
+              if(ichild>ngridmax)then 
+                 locked(ichild-ngridmax)=.true.
+              endif
+
+              ! If neighboring grid does not exist
+              if(ichild==0)then
 
                  ! Get parent father cell with read-write cache
                  parent_cell=get_parent_cell(hash_nbor,grid_dict,.true.,.true.)
@@ -384,7 +450,10 @@ subroutine godfine1(ind_grid,ilevel,&
                  endif
                  igrid=(parent_cell-1)/twotondim+1
                  icell=parent_cell-(igrid-1)*twotondim
-                 call lock_cache(igrid)
+                 ! Lock cache grid
+                 if(igrid>ngridmax)then
+                    locked(igrid-ngridmax)=.true.
+                 endif
 
                  ! In case one wants to interpolate using high-order schemes
                  if(interpol_type>0)then
@@ -497,21 +566,14 @@ subroutine godfine1(ind_grid,ilevel,&
      if(idim==1)i0=1
      if(idim==2)j0=1
      if(idim==3)k0=1
-     do k3=k3min,k3max+k0
-        do j3=j3min,j3max+j0
-           do i3=i3min,i3max+i0
-              do ivar=1,nvar
+     do ivar=1,nvar
+        do k3=k3min,k3max+k0
+           do j3=j3min,j3max+j0
+              do i3=i3min,i3max+i0
                  if(okloc(i3-i0,j3-j0,k3-k0) .or. okloc(i3,j3,k3))then
                     flux(i3,j3,k3,ivar,idim)=0.0d0
                  end if
               end do
-#ifdef DUALENER
-              do ivar=1,2
-                 if(okloc(i3-i0,j3-j0,k3-k0) .or. okloc(i3,j3,k3))then
-                    tmp(i3,j3,k3,ivar,idim)=0.0d0
-                 end if
-              end do
-#endif
            end do
         end do
      end do
@@ -537,45 +599,33 @@ subroutine godfine1(ind_grid,ilevel,&
      kk0=1
 #endif
      ! Loop over inner octs
-     do k1=k1min+kk0,k1max-kk0
-        do j1=j1min+jj0,j1max-jj0
-           do i1=i1min+ii0,i1max-ii0
-              ! Get oct index
-              ind_oct=childloc(i1,j1,k1)
-              ! Loop over cells
-              do k2=k2min,k2max
-                 do j2=j2min,j2max
-                    do i2=i2min,i2max
-                       ind_son=1+i2+2*j2+4*k2
-                       i3=1; j3=1; k3=1
+     do ivar=1,nvar
+        do k1=k1min+kk0,k1max-kk0
+           do j1=j1min+jj0,j1max-jj0
+              do i1=i1min+ii0,i1max-ii0
+                 ! Get oct index
+                 ind_oct=childloc(i1,j1,k1)
+                 ! Loop over cells
+                 do k2=k2min,k2max
+                    do j2=j2min,j2max
+                       do i2=i2min,i2max
+                          ind_son=1+i2+2*j2+4*k2
+                          i3=1; j3=1; k3=1
 #if NDIM>0
-                       i3=1+2*(i1-1)+i2
+                          i3=1+2*(i1-1)+i2
 #endif
 #if NDIM>1
-                       j3=1+2*(j1-1)+j2
+                          j3=1+2*(j1-1)+j2
 #endif
 #if NDIM>2
-                       k3=1+2*(k1-1)+k2
+                          k3=1+2*(k1-1)+k2
 #endif
-                       ! Update conservative variables new state vector
-                       do ivar=1,nvar
+                          ! Update conservative variables new state vector
                           grid(ind_oct)%unew(ind_son,ivar)=&
                                & grid(ind_oct)%unew(ind_son,ivar)+ &
                                & (flux(i3   ,j3   ,k3   ,ivar,idim) &
                                & -flux(i3+i0,j3+j0,k3+k0,ivar,idim))
                        end do
-#ifdef DUALENER
-                       ! Update velocity divergence
-                       grid(ind_oct)%divu(ind_son)=&
-                            & grid(ind_oct)%divu(ind_son)+ &
-                            & (tmp(i3   ,j3   ,k3   ,1,idim) &
-                            & -tmp(i3+i0,j3+j0,k3+k0,1,idim))
-                       ! Update internal energy
-                       grid(ind_oct)%enew(ind_son)=&
-                            & grid(ind_oct)%enew(ind_son)+ &
-                            & (tmp(i3   ,j3   ,k3   ,2,idim) &
-                            & -tmp(i3+i0,j3+j0,k3+k0,2,idim))
-#endif
                     end do
                  end do
               end do
@@ -737,21 +787,25 @@ subroutine godfine1(ind_grid,ilevel,&
         do i1=i1min,i1max     
            ! Get oct index
            ind_oct=childloc(i1,j1,k1)
-           ! Check that parent cell is not refined
-           if(ind_oct>0)then
-              call unlock_cache(ind_oct)
-           else
+           ! If oct exists, unlock it
+           if(ind_oct>ngridmax)then
+              locked(ind_oct-ngridmax)=.false.
+           endif
+           ! If oct does not exist, unlock parent
+           if(ind_oct==0)then
               ! Get parent cell index
               parent_cell=parentloc(i1,j1,k1)
               igrid=(parent_cell-1)/twotondim+1
               icell=parent_cell-(igrid-1)*twotondim
-              call unlock_cache(igrid)
+              if(igrid>ngridmax)then
+                 locked(igrid-ngridmax)=.false.
+              endif
               ! Get neighbouring parent oct index
               if(interpol_type>0)then
                  do inbor=1,twondim
                     igrid=nborloc(i1,j1,k1,inbor)
-                    if(igrid>0)then
-                       call unlock_cache(igrid)
+                    if(igrid>ngridmax)then
+                       locked(igrid-ngridmax)=.false.
                     endif
                  end do
               endif

@@ -27,6 +27,7 @@ subroutine init_hydro
   allocate(childloc (io1:io2,jo1:jo2,ko1:ko2))
   allocate(parentloc(io1:io2,jo1:jo2,ko1:ko2))
   allocate(nborloc  (io1:io2,jo1:jo2,ko1:ko2,1:twondim))
+  dq=0.0
 
   if(nsuperoct>0)then
   ! Allocate work space for hydro kernel
@@ -46,6 +47,7 @@ subroutine init_hydro
   allocate(childloc_2 (io1_2:io2_2,jo1_2:jo2_2,ko1_2:ko2_2))
   allocate(parentloc_2(io1_2:io2_2,jo1_2:jo2_2,ko1_2:ko2_2))
   allocate(nborloc_2  (io1_2:io2_2,jo1_2:jo2_2,ko1_2:ko2_2,1:twondim))
+  dq_2=0.0
   endif
 
   if(nsuperoct>1)then
@@ -66,6 +68,7 @@ subroutine init_hydro
   allocate(childloc_4 (io1_4:io2_4,jo1_4:jo2_4,ko1_4:ko2_4))
   allocate(parentloc_4(io1_4:io2_4,jo1_4:jo2_4,ko1_4:ko2_4))
   allocate(nborloc_4  (io1_4:io2_4,jo1_4:jo2_4,ko1_4:ko2_4,1:twondim))
+  dq_4=0
   endif
 
   if(nsuperoct>2)then
@@ -86,6 +89,7 @@ subroutine init_hydro
   allocate(childloc_8 (io1_8:io2_8,jo1_8:jo2_8,ko1_8:ko2_8))
   allocate(parentloc_8(io1_8:io2_8,jo1_8:jo2_8,ko1_8:ko2_8))
   allocate(nborloc_8  (io1_8:io2_8,jo1_8:jo2_8,ko1_8:ko2_8,1:twondim))
+  dq_8=0.0
   endif
 
   if(nsuperoct>3)then
@@ -106,6 +110,7 @@ subroutine init_hydro
   allocate(childloc_16 (io1_16:io2_16,jo1_16:jo2_16,ko1_16:ko2_16))
   allocate(parentloc_16(io1_16:io2_16,jo1_16:jo2_16,ko1_16:ko2_16))
   allocate(nborloc_16  (io1_16:io2_16,jo1_16:jo2_16,ko1_16:ko2_16,1:twondim))
+  dq_16=0.0
   endif
 
   if(nsuperoct>4)then
@@ -126,6 +131,7 @@ subroutine init_hydro
   allocate(childloc_32 (io1_32:io2_32,jo1_32:jo2_32,ko1_32:ko2_32))
   allocate(parentloc_32(io1_32:io2_32,jo1_32:jo2_32,ko1_32:ko2_32))
   allocate(nborloc_32  (io1_32:io2_32,jo1_32:jo2_32,ko1_32:ko2_32,1:twondim))
+  dq_32=0.0
   endif
 
 end subroutine init_hydro

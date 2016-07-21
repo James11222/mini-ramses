@@ -48,9 +48,12 @@ subroutine get_threetondim_nbor_parent_cell(hash_key,hash_dict,igrid_nbor,ind_nb
      hash_father(1:ndim)=hash_nbor(1:ndim)/2
      ! Store lower left neighbor coordinates 
      if(inbor==1)hash_ref(1:ndim)=hash_father(1:ndim)
-     ! Get grid into memory and lock it if remote 
+     ! Get grid into memory
      ipos=get_grid(hash_father,hash_dict,flush_cache,fetch_cache)
-     call lock_cache(ipos)
+     ! Lock it if remote 
+     if(ipos>ngridmax)then
+        locked(ipos-ngridmax)=.true.
+     endif
      igrid_twotondim_nbor(inbor)=ipos
   end do
      
@@ -137,9 +140,12 @@ subroutine get_twondim_nbor_parent_cell(hash_key,hash_dict,igrid_nbor,ind_nbor,f
      ind=ind+2**(idim-1)*ii(idim)
   end do
 
-  ! Get grid into memory and lock it if remote 
+  ! Get grid into memory
   ipos=get_grid(hash_father,hash_dict,flush_cache,fetch_cache)
-  call lock_cache(ipos)
+  ! Lock it if remote 
+  if(ipos>ngridmax)then
+     locked(ipos-ngridmax)=.true.
+  endif
   igrid_nbor(0)=ipos
   ind_nbor(0)=ind
   
@@ -159,9 +165,12 @@ subroutine get_twondim_nbor_parent_cell(hash_key,hash_dict,igrid_nbor,ind_nbor,f
         ind=ind+2**(idim-1)*ii(idim)
      end do
 
-     ! Get grid into memory and lock it if remote 
+     ! Get grid into memory
      ipos=get_grid(hash_father,hash_dict,flush_cache,fetch_cache)
-     call lock_cache(ipos)
+     ! Lock it if remote 
+     if(ipos>ngridmax)then
+        locked(ipos-ngridmax)=.true.
+     endif
      igrid_nbor(inbor)=ipos
      ind_nbor(inbor)=ind
   end do
@@ -241,7 +250,57 @@ integer function get_grid(hash_key,hash_dict,flush_cache,fetch_cache) result(chi
   integer(kind=8),dimension(0:ndim)::hash_key
   type(hash_table)::hash_dict
   !
-  ! This routine acquires the grid 
+  ! This routine acquires the grid locally then remotely
+  ! corresponding to the input hash key.
+  !
+  integer::remote_acquire
+
+#ifndef WITHOUTMPI
+  ! If counter is good, check on incoming messages and perform actions
+  if(mail_counter==32)then
+     call check_mail(MPI_REQUEST_NULL,hash_dict)
+     mail_counter=0
+  endif
+  mail_counter=mail_counter+1
+#endif
+
+  ! Access hash table
+  child_grid=hash_get(hash_dict,hash_key)
+
+#ifndef WITHOUTMPI
+  ! If grid index is positive, then return
+  if(child_grid>0)then
+     return
+  endif
+  ! If grid index is -1, then set it to 0 and return
+  ! This means we already know the remote grid does not exist
+  if(child_grid.EQ.-1)then
+     child_grid=0
+     return
+  endif
+  ! Now we know child_grid=0 locally
+  ! Check remotely
+  child_grid=remote_acquire(hash_key,hash_dict,flush_cache,fetch_cache)
+#endif
+
+end function get_grid
+!##############################################################
+!##############################################################
+!##############################################################
+!##############################################################
+integer function remote_acquire(hash_key,hash_dict,flush_cache,fetch_cache) result(child_grid)
+  use amr_commons
+  use hilbert
+  use hash
+  implicit none
+#ifndef WITHOUTMPI
+  include 'mpif.h'
+#endif
+  logical::flush_cache,fetch_cache
+  integer(kind=8),dimension(0:ndim)::hash_key
+  type(hash_table)::hash_dict
+  !
+  ! This routine acquires the grid remotely
   ! corresponding to the input hash key.
   !
   integer(kind=4),dimension(1:nvector),save::dummy_state
@@ -263,35 +322,10 @@ integer function get_grid(hash_key,hash_dict,flush_cache,fetch_cache) result(chi
   integer,dimension(MPI_STATUS_SIZE)::send_request_status
 #endif
  
-#ifndef WITHOUTMPI
-
-  ! If counter is good, check on incoming messages and perform actions
-  if(mail_counter==32)then
-     call check_mail(MPI_REQUEST_NULL,hash_dict)
-     mail_counter=0
-  endif
-  mail_counter=mail_counter+1
-#endif
-
-  ! Access hash table
-  child_grid=hash_get(hash_dict,hash_key)
+  ! Set default value to zero (locally missing grid)
+  child_grid=0
 
 #ifndef WITHOUTMPI
-
-  ! If grid index is positive, then return
-  if(child_grid>0)then
-     return
-  endif
-
-  ! If grid index is -1, then set it to 0 and return
-  ! This means we already know the remote grid does not exist
-  if(child_grid.EQ.-1)then
-     child_grid=0
-     return
-  endif
-
-  ! Now we know child_grid=0
-
   ! Compute the Hilbert key
   ilevel=hash_key(0)
   ix(1,1:ndim)=hash_key(1:ndim)
@@ -461,7 +495,7 @@ integer function get_grid(hash_key,hash_dict,flush_cache,fetch_cache) result(chi
               dirty(free_cache)=.false.
               
               ! Set the grid index of the requested grid
-              if(same_keys(hash_key,hash_child))then
+              if(same_keys(hash_key,hash_child,ndim))then
                  child_grid=ichild
               endif
               
@@ -688,7 +722,7 @@ integer function get_grid(hash_key,hash_dict,flush_cache,fetch_cache) result(chi
   endif
 
 #endif
-end function get_grid
+end function remote_acquire
 !##############################################################
 !##############################################################
 !##############################################################

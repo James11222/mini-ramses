@@ -233,7 +233,7 @@ subroutine cic_from_multipole(ilevel)
   end do
 #endif  
 
-  if(hydro)call cic_cell(ilevel)
+  if(hydro)call cic_cell_vec(ilevel)
 
 111 format('   Entering cic_from_multipole for level',i2)
 
@@ -373,6 +373,174 @@ subroutine cic_cell(ilevel)
   call close_cache(grid_dict)
 
 end subroutine cic_cell
+!###########################################################
+!###########################################################
+!###########################################################
+!###########################################################
+subroutine cic_cell_vec(ilevel)
+  use amr_commons
+  use poisson_commons, ONLY:multipole
+  implicit none
+  integer::ilevel
+  !
+  !
+  real(dp),dimension(1:nvector,1:ndim),save::x,dd,dg
+  integer,dimension(1:nvector,1:ndim),save::ig,id
+  real(dp),dimension(1:nvector,1:twotondim),save::vol
+  integer,dimension(1:nvector,1:ndim,1:twotondim)::ckey
+  integer(kind=8),dimension(1:nvector,0:ndim),save::hash_nbor
+  integer::inbor,igrid,ind,idim,i,ngrid
+  real(kind=8)::dx_loc,vol_loc
+  real(dp),dimension(1:nvector),save::mmm
+  integer,dimension(1:nvector),save::ioct,icell
+
+  ! Mesh spacing in that level
+  dx_loc=boxlen/2**ilevel 
+  vol_loc=dx_loc**ndim
+
+  ! Use hash table directly for cells (not for grids)
+  hash_nbor(1:nvector,0)=ilevel+1
+
+  call open_cache(operation_rho,domain_decompos_amr)
+
+  ! Loop over grids
+  do igrid=head(ilevel),tail(ilevel),nvector
+     
+     ngrid=MIN(nvector,tail(ilevel)-igrid+1)
+     
+     ! Loop over cells
+     do ind=1,twotondim
+        
+#ifdef HYDRO        
+        ! Compute pseudo particle mass
+        do i=1,ngrid
+           mmm(i)=grid(igrid+i-1)%unew(ind,1)
+        end do
+        
+        ! Compute pseudo particle (centre of mass) position
+        do idim=1,ndim
+           do i=1,ngrid
+              x(i,idim)=grid(igrid+i-1)%unew(ind,idim+1)/mmm(i)
+           end do
+        end do
+        
+        ! Compute total multipole
+        if(ilevel==levelmin)then
+           do idim=1,ndim+1
+              do i=1,ngrid
+                 multipole(idim)=multipole(idim)+grid(igrid+i-1)%unew(ind,idim)
+              end do
+           end do
+        endif
+#endif
+        ! Rescale particle position at level ilevel
+        do idim=1,ndim
+           do i=1,ngrid
+              x(i,idim)=x(i,idim)/dx_loc
+           end do
+        end do
+        
+        ! CIC at level ilevel (dd: right cloud boundary; dg: left cloud boundary)
+        do idim=1,ndim
+           do i=1,ngrid
+              dd(i,idim)=x(i,idim)+0.5D0
+              id(i,idim)=dd(i,idim)
+              dd(i,idim)=dd(i,idim)-id(i,idim)
+              dg(i,idim)=1.0D0-dd(i,idim)
+              ig(i,idim)=id(i,idim)-1
+           end do
+        end do
+        
+        ! Periodic boundary conditions
+        do idim=1,ndim
+           do i=1,ngrid
+              if(ig(i,idim)<0)ig(i,idim)=ckey_max(ilevel+1)-1
+              if(id(i,idim)==ckey_max(ilevel+1))id(i,idim)=0
+           end do
+        enddo
+        
+        ! Compute cloud volumes
+        do i=1,ngrid
+#if NDIM==1
+           vol(i,1)=dg(1)
+           vol(i,2)=dd(1)
+#endif
+#if NDIM==2
+           vol(i,1)=dg(1)*dg(2)
+           vol(i,2)=dd(1)*dg(2)
+           vol(i,3)=dg(1)*dd(2)
+           vol(i,4)=dd(1)*dd(2)
+#endif
+#if NDIM==3
+           vol(i,1)=dg(i,1)*dg(i,2)*dg(i,3)
+           vol(i,2)=dd(i,1)*dg(i,2)*dg(i,3)
+           vol(i,3)=dg(i,1)*dd(i,2)*dg(i,3)
+           vol(i,4)=dd(i,1)*dd(i,2)*dg(i,3)
+           vol(i,5)=dg(i,1)*dg(i,2)*dd(i,3)
+           vol(i,6)=dd(i,1)*dg(i,2)*dd(i,3)
+           vol(i,7)=dg(i,1)*dd(i,2)*dd(i,3)
+           vol(i,8)=dd(i,1)*dd(i,2)*dd(i,3)
+#endif
+        end do
+        
+        ! Compute cells Cartesian key
+        do i=1,ngrid
+#if NDIM==1
+           ckey(i,1,1)=ig(i,1)
+           ckey(i,1,2)=id(i,1)
+#endif
+#if NDIM==2
+           ckey(i,1:2,1)=(/ig(i,1),ig(i,2)/)
+           ckey(i,1:2,2)=(/id(i,1),ig(i,2)/)
+           ckey(i,1:2,3)=(/ig(i,1),id(i,2)/)
+           ckey(i,1:2,4)=(/id(i,1),id(i,2)/)
+#endif
+#if NDIM==3
+           ckey(i,1:3,1)=(/ig(i,1),ig(i,2),ig(i,3)/)
+           ckey(i,1:3,2)=(/id(i,1),ig(i,2),ig(i,3)/)
+           ckey(i,1:3,3)=(/ig(i,1),id(i,2),ig(i,3)/)
+           ckey(i,1:3,4)=(/id(i,1),id(i,2),ig(i,3)/)
+           ckey(i,1:3,5)=(/ig(i,1),ig(i,2),id(i,3)/)
+           ckey(i,1:3,6)=(/id(i,1),ig(i,2),id(i,3)/)
+           ckey(i,1:3,7)=(/ig(i,1),id(i,2),id(i,3)/)
+           ckey(i,1:3,8)=(/id(i,1),id(i,2),id(i,3)/)
+#endif     
+        end do
+#ifdef GRAV
+        ! Update mass density
+        do inbor=1,twotondim
+           do idim=1,ndim
+              do i=1,ngrid
+                 hash_nbor(i,idim)=ckey(i,idim,inbor)
+              end do
+           end do
+           
+           ! Get parent cell using write-only cache
+           call get_parent_cell_vec(hash_nbor,grid_dict,ioct,icell,.true.,.false.,ngrid)
+           
+           ! Deposit the mass
+           do i=1,ngrid
+              if(ioct(i)>0)then
+                 grid(ioct(i))%rho(icell(i))=grid(ioct(i))%rho(icell(i))+&
+                      & mmm(i)*vol(i,inbor)/vol_loc
+              end if
+           end do
+           
+           ! Unlock grids
+           do i=1,ngrid
+              if(ioct(i)>ngridmax)locked(ioct(i)-ngridmax)=.false.
+           end do
+        end do
+#endif     
+     end do
+     ! End loop over cells
+     
+  end do
+  ! End loop over grids
+
+  call close_cache(grid_dict)
+
+end subroutine cic_cell_vec
 !##############################################################################
 !##############################################################################
 !##############################################################################

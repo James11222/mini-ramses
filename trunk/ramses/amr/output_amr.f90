@@ -62,10 +62,10 @@ subroutine dump_all
 #endif
         filename=TRIM(filedir)//'info.txt'
         call output_info(filename)
-        filename=TRIM(filedir)//'makefile.txt'
-        call output_makefile(filename)
-        filename=TRIM(filedir)//'patches.txt'
-        call output_patch(filename)
+!!$        filename=TRIM(filedir)//'makefile.txt'
+!!$        call output_makefile(filename)
+!!$        filename=TRIM(filedir)//'patches.txt'
+!!$        call output_patch(filename)
         filename=TRIM(filedir)//'namelist.txt'
         call output_namelist(filename)
         filename=TRIM(filedir)//'compilation.txt'
@@ -93,6 +93,9 @@ subroutine dump_all
         filename=TRIM(filedir)//'gsnapshot_'//TRIM(nchar)
         call savegadget(filename)
      end if
+#endif
+#ifndef WITHOUTMPI
+     call MPI_BARRIER(MPI_COMM_WORLD,info)
 #endif
   end if
 
@@ -164,7 +167,7 @@ subroutine output_params(filename)
   ilun=10
   fileloc=TRIM(filename)
   open(unit=ilun,file=fileloc,access="stream"&
-       & ,action="write",form='unformatted')
+       & ,status="replace",action="write",form='unformatted')
   ! Write grid variables
   write(ilun)ncpu
   write(ilun)ndim
@@ -219,7 +222,7 @@ subroutine input_params(filename,ncpu_file,levelmin_file,nlevelmax_file)
   ilun=10+myid
   fileloc=TRIM(filename)
   open(unit=ilun,file=fileloc,access="stream"&
-       & ,action="read",form='unformatted')
+       & ,status="old",action="read",form='unformatted')
   ! Read grid variables
   read(ilun)ncpu_file
   read(ilun)ndim_file
@@ -281,22 +284,19 @@ subroutine output_amr(filename)
   !-----------------------------------
   ! Output amr grid in file
   !-----------------------------------  
-  integer::ilun,mypos
-  integer::ilevel,ibound,istart,i,igrid,idim,ind,iskip
-  integer,allocatable,dimension(:)::ind_grid,iig
-  real(dp),allocatable,dimension(:)::xdp
-  real(sp),allocatable,dimension(:)::xsp
-  real(dp),dimension(1:3)::skip_loc
-  character(LEN=80)::fileloc
+  integer::ilevel,igrid,ilun,ngrid,i,ind,idim
   character(LEN=5)::nchar
-  real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v
-  real(dp)::scale
+  character(LEN=80)::fileloc
+  integer,parameter::nio_buffer=2048
+  integer(kind=4),dimension(1:ndim+1,1:nio_buffer)::io_buf
+  integer(kind=4)::ref_map
+
   if(verbose)write(*,*)'Entering output_amr'
   ilun=myid+10
   call title(myid,nchar)
   fileloc=TRIM(filename)//TRIM(nchar)
   open(unit=ilun,file=fileloc,access="stream"&
-       & ,action="write",form='unformatted')
+       & ,status="replace",action="write",form='unformatted')
   write(ilun)ndim
   write(ilun)levelmin
   write(ilun)nlevelmax
@@ -304,11 +304,39 @@ subroutine output_amr(filename)
      write(ilun)noct(ilevel)
   end do
   do ilevel=levelmin,nlevelmax
-     do igrid=head(ilevel),tail(ilevel)
-        write(ilun)grid(igrid)%ckey
-        write(ilun)grid(igrid)%refined
+     do igrid=head(ilevel),tail(ilevel),nio_buffer
+        ngrid=MIN(nio_buffer,tail(ilevel)-igrid+1)
+        if(ngrid==nio_buffer)then
+           do idim=1,ndim
+              do i=1,nio_buffer
+                 io_buf(idim,i)=grid(igrid+i-1)%ckey(idim)
+              end do
+           end do
+           do i=1,nio_buffer
+              io_buf(ndim+1,i)=0
+           end do
+           do ind=1,twotondim
+              do i=1,nio_buffer
+                 if(grid(igrid+i-1)%refined(ind))then
+                    io_buf(ndim+1,i)=io_buf(ndim+1,i)+2**(ind-1)
+                 endif
+              end do
+           end do
+           write(ilun)io_buf
+        else
+           do i=1,ngrid
+              write(ilun)grid(igrid+i-1)%ckey
+              ref_map=0
+              do ind=1,twotondim
+                 if(grid(igrid+i-1)%refined(ind))then
+                    ref_map=ref_map+2**(ind-1)
+                 endif
+              end do
+              write(ilun)ref_map
+           end do
+        endif
      end do
-  end do
+  enddo
   close(ilun)  
 end subroutine output_amr
 !#########################################################################
