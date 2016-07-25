@@ -16,8 +16,8 @@ subroutine init_refine_basegrid
   !------------------------------------------
   integer::ilevel,i,j,k,igrid,ioct,ilev,info
   integer(kind=8)::ikey
-  integer(kind=8),dimension(1:nvector,1:nhilbert)::hk=0
-  integer(kind=8),dimension(1:nvector,1:ndim)::ix=0
+  integer(kind=8),dimension(1:nhilbert)::hk=0
+  integer(kind=8),dimension(1:ndim)::ix=0
   integer(kind=8),dimension(0:ndim)::hash_key,hash_test
   integer(kind=8),dimension(1:nhilbert,1:nlevelmax)::key_ref
   integer(kind=8),dimension(1:nhilbert)::coarse_key
@@ -29,9 +29,9 @@ subroutine init_refine_basegrid
   ! Loop over the base level grid
   igrid=0
   do ikey=bound_key_level(1,myid-1,levelmin),bound_key_level(1,myid,levelmin)-1
-     hk(1,1)=ikey
+     hk(1)=ikey
      ! Compute Cartesian index from Hilbert index
-     call hilbert_reverse(ix,hk,levelmin-1,1)
+     call hilbert_reverse(ix,hk,levelmin-1)
      ! Insert new grid in main array
      igrid=igrid+1
      if(igrid==1)head(levelmin)=1
@@ -39,12 +39,12 @@ subroutine init_refine_basegrid
      noct(levelmin)=noct(levelmin)+1
      noct_used=noct_used+1
      grid(igrid)%lev=levelmin
-     grid(igrid)%ckey(1:ndim)=ix(1,1:ndim)
-     grid(igrid)%hkey(1:nhilbert)=hk(1,1:nhilbert)
+     grid(igrid)%ckey(1:ndim)=ix(1:ndim)
+     grid(igrid)%hkey(1:nhilbert)=hk(1:nhilbert)
      grid(igrid)%refined(1:twotondim)=.false.
      ! Insert new grid in hash table
      hash_key(0)=levelmin
-     hash_key(1:ndim)=ix(1,1:ndim)
+     hash_key(1:ndim)=ix(1:ndim)
      call hash_set(grid_dict,hash_key,igrid)
   end do
 
@@ -165,9 +165,8 @@ subroutine init_refine_restart
   integer(kind=8),allocatable,dimension(:,:)::bound_key_target
   integer(kind=8),allocatable,dimension(:,:)::bound_key_target_tot
 
-  integer(kind=4), dimension(1:nvector),save::dummy_state
-  integer(kind=8), dimension(1:nvector,1:nhilbert),save::hk
-  integer(kind=8), dimension(1:nvector,1:ndim),save::ix
+  integer(kind=8), dimension(1:nhilbert)::hk
+  integer(kind=8), dimension(1:ndim)::ix
   integer(kind=8), dimension(0:ndim)::hash_key
   integer(kind=8),dimension(1:nhilbert,1:nlevelmax)::key_ref
   integer(kind=8),dimension(1:nhilbert)::coarse_key,one_key,zero_key
@@ -375,10 +374,10 @@ subroutine init_refine_restart
            call hash_set(grid_dict,hash_key,igrid)
 
            ! Compute Hilbert keys of new octs
-           ix(1,1:ndim)=ckey(1:ndim)
-           call hilbert_key(ix,hk,dummy_state,0,ilevel-1,1)
-           grid(igrid)%hkey(1:nhilbert)=hk(1,1:nhilbert)
-           bound_key_target(1:nhilbert,myid)=hk(1,1:nhilbert)+one_key
+           ix(1:ndim)=ckey(1:ndim)
+           call hilbert_key(ix,hk,ilevel-1)
+           grid(igrid)%hkey(1:nhilbert)=hk(1:nhilbert)
+           bound_key_target(1:nhilbert,myid)=hk(1:nhilbert)+one_key
         end do
         close(10)
         if(hydro)then

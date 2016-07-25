@@ -54,13 +54,18 @@ subroutine multigrid(ilevel,icount)
   ! ---------------------------------------------------------------------
   ! Prepare first guess, mask and BCs at finest level
   ! ---------------------------------------------------------------------
+!                               call timer('poisson - initial_phi','start')
   call make_initial_phi(ilevel,icount)  ! Initial guess
+!                               call timer('poisson - make_mask','start')
   call make_mask(ilevel)                ! Fill the fine level mask
+!                               call timer('poisson - bc_rhs','start')
   call make_bc_rhs_vec(ilevel,icount)       ! Fill BC-modified RHS
+!  call make_bc_rhs(ilevel,icount)       ! Fill BC-modified RHS
 
   ! ---------------------------------------------------------------------
   ! Initialize Domain Decomposition and Hash Table for Multigrid
   ! ---------------------------------------------------------------------
+!                               call timer('poisson - init_mg','start')
   call init_mg(ilevel)
   
   ! ---------------------------------------------------------------------
@@ -73,6 +78,7 @@ subroutine multigrid(ilevel,icount)
   ! ---------------------------------------------------------------------
   ! Restrict mask up
   ! ---------------------------------------------------------------------
+!                               call timer('poisson - restrict_mask','start')
   levelmin_mg=1
   do ifine=ilevel,2,-1
      ! Restrict and communicate mask
@@ -86,6 +92,7 @@ subroutine multigrid(ilevel,icount)
   ! ---------------------------------------------------------------------
   ! Set scan flag (for optimisation)
   ! ---------------------------------------------------------------------
+!                               call timer('poisson - scan_flag','start')
   call set_scan_flag(grid_dict,ilevel)
   do ifine=ilevel-1,levelmin_mg,-1
      call set_scan_flag(mg_dict,ifine)
@@ -94,6 +101,7 @@ subroutine multigrid(ilevel,icount)
   ! ---------------------------------------------------------------------
   ! Build communication buffer (for optimisation)
   ! ---------------------------------------------------------------------
+!                               call timer('poisson - build_comm','start')
   if(fast_solver)then
      call build_comm_mg(grid_dict,ilevel)
      do ifine=ilevel-1,levelmin_mg,-1
@@ -104,13 +112,14 @@ subroutine multigrid(ilevel,icount)
   ! ---------------------------------------------------------------------
   ! Initiate solve at fine level
   ! ---------------------------------------------------------------------
-  
+!                               call timer('poisson - iterations','start')  
   iter = 0
   err = 1.0d0
   main_iteration_loop: do
 
      iter=iter+1
 
+!                               call timer('poisson - pre-smooth','start')  
      ! Pre-smoothing
      do i=1,ngs_fine
         if(fast_solver)then
@@ -122,6 +131,7 @@ subroutine multigrid(ilevel,icount)
         endif
      end do
      
+!                               call timer('poisson - cmp_residual','start')  
      ! Compute new residual
      if(fast_solver)then                               
         call cmp_residual_mg_fast(grid_dict,ilevel)
@@ -141,7 +151,9 @@ subroutine multigrid(ilevel,icount)
      if(ilevel>1) then
 
         ! Restrict residual to coarser level
+!                               call timer('poisson - restrict_residual','start')  
         call restrict_residual_vec(ilevel)
+!        call restrict_residual(ilevel)
 
         ! Reset correction from upper level before solve
         do igrid=head_mg(ilevel-1),tail_mg(ilevel-1)
@@ -152,11 +164,14 @@ subroutine multigrid(ilevel,icount)
         call recursive_multigrid(ilevel-1, safe_mode(ilevel))
         
         ! Interpolate coarse solution and correct fine solution
+!                               call timer('poisson - interpolate','start')  
         call interpolate_and_correct_vec(ilevel)
+!        call interpolate_and_correct(ilevel)
 
      end if
      
      ! Post-smoothing
+!                               call timer('poisson - post-smooth','start')  
      do i=1,ngs_fine
         if(fast_solver)then
            call gauss_seidel_mg_fast(grid_dict,ilevel,safe_mode(ilevel),.true. )  ! Red step
@@ -167,6 +182,7 @@ subroutine multigrid(ilevel,icount)
         endif
      end do
      
+!                               call timer('poisson - cmp_residual','start')  
      ! Update fine residual
      if(fast_solver)then
         call cmp_residual_mg_fast(grid_dict,ilevel)
@@ -205,6 +221,7 @@ subroutine multigrid(ilevel,icount)
   ! ---------------------------------------------------------------------
   ! Clean communication buffer
   ! ---------------------------------------------------------------------
+!                               call timer('poisson - final_clean_up','start')
   if(fast_solver)then
      call clean_comm_mg(ilevel)
      do ifine=ilevel-1,levelmin_mg,-1
@@ -264,6 +281,7 @@ recursive subroutine recursive_multigrid(ifinelevel, safe)
   
   do icycle=1,ncycle
      
+!                               call timer('poisson - pre-smooth','start')  
      ! Pre-smoothing
      do i=1,ngs_coarse
         if(fast_solver)then
@@ -276,6 +294,7 @@ recursive subroutine recursive_multigrid(ifinelevel, safe)
      end do     
 
      ! Compute residual and restrict into upper level RHS
+!                               call timer('poisson - cmp_residual','start')  
      if(fast_solver)then
         call cmp_residual_mg_fast(mg_dict,ifinelevel)
      else
@@ -283,7 +302,9 @@ recursive subroutine recursive_multigrid(ifinelevel, safe)
      endif
 
      ! Restrict residual to coarser level
+!                               call timer('poisson - restrict_residual','start')  
      call restrict_residual_vec(ifinelevel)
+!     call restrict_residual(ifinelevel)
      
      ! Reset correction from upper level before solve
      do igrid=head_mg(ifinelevel-1),tail_mg(ifinelevel-1)
@@ -294,9 +315,12 @@ recursive subroutine recursive_multigrid(ifinelevel, safe)
      call recursive_multigrid(ifinelevel-1, safe)
      
      ! Interpolate coarse solution and correct back into fine solution
+!                               call timer('poisson - interpolate','start')  
      call interpolate_and_correct_vec(ifinelevel)
+!     call interpolate_and_correct(ifinelevel)
      
      ! Post-smoothing
+!                               call timer('poisson - post-smooth','start')  
      do i=1,ngs_coarse
         if(fast_solver)then
            call gauss_seidel_mg_fast(mg_dict,ifinelevel,safe,.true. )  ! Red step
@@ -383,9 +407,8 @@ subroutine build_mg(ifinelevel)
   integer,dimension(1:3,1:8),save::shift_oct=reshape(&
        & (/-1,-1,-1,+1,-1,-1,-1,+1,-1,+1,+1,-1,&
        &   -1,-1,+1,+1,-1,+1,-1,+1,+1,+1,+1,+1/),(/3,8/))
-  integer(kind=4),dimension(1:nvector),save::dummy_state
-  integer(kind=8),dimension(1:nvector,1:nhilbert),save::hk
-  integer(kind=8),dimension(1:nvector,1:ndim),save::ix
+  integer(kind=8),dimension(1:nhilbert)::hk
+  integer(kind=8),dimension(1:ndim)::ix
 
   icoarselevel=ifinelevel-1
   ifree=noct_used+1
@@ -432,12 +455,12 @@ subroutine build_mg(ifinelevel)
            cart_key(1:ndim)=hash_father(1:ndim)
            
            ! Compute Hilbert keys of new octs
-           ix(1,1:ndim)=cart_key(1:ndim)
-           call hilbert_key(ix,hk,dummy_state,0,icoarselevel-1,1)
+           ix(1:ndim)=cart_key(1:ndim)
+           call hilbert_key(ix,hk,icoarselevel-1)
            
            ! Check if grid sits inside processor boundaries
-           if(    ge_keys(hk(1,1:nhilbert),bound_key_mg(1:nhilbert,myid-1,icoarselevel)).AND. &
-                & gt_keys(bound_key_mg(1:nhilbert,myid,icoarselevel),hk(1,1:nhilbert)))then
+           if(    ge_keys(hk(1:nhilbert),bound_key_mg(1:nhilbert,myid-1,icoarselevel)).AND. &
+                & gt_keys(bound_key_mg(1:nhilbert,myid,icoarselevel),hk(1:nhilbert)))then
               
               ! Set grid index to a virtual grid in local main memory
               ichild=ifree
@@ -453,8 +476,8 @@ subroutine build_mg(ifinelevel)
               ! Otherwise, determine parent processor and use the cache
            else
               do icpu=1,ncpu
-                 if(    ge_keys(hk(1,1:nhilbert),bound_key_mg(1:nhilbert,icpu-1,icoarselevel)).AND. &
-                      & gt_keys(bound_key_mg(1:nhilbert,icpu,icoarselevel),hk(1,1:nhilbert)))then
+                 if(    ge_keys(hk(1:nhilbert),bound_key_mg(1:nhilbert,icpu-1,icoarselevel)).AND. &
+                      & gt_keys(bound_key_mg(1:nhilbert,icpu,icoarselevel),hk(1:nhilbert)))then
                     grid_cpu=icpu
                  end if
               end do
@@ -475,7 +498,7 @@ subroutine build_mg(ifinelevel)
            
            grid(ichild)%lev=icoarselevel
            grid(ichild)%ckey(1:ndim)=cart_key(1:ndim)
-           grid(ichild)%hkey(1:nhilbert)=hk(1,1:nhilbert)
+           grid(ichild)%hkey(1:nhilbert)=hk(1:nhilbert)
            grid(ichild)%refined(1:twotondim)=.true.
            grid(ichild)%flag1(1:twotondim)=0
            grid(ichild)%flag2(1:twotondim)=0
@@ -966,9 +989,8 @@ subroutine build_comm_mg(hash_dict,ilevel)
   integer,dimension(1:ndim)::cart_key
   integer,dimension(1:3,1:6),save::shift=reshape(&
        & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))
-  integer(kind=4),dimension(1:nvector),save::dummy_state
-  integer(kind=8),dimension(1:nvector,1:nhilbert),save::hk
-  integer(kind=8),dimension(1:nvector,1:ndim),save::ix
+  integer(kind=8),dimension(1:nhilbert)::hk
+  integer(kind=8),dimension(1:ndim)::ix
   integer::istart,nbuffer,countrecv,countsend,tag=101
   integer,dimension(ncpu)::reqsend,reqrecv
 
@@ -1007,13 +1029,13 @@ subroutine build_comm_mg(hash_dict,ilevel)
            cart_key(1:ndim)=hash_nbor(1:ndim)
            
            ! Compute Hilbert keys of new octs
-           ix(1,1:ndim)=cart_key(1:ndim)
-           call hilbert_key(ix,hk,dummy_state,0,ilevel-1,1)
+           ix(1:ndim)=cart_key(1:ndim)
+           call hilbert_key(ix,hk,ilevel-1)
 
            ! Determine parent processor and increment counter
            do icpu=1,ncpu
-              if(    ge_keys(hk(1,1:nhilbert),bound_key_mg(1:nhilbert,icpu-1,ilevel)).AND. &
-                   & gt_keys(bound_key_mg(1:nhilbert,icpu,ilevel),hk(1,1:nhilbert)))then
+              if(    ge_keys(hk(1:nhilbert),bound_key_mg(1:nhilbert,icpu-1,ilevel)).AND. &
+                   & gt_keys(bound_key_mg(1:nhilbert,icpu,ilevel),hk(1:nhilbert)))then
                  grid_cpu=icpu
               end if
            end do
@@ -1096,13 +1118,13 @@ subroutine build_comm_mg(hash_dict,ilevel)
            cart_key(1:ndim)=hash_nbor(1:ndim)
 
            ! Compute Hilbert keys of new octs
-           ix(1,1:ndim)=cart_key(1:ndim)
-           call hilbert_key(ix,hk,dummy_state,0,ilevel-1,1)
+           ix(1:ndim)=cart_key(1:ndim)
+           call hilbert_key(ix,hk,ilevel-1)
 
            ! Determine parent processor and increment counter
            do icpu=1,ncpu
-              if(    ge_keys(hk(1,1:nhilbert),bound_key_mg(1:nhilbert,icpu-1,ilevel)).AND. &
-                   & gt_keys(bound_key_mg(1:nhilbert,icpu,ilevel),hk(1,1:nhilbert)))then
+              if(    ge_keys(hk(1:nhilbert),bound_key_mg(1:nhilbert,icpu-1,ilevel)).AND. &
+                   & gt_keys(bound_key_mg(1:nhilbert,icpu,ilevel),hk(1:nhilbert)))then
                  grid_cpu=icpu
               end if
            end do

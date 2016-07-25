@@ -62,14 +62,16 @@ subroutine dump_all
 #endif
         filename=TRIM(filedir)//'info.txt'
         call output_info(filename)
-!!$        filename=TRIM(filedir)//'makefile.txt'
-!!$        call output_makefile(filename)
-!!$        filename=TRIM(filedir)//'patches.txt'
-!!$        call output_patch(filename)
+#ifdef TOTO
+        filename=TRIM(filedir)//'makefile.txt'
+        call output_makefile(filename)
+        filename=TRIM(filedir)//'patches.txt'
+        call output_patch(filename)
         filename=TRIM(filedir)//'namelist.txt'
         call output_namelist(filename)
         filename=TRIM(filedir)//'compilation.txt'
         call output_compil(filename)
+#endif
         filename=TRIM(filedir)//'params.out'
         call output_params(filename)
      endif

@@ -72,8 +72,10 @@ subroutine read_params
      call clean_stop
   endif
 
+#ifdef TOTO
   ! Write information about git version
   call write_gitinfo
+#endif
 
   ! Read namelist filename from command line argument
   narg = iargc()

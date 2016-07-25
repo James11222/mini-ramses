@@ -679,9 +679,8 @@ subroutine build_cg(ilevel)
   integer,dimension(1:ndim)::cart_key
   integer,dimension(1:3,1:6),save::shift=reshape(&
        & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))
-  integer(kind=4),dimension(1:nvector),save::dummy_state
-  integer(kind=8),dimension(1:nvector,1:nhilbert),save::hk
-  integer(kind=8),dimension(1:nvector,1:ndim),save::ix
+  integer(kind=8),dimension(1:nhilbert)::hk
+  integer(kind=8),dimension(1:ndim)::ix
 
 #ifndef WITHOUTMPI
 
@@ -718,13 +717,13 @@ subroutine build_cg(ilevel)
            cart_key(1:ndim)=hash_nbor(1:ndim)
            
            ! Compute Hilbert keys of new octs
-           ix(1,1:ndim)=cart_key(1:ndim)
-           call hilbert_key(ix,hk,dummy_state,0,ilevel-1,1)
+           ix(1:ndim)=cart_key(1:ndim)
+           call hilbert_key(ix,hk,ilevel-1)
 
            ! Determine parent processor and increment counter
            do icpu=1,ncpu
-              if(    ge_keys(hk(1,1:nhilbert),bound_key_level(1:nhilbert,icpu-1,ilevel)).AND. &
-                   & gt_keys(bound_key_level(1:nhilbert,icpu,ilevel),hk(1,1:nhilbert)))then
+              if(    ge_keys(hk(1:nhilbert),bound_key_level(1:nhilbert,icpu-1,ilevel)).AND. &
+                   & gt_keys(bound_key_level(1:nhilbert,icpu,ilevel),hk(1:nhilbert)))then
                  grid_cpu=icpu
               end if
            end do
@@ -807,13 +806,13 @@ subroutine build_cg(ilevel)
            cart_key(1:ndim)=hash_nbor(1:ndim)
 
            ! Compute Hilbert keys of new octs
-           ix(1,1:ndim)=cart_key(1:ndim)
-           call hilbert_key(ix,hk,dummy_state,0,ilevel-1,1)
+           ix(1:ndim)=cart_key(1:ndim)
+           call hilbert_key(ix,hk,ilevel-1)
 
            ! Determine parent processor and increment counter
            do icpu=1,ncpu
-              if(    ge_keys(hk(1,1:nhilbert),bound_key_level(1:nhilbert,icpu-1,ilevel)).AND. &
-                   & gt_keys(bound_key_level(1:nhilbert,icpu,ilevel),hk(1,1:nhilbert)))then
+              if(    ge_keys(hk(1:nhilbert),bound_key_level(1:nhilbert,icpu-1,ilevel)).AND. &
+                   & gt_keys(bound_key_level(1:nhilbert,icpu,ilevel),hk(1:nhilbert)))then
                  grid_cpu=icpu
               end if
            end do

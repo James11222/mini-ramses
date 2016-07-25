@@ -37,7 +37,7 @@ subroutine get_threetondim_nbor_parent_cell_vec(hash_key,hash_dict,igrid_nbor,in
 
   ilevel=hash_key(1,0)
 
-  hash_father(1:ngrid,0)=hash_key(1,0)-1
+  hash_father(1:ngrid,0)=ilevel-1
 
   ! Gather twotondim neighboring father grids
   do inbor=1,twotondim
@@ -350,6 +350,11 @@ subroutine get_grid_vec(hash_key,hash_dict,igrid,flush_cache,fetch_cache,ngrid)
            n_zero=n_zero+1
            ind_zero(n_zero)=i
         endif
+     end do
+
+     ! Lock possible cache cells
+     do i=1,ngrid
+        if(igrid(i)>ngridmax)locked(igrid(i)-ngridmax)=.true.
      end do
 
      ! If grid index is -1, then set it to 0

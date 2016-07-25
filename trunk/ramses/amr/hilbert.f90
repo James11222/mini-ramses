@@ -186,7 +186,51 @@ contains
   !================================================================
   !================================================================
 
-  subroutine hilbert_key(ix, hkey, cstate, initial_level, final_level, npoint)
+  subroutine hilbert_key(ix, hkey, final_level)
+    use amr_parameters, only: nhilbert, ndim, twotondim
+    implicit none
+    integer, intent(in) :: final_level
+    integer(kind=8), dimension(1:ndim),     intent(in)  :: ix
+    integer(kind=8), dimension(1:nhilbert), intent(out) :: hkey
+    
+    ! Compute nvector 3-integer hilbert keys from the cartesian keys ix
+        
+    ! Local vars
+    integer :: ibit, add_digit, idim, ikey, nkey_local
+    integer(kind=4) :: cstate, sdigit, ind
+
+    cstate = 0
+    hkey = 0
+    nkey_local = ceiling(1.d0 * final_level / levels_per_key(ndim))
+    
+    do ibit = final_level - 1, 0, -1
+       do ikey = nkey_local, 2, -1
+          hkey(ikey) = ISHFT(hkey(ikey), left_shift)
+          hkey(ikey) = ISHFT(hkey(ikey), right_shift)
+          hkey(ikey) = hkey(ikey) + ISHFT(hkey(ikey - 1), big_shift)
+       end do
+       hkey(1) = ISHFT(hkey(1), left_shift)
+       hkey(1) = ISHFT(hkey(1), right_shift)
+
+       sdigit=0
+       do idim = 1, ndim
+          add_digit = 2 ** (ndim - idim)
+          if(btest(ix(idim),ibit)) sdigit = sdigit + add_digit
+       end do
+
+       ind = cstate * twotondim + sdigit
+       cstate = next_state_diagram(ind)
+       hkey(1) = hkey(1) + next_digits_diagram(ind)
+    enddo
+
+  end subroutine hilbert_key
+  
+  !================================================================
+  !================================================================
+  !================================================================
+  !================================================================
+
+  subroutine hilbert_key_vec(ix, hkey, cstate, initial_level, final_level, npoint)
     use amr_parameters, only: nvector, nhilbert, ndim, twotondim
     implicit none
     integer, intent(in) :: initial_level, final_level, npoint
@@ -246,14 +290,68 @@ contains
           cstate(ip) = nstate(ip)
        end do
     enddo
-  end subroutine hilbert_key
+  end subroutine hilbert_key_vec
 
   !================================================================
   !================================================================
   !================================================================
   !================================================================
 
-  subroutine hilbert_reverse(ix, hkey, key_level, npoint)
+  subroutine hilbert_reverse(ix, hkey, key_level)
+    use amr_parameters, only: ndim, nhilbert, twotondim
+    implicit none
+
+    ! Inpu/Output variables:
+    integer        , intent(in)                         :: key_level
+    integer(kind=8), intent(out), dimension(1:ndim)     :: ix
+    integer(kind=8), intent(in),  dimension(1:nhilbert) :: hkey
+
+    ! Descripton:
+    ! Compute cartesian keys from the corresponding 3-integer hilbert keys.
+
+    ! pointer to one of the three hkey arrays
+    integer         :: ibit1, ikey, ilevel, idim
+    integer(kind=4) :: cstate, nstate, ind
+    integer(kind=8) :: sdigit
+
+    ! Build the cartesian key using the state diagrams
+    cstate = 0; ix = 0
+
+    do ilevel = 1, key_level
+       ibit1 = (key_level-ilevel) * ndim
+       ikey = ibit1 / bits_per_int(ndim) + 1
+       ibit1 = mod(ibit1, bits_per_int(ndim))
+
+       ! leftshift the cartesian keys by one position
+       do idim = 1, ndim
+          ix(idim) = ISHFT(ix(idim),1)
+       end do
+
+       ! read the next ndim bits from the hilbert key
+       sdigit = ibits(hkey(ikey), ibit1, ndim)
+
+       ! Compute lookup index in state diagrams
+       ind = cstate * twotondim + sdigit
+
+       ! save next state
+       nstate = next_state_diagram_reverse(ind)
+
+       ! add one integer key digit each
+       do idim = 1, ndim
+          ix(idim) = ix(idim) + one_digit_diagram(ind, idim)
+       end do
+
+       cstate = nstate
+    enddo
+
+  end subroutine hilbert_reverse
+
+  !================================================================
+  !================================================================
+  !================================================================
+  !================================================================
+
+  subroutine hilbert_reverse_vec(ix, hkey, key_level, npoint)
     use amr_parameters, only: nvector, ndim, twotondim
     implicit none
 
@@ -312,61 +410,7 @@ contains
        end do
     enddo
 
-  end subroutine hilbert_reverse
-
-  !================================================================
-  !================================================================
-  !================================================================
-  !================================================================
-
-!!$  subroutine hilbert_for_particle(offset, nparts, initial_level, final_level)
-!!$    use amr_parameters, only: nvector, boxlen, dp, ndim, nhilbert
-!!$    use pm_commons,     only: part_hkey, current_state, xp
-!!$    implicit none
-!!$
-!!$    integer, intent(in) :: initial_level, final_level
-!!$    integer, intent(in) :: offset, nparts
-!!$
-!!$    ! Description:
-!!$    ! This subroutine computes 3D hilbert keys for particles 
-!!$    ! It assumes that the particles are stored as contiguous 
-!!$    ! arrays in memory and that positions, 3-integer hilbert keys
-!!$    ! and next_state are allocated as particle-based quantities.
-!!$
-!!$    ! Iputs: 
-!!$    ! - Starting offset in particle arrays and number of particles
-!!$    !   to process (np)
-!!$    ! - Level of already computed hilbert key 
-!!$    ! - Desired level of hilbert key on exit
-!!$
-!!$    ! Example: 
-!!$    ! call hilbert_for_particle(0, npart_levelmin, nlevelmax-1, nlevelmax) 
-!!$    ! will compute the last 3 bits of the hilbert key for the
-!!$    ! levelmin particles (resulting in a total of 3 * nlevelmax bits)
-!!$
-!!$    ! Local variables
-!!$    integer :: ibit, ip, ind_part, idim, np, ioft
-!!$    integer(kind=8), dimension(1:nvector, 1:ndim) :: ix
-!!$    real(dp) :: ckey_factor
-!!$    
-!!$    ! Compute particle position to cartesian key factor
-!!$    ckey_factor = 2.0**final_level / dble(boxlen)
-!!$
-!!$    do ioft = offset, offset + nparts - 1, nvector
-!!$       np = min(nvector, offset + nparts - ioft)
-!!$
-!!$       ! compute cartesian keys
-!!$       do idim = 1, ndim
-!!$          do ip = 1, np
-!!$             ix(ip, idim) = floor(xp(ioft + ip, idim) * ckey_factor, kind=8)
-!!$          end do
-!!$       end do
-!!$
-!!$       ! Passing in array slices is ok (no copying) if the dummy argument has assumed shape and the interface is explicit!
-!!$       call hilbert_key(ix, part_hkey(ioft + 1: ioft + np, 1:nhilbert), current_state(ioft + 1: ioft + np), initial_level, final_level, np)
-!!$    end do
-!!$
-!!$  end subroutine hilbert_for_particle
+  end subroutine hilbert_reverse_vec
 
   !================================================================
   !================================================================

@@ -47,8 +47,8 @@ subroutine rho_fine(ilevel)
   if(pic)then
      do i=ilevel,nlevelmax
                                call timer('rho','start')
-        call cic_part(i)
-                               call timer('particles','start')
+        call cic_part_vec(i)
+                               call timer('particles - split','start')
         call split_part(i)
                                call timer('rho','start')
      end do
@@ -582,7 +582,7 @@ subroutine cic_part(ilevel)
      end do
   endif
 
-                               call timer('particles','start')
+                               call timer('particles - sort','start')
   ! Sort particle according to current level Hilbert key
   do i=headp(ilevel),tailp(nlevelmax)
      sortp(i)=i
@@ -686,6 +686,184 @@ subroutine cic_part(ilevel)
 111 format('   Entering cic_part for level',i2)
 
 end subroutine cic_part
+!##############################################################################
+!##############################################################################
+!##############################################################################
+!##############################################################################
+subroutine cic_part_vec(ilevel)
+  use amr_commons
+  use pm_commons
+  use poisson_commons, ONLY:multipole
+  use hilbert
+  implicit none
+  integer::ilevel
+  !
+  !
+  real(dp),dimension(1:nvector,1:ndim),save::x,dd,dg
+  integer,dimension(1:nvector,1:ndim),save::ig,id
+  real(dp),dimension(1:nvector,1:twotondim),save::vol
+  integer,dimension(1:nvector,1:ndim,1:twotondim)::ckey
+  integer(kind=8),dimension(1:nvector,0:ndim),save::hash_nbor
+  integer,dimension(1:ndim)::ix
+  integer::ip,ipart,inbor,igrid,ind,idim,i,ngrid
+  real(dp),dimension(1:nvector),save::mmm
+  integer,dimension(1:nvector),save::ioct,icell
+  real(kind=8)::dx_loc,vol_loc,vol2
+  
+  if(noct_tot(ilevel)==0)return
+  if(verbose)write(*,111)ilevel
+
+  ! Mesh spacing in that level
+  dx_loc=boxlen/2**ilevel 
+  vol_loc=dx_loc**ndim
+
+  ! Compute contribution to multipole
+  if(ilevel==levelmin)then
+     do i=1,npart
+        multipole(1)=multipole(1)+mp(i)
+     end do
+     do idim=1,ndim
+        do i=1,npart
+           multipole(idim+1)=multipole(idim+1)+mp(i)*xp(i,idim)
+        end do
+     end do
+  endif
+
+                               call timer('particles - sort','start')
+  ! Sort particle according to current level Hilbert key
+  do i=headp(ilevel),tailp(nlevelmax)
+     sortp(i)=i
+  end do
+  ix=0
+  call sort_hilbert(headp(ilevel),tailp(nlevelmax),ix,0,1,ilevel-1)
+
+                               call timer('rho','start')
+  ! Open write-only cache for array rho
+  hash_nbor(1:nvector,0)=ilevel+1
+  call open_cache(operation_rho,domain_decompos_amr)
+
+  ! Loop over particles in Hilbert order
+  do ip=headp(ilevel),tailp(nlevelmax),nvector
+
+     ngrid=MIN(nvector,tailp(nlevelmax)-ip+1)
+
+     ! Rescale particle position at level ilevel
+     do idim=1,ndim
+        do i=1,ngrid
+           ipart=sortp(ip+i-1)
+           x(i,idim)=xp(ipart,idim)/dx_loc
+        end do
+     end do
+     
+     ! Store particle masses
+     do i=1,ngrid
+        ipart=sortp(ip+i-1)
+        mmm(i)=mp(ipart)
+     end do
+     
+     ! CIC at level ilevel (dd: right cloud boundary; dg: left cloud boundary)
+     do idim=1,ndim
+        do i=1,ngrid
+           dd(i,idim)=x(i,idim)+0.5D0
+           id(i,idim)=dd(i,idim)
+           dd(i,idim)=dd(i,idim)-id(i,idim)
+           dg(i,idim)=1.0D0-dd(i,idim)
+           ig(i,idim)=id(i,idim)-1
+        end do
+     end do
+     
+     ! Periodic boundary conditions
+     do idim=1,ndim
+        do i=1,ngrid
+           if(ig(i,idim)<0)ig(i,idim)=ckey_max(ilevel+1)-1
+           if(id(i,idim)==ckey_max(ilevel+1))id(i,idim)=0
+        end do
+     enddo
+
+     ! Compute cloud volumes
+     do i=1,ngrid
+#if NDIM==1
+        vol(i,1)=dg(i,1)
+        vol(i,2)=dd(i,1)
+#endif
+#if NDIM==2
+        vol(i,1)=dg(i,1)*dg(i,2)
+        vol(i,2)=dd(i,1)*dg(i,2)
+        vol(i,3)=dg(i,1)*dd(i,2)
+        vol(i,4)=dd(i,1)*dd(i,2)
+#endif
+#if NDIM==3
+        vol(i,1)=dg(i,1)*dg(i,2)*dg(i,3)
+        vol(i,2)=dd(i,1)*dg(i,2)*dg(i,3)
+        vol(i,3)=dg(i,1)*dd(i,2)*dg(i,3)
+        vol(i,4)=dd(i,1)*dd(i,2)*dg(i,3)
+        vol(i,5)=dg(i,1)*dg(i,2)*dd(i,3)
+        vol(i,6)=dd(i,1)*dg(i,2)*dd(i,3)
+        vol(i,7)=dg(i,1)*dd(i,2)*dd(i,3)
+        vol(i,8)=dd(i,1)*dd(i,2)*dd(i,3)
+#endif
+     end do
+
+     ! Compute cells Cartesian key
+     do i=1,ngrid
+#if NDIM==1
+        ckey(i,1,1)=ig(i,1)
+        ckey(i,1,2)=id(i,1)
+#endif
+#if NDIM==2
+        ckey(i,1:2,1)=(/ig(i,1),ig(i,2)/)
+        ckey(i,1:2,2)=(/id(i,1),ig(i,2)/)
+        ckey(i,1:2,3)=(/ig(i,1),id(i,2)/)
+        ckey(i,1:2,4)=(/id(i,1),id(i,2)/)
+#endif
+#if NDIM==3
+        ckey(i,1:3,1)=(/ig(i,1),ig(i,2),ig(i,3)/)
+        ckey(i,1:3,2)=(/id(i,1),ig(i,2),ig(i,3)/)
+        ckey(i,1:3,3)=(/ig(i,1),id(i,2),ig(i,3)/)
+        ckey(i,1:3,4)=(/id(i,1),id(i,2),ig(i,3)/)
+        ckey(i,1:3,5)=(/ig(i,1),ig(i,2),id(i,3)/)
+        ckey(i,1:3,6)=(/id(i,1),ig(i,2),id(i,3)/)
+        ckey(i,1:3,7)=(/ig(i,1),id(i,2),id(i,3)/)
+        ckey(i,1:3,8)=(/id(i,1),id(i,2),id(i,3)/)
+#endif
+     end do
+#ifdef GRAV
+     ! Update mass density
+     do ind=1,twotondim
+        do idim=1,ndim
+           do i=1,ngrid
+              hash_nbor(i,idim)=ckey(i,idim,ind)
+           end do
+        end do
+        
+        ! Get parent cell using write-only cache
+        call get_parent_cell_vec(hash_nbor,grid_dict,ioct,icell,.true.,.false.,ngrid)
+
+        ! Deposit the mass
+        do i=1,ngrid
+           if(ioct(i)>0)then
+              vol2=mmm(i)*vol(i,ind)/vol_loc
+              grid(ioct(i))%rho(icell(i))=grid(ioct(i))%rho(icell(i))+vol2
+           endif
+        end do
+
+        ! Unlock grids
+        do i=1,ngrid
+           if(ioct(i)>ngridmax)locked(ioct(i)-ngridmax)=.false.
+        end do
+
+     end do
+     ! End loop over cells
+#endif
+
+  end do
+  ! End loop over particles
+  
+  call close_cache(grid_dict)
+
+111 format('   Entering cic_part_vec for level',i2)
+
+end subroutine cic_part_vec
 !##############################################################################
 !##############################################################################
 !##############################################################################
@@ -833,6 +1011,159 @@ subroutine split_part(ilevel)
 111 format('   Entering split_part for level',i2)
 
 end subroutine split_part
+!##############################################################################
+!##############################################################################
+!##############################################################################
+!##############################################################################
+subroutine split_part_vec(ilevel)
+  use amr_commons
+  use pm_commons
+  use hilbert
+  implicit none
+  integer::ilevel
+  !
+  !
+  real(dp),dimension(1:ndim),save::xp_tmp,vp_tmp
+  integer,dimension(1:nvector,1:ndim),save::ii
+  integer,dimension(1:nvector),save::igrid,icell
+  integer(kind=8),dimension(1:nvector,0:ndim),save::hash_key
+  integer::i,ip,ipart,jpart,inbor,ind,idim,ioct,ipos,ngrid
+  integer::npart_coarse,npart_fine
+  real(kind=8)::dx_loc,vol_loc,vol2,xx
+  real(dp)::mp_tmp
+  integer::levelp_tmp
+  integer(i8b)::idp_tmp
+
+  if(ilevel.GE.nlevelmax)return
+  if(noct_tot(ilevel)==0)return
+  if(verbose)write(*,111)ilevel
+
+  ! Mesh spacing in that level
+  dx_loc=boxlen/2**ilevel 
+  vol_loc=dx_loc**ndim
+
+  ! Open read-only cache for array refined
+  hash_key(1:nvector,0)=ilevel
+  call open_cache(operation_split,domain_decompos_amr)
+
+  ! Loop over particles
+  npart_coarse=0
+  do ip=headp(ilevel),tailp(nlevelmax),nvector
+
+     ngrid=MIN(nvector,tailp(nlevelmax)-ip+1)
+
+     ! Acquire grid using read-only cache
+     do idim=1,ndim
+        do i=1,ngrid
+           ipart=sortp(ip+i-1)
+           xx=xp(ipart,idim)/dx_loc
+           hash_key(i,idim)=int(xx/2)
+           ii(i,idim)=xx-2*hash_key(i,idim)
+        end do
+     end do
+     
+     call get_grid_vec(hash_key,grid_dict,igrid,.false.,.true.,ngrid)
+
+     ! Compute parent cell
+     do i=1,ngrid
+#if NDIM==1
+        icell(i)=1+ii(i,1)
+#endif
+#if NDIM==2
+        icell(i)=1+ii(i,1)+2*ii(i,2)
+#endif
+#if NDIM==3
+        icell(i)=1+ii(i,1)+2*ii(i,2)+4*ii(i,3)
+#endif
+     end do
+
+     do i=1,ngrid
+        ipart=sortp(ip+i-1)
+        if(igrid(i)>0)then
+           ! Increase counter if cell is not refined
+           if(.NOT.grid(igrid(i))%refined(icell(i)))then
+              npart_coarse=npart_coarse+1
+              levelp(ipart)=-levelp(ipart)
+           else
+              sortp(ip+i-1)=-ipart
+           endif
+        else
+           ! If particle sits outside current level,
+           ! then it is clearly not in a refined cell.
+           ! This can happen during second adaptive step
+           npart_coarse=npart_coarse+1
+           levelp(ipart)=-levelp(ipart)
+        endif
+     end do
+     
+     ! Unlock potential cache grids
+     do i=1,ngrid
+        if(igrid(i)>ngridmax)locked(igrid(i)-ngridmax)=.false.
+     end do
+
+  end do
+  ! End loop over particles
+
+  call close_cache(grid_dict)
+  
+  tailp(ilevel)=headp(ilevel)+npart_coarse-1
+  headp(ilevel+1)=tailp(ilevel)+1
+
+  ! Loop over fine level particles
+  ! This preserves the initial ordering after partioning
+  npart_fine=0
+  do ipart=headp(ilevel),tailp(nlevelmax)
+     if(levelp(ipart)>0)then
+        npart_fine=npart_fine+1
+        workp(ipart)=headp(ilevel+1)+npart_fine-1
+     endif
+  end do
+
+  ! Loop over coarse level particles
+  ! This enforces Hilbert ordering after partioning
+  npart_coarse=0
+  do i=headp(ilevel),tailp(nlevelmax)
+     ipart=sortp(i)
+     if(ipart>0)then
+        npart_coarse=npart_coarse+1
+        workp(ipart)=headp(ilevel)+npart_coarse-1
+        levelp(ipart)=-levelp(ipart)
+     endif
+  end do
+
+  ! Swap particles using new index table
+  do ipart=headp(ilevel),tailp(nlevelmax)
+     do while(workp(ipart).NE.ipart)
+        ! Swap new index
+        jpart=workp(ipart)
+        workp(ipart)=workp(jpart)
+        workp(jpart)=jpart
+        ! Swap positions
+        xp_tmp(1:ndim)=xp(ipart,1:ndim)
+        xp(ipart,1:ndim)=xp(jpart,1:ndim)
+        xp(jpart,1:ndim)=xp_tmp(1:ndim)
+        ! Swap velocities
+        vp_tmp(1:ndim)=vp(ipart,1:ndim)
+        vp(ipart,1:ndim)=vp(jpart,1:ndim)
+        vp(jpart,1:ndim)=vp_tmp(1:ndim)
+        ! Swap masses
+        mp_tmp=mp(ipart)
+        mp(ipart)=mp(jpart)
+        mp(jpart)=mp_tmp
+        ! Swap ids
+        idp_tmp=idp(ipart)
+        idp(ipart)=idp(jpart)
+        idp(jpart)=idp_tmp
+        ! Swap levels
+        levelp_tmp=levelp(ipart)
+        levelp(ipart)=levelp(jpart)
+        levelp(jpart)=levelp_tmp
+     end do
+  end do
+
+111 format('   Entering split_part for level',i2)
+
+end subroutine split_part_vec
 !##############################################################################
 !##############################################################################
 !##############################################################################

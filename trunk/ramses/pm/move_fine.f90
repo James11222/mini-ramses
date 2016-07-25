@@ -247,3 +247,331 @@ end subroutine kick_drift_part
 !#########################################################################
 !#########################################################################
 !#########################################################################
+subroutine kick_drift_part_vec(ilevel,action_part)
+  use amr_commons
+  use pm_commons
+  implicit none
+  integer::ilevel
+  integer::action_part
+  !
+  !
+  real(dp),dimension(1:nvector,1:ndim),save::x,dd,dg
+  integer,dimension(1:nvector,1:ndim),save::ig,id
+  real(dp),dimension(1:nvector,1:twotondim),save::vol
+  integer,dimension(1:nvector,1:ndim,1:twotondim),save::ckey
+  integer,dimension(1:nvector,1:twotondim),save::igrid,icell
+  integer,dimension(1:nvector),save::ioct,itmp,ind_coarse
+  integer(kind=8),dimension(1:nvector,0:ndim),save::hash_nbor
+  integer::i,ic,ipart,ind,idim,ngrid,ncoarse
+  real(kind=8)::dx_loc,vol_loc
+  real(dp),dimension(1:nvector),save::dteff
+  real(dp),dimension(1:nvector,1:ndim),save::ff
+  logical,dimension(1:nvector),save::ok_level
+  
+  if(noct_tot(ilevel)==0)return
+  if(verbose)write(*,111)ilevel
+
+  ! Mesh spacing in that level
+  dx_loc=boxlen/2**ilevel 
+  vol_loc=dx_loc**ndim
+
+  ! Open read-only cache
+  call open_cache(operation_kick,domain_decompos_amr)
+
+  ! Loop over particles
+  do ipart=headp(ilevel),tailp(ilevel),nvector
+
+     ngrid=MIN(nvector,tailp(ilevel)-ipart+1)
+     
+     ! Rescale particle position at level ilevel
+     do idim=1,ndim
+        do i=1,ngrid
+           x(i,idim)=xp(ipart+i-1,idim)/dx_loc
+        end do
+     end do
+     
+     ! CIC at level ilevel (dd: right cloud boundary; dg: left cloud boundary)
+     do idim=1,ndim
+        do i=1,ngrid
+           dd(i,idim)=x(i,idim)+0.5D0
+           id(i,idim)=dd(i,idim)
+           dd(i,idim)=dd(i,idim)-id(i,idim)
+           dg(i,idim)=1.0D0-dd(i,idim)
+           ig(i,idim)=id(i,idim)-1
+        end do
+     end do
+     
+     ! Periodic boundary conditions
+     do idim=1,ndim
+        do i=1,ngrid
+           if(ig(i,idim)<0)ig(i,idim)=ckey_max(ilevel+1)-1
+           if(id(i,idim)==ckey_max(ilevel+1))id(i,idim)=0
+        enddo
+     end do
+     
+     ! Compute cells Cartesian key
+     do i=1,ngrid
+#if NDIM==1
+        ckey(i,1,1)=ig(i,1)
+        ckey(i,1,2)=id(i,1)
+#endif
+#if NDIM==2
+        ckey(i,1:2,1)=(/ig(i,1),ig(i,2)/)
+        ckey(i,1:2,2)=(/id(i,1),ig(i,2)/)
+        ckey(i,1:2,3)=(/ig(i,1),id(i,2)/)
+        ckey(i,1:2,4)=(/id(i,1),id(i,2)/)
+#endif
+#if NDIM==3
+        ckey(i,1:3,1)=(/ig(i,1),ig(i,2),ig(i,3)/)
+        ckey(i,1:3,2)=(/id(i,1),ig(i,2),ig(i,3)/)
+        ckey(i,1:3,3)=(/ig(i,1),id(i,2),ig(i,3)/)
+        ckey(i,1:3,4)=(/id(i,1),id(i,2),ig(i,3)/)
+        ckey(i,1:3,5)=(/ig(i,1),ig(i,2),id(i,3)/)
+        ckey(i,1:3,6)=(/id(i,1),ig(i,2),id(i,3)/)
+        ckey(i,1:3,7)=(/ig(i,1),id(i,2),id(i,3)/)
+        ckey(i,1:3,8)=(/id(i,1),id(i,2),id(i,3)/)
+#endif
+     end do
+     
+     ! Get parent cell at level ilevel using read-only cache
+     ok_level(1:ngrid)=.true.
+
+     hash_nbor(1:ngrid,0)=ilevel+1
+
+     do ind=1,twotondim
+        do idim=1,ndim
+           do i=1,ngrid
+              hash_nbor(i,idim)=ckey(i,idim,ind)
+           end do
+        end do
+
+        ! Get parent cell using read-only cache
+        call get_parent_cell_vec(hash_nbor,grid_dict,ioct,itmp,.false.,.true.,ngrid)
+
+        do i=1,ngrid
+           if(ioct(i)>0)then
+              igrid(i,ind)=ioct(i)
+              icell(i,ind)=itmp(i)
+           else
+              ok_level(i)=.false.
+           endif
+        end do
+
+     end do
+     ! End loop over cells
+
+     ncoarse=0
+     do i=1,ngrid
+        if(.NOT. ok_level(i))then
+           ncoarse=ncoarse+1
+           ind_coarse(ncoarse)=i
+        endif
+     end do
+
+     if(ncoarse>0)then
+
+     ! Unlock possible cache grids
+     do ind=1,twotondim
+        do ic=1,ncoarse
+           i=ind_coarse(ic)
+           if(igrid(i,ind)>ngridmax)locked(igrid(i,ind)-ngridmax)=.false.
+        end do
+     end do
+
+     ! Rescale particle position at level ilevel
+     do idim=1,ndim
+        do ic=1,ncoarse
+           i=ind_coarse(ic)
+           x(i,idim)=x(i,idim)/2.0d0
+        end do
+     end do
+        
+     ! CIC at level ilevel-1 (dd: right cloud boundary; dg: left cloud boundary)
+     do idim=1,ndim
+        do ic=1,ncoarse
+           i=ind_coarse(ic)
+           dd(i,idim)=x(i,idim)+0.5D0
+           id(i,idim)=dd(i,idim)
+           dd(i,idim)=dd(i,idim)-id(i,idim)
+           dg(i,idim)=1.0D0-dd(i,idim)
+           ig(i,idim)=id(i,idim)-1
+        end do
+     end do
+     
+     ! Periodic boundary conditions
+     do idim=1,ndim
+        do ic=1,ncoarse
+           i=ind_coarse(ic)
+           if(ig(i,idim)<0)ig(i,idim)=ckey_max(ilevel)-1
+           if(id(i,idim)==ckey_max(ilevel))id(i,idim)=0
+        end do
+     enddo
+     
+     ! Compute cells Cartesian key
+     do ic=1,ncoarse
+        i=ind_coarse(ic)
+#if NDIM==1
+        ckey(i,1,1)=ig(i,1)
+        ckey(i,1,2)=id(i,1)
+#endif
+#if NDIM==2
+        ckey(i,1:2,1)=(/ig(i,1),ig(i,2)/)
+        ckey(i,1:2,2)=(/id(i,1),ig(i,2)/)
+        ckey(i,1:2,3)=(/ig(i,1),id(i,2)/)
+        ckey(i,1:2,4)=(/id(i,1),id(i,2)/)
+#endif
+#if NDIM==3
+        ckey(i,1:3,1)=(/ig(i,1),ig(i,2),ig(i,3)/)
+        ckey(i,1:3,2)=(/id(i,1),ig(i,2),ig(i,3)/)
+        ckey(i,1:3,3)=(/ig(i,1),id(i,2),ig(i,3)/)
+        ckey(i,1:3,4)=(/id(i,1),id(i,2),ig(i,3)/)
+        ckey(i,1:3,5)=(/ig(i,1),ig(i,2),id(i,3)/)
+        ckey(i,1:3,6)=(/id(i,1),ig(i,2),id(i,3)/)
+        ckey(i,1:3,7)=(/ig(i,1),id(i,2),id(i,3)/)
+        ckey(i,1:3,8)=(/id(i,1),id(i,2),id(i,3)/)
+#endif
+     end do
+     
+     ! Get parent cell at level ilevel-1 using read-only cache
+     hash_nbor(1:ncoarse,0)=ilevel
+     do ind=1,twotondim
+        do idim=1,ndim
+           do ic=1,ncoarse
+              i=ind_coarse(ic)
+              hash_nbor(ic,idim)=ckey(i,idim,ind)
+           end do
+        end do
+        
+        ! Get parent cell using read-only cache
+        call get_parent_cell_vec(hash_nbor,grid_dict,ioct,itmp,.false.,.true.,ncoarse)
+        
+        do ic=1,ncoarse
+           i=ind_coarse(ic)
+           if(ioct(ic)>0)then
+              igrid(i,ind)=ioct(ic)
+              icell(i,ind)=itmp(ic)
+              ok_level(i)=.true.
+           else
+              ok_level(i)=.false.
+           endif
+        end do
+     end do
+
+     endif
+        
+     ! Compute cloud volumes
+     do i=1,ngrid
+#if NDIM==1
+        vol(i,1)=dg(i,1)
+        vol(i,2)=dd(i,1)
+#endif
+#if NDIM==2
+        vol(i,1)=dg(i,1)*dg(i,2)
+        vol(i,2)=dd(i,1)*dg(i,2)
+        vol(i,3)=dg(i,1)*dd(i,2)
+        vol(i,4)=dd(i,1)*dd(i,2)
+#endif
+#if NDIM==3
+        vol(i,1)=dg(i,1)*dg(i,2)*dg(i,3)
+        vol(i,2)=dd(i,1)*dg(i,2)*dg(i,3)
+        vol(i,3)=dg(i,1)*dd(i,2)*dg(i,3)
+        vol(i,4)=dd(i,1)*dd(i,2)*dg(i,3)
+        vol(i,5)=dg(i,1)*dg(i,2)*dd(i,3)
+        vol(i,6)=dd(i,1)*dg(i,2)*dd(i,3)
+        vol(i,7)=dg(i,1)*dd(i,2)*dd(i,3)
+        vol(i,8)=dd(i,1)*dd(i,2)*dd(i,3)
+#endif
+     end do
+
+     ! Gather 3-force
+     do idim=1,ndim
+        ff(1:ngrid,idim)=0.0
+     end do
+
+     do ind=1,twotondim
+        do idim=1,ndim
+           do i=1,ngrid
+              if(ok_level(i))then
+#ifdef GRAV
+                 ff(i,idim)=ff(i,idim)+grid(igrid(i,ind))%f(icell(i,ind),idim)*vol(i,ind)
+#endif
+              endif
+           end do
+        end do
+     end do
+
+     ! Unlock possible cache grids
+     do ind=1,twotondim
+        do i=1,ngrid
+           if(igrid(i,ind)>ngridmax)locked(igrid(i,ind)-ngridmax)=.false.
+        end do
+     end do
+
+     ! Perform kick, or drift, or both
+     if(action_part==action_kick_drift)then
+
+        ! Update velocity
+        do idim=1,ndim
+           do i=1,ngrid
+              vp(ipart+i-1,idim)=vp(ipart+i-1,idim)+ff(i,idim)*0.5d0*dtnew(ilevel)
+           end do
+        end do
+
+        ! Update position
+        do idim=1,ndim
+           do i=1,ngrid
+              xp(ipart+i-1,idim)=xp(ipart+i-1,idim)+vp(ipart+i-1,idim)*dtnew(ilevel)
+           end do
+        end do
+
+     else if(action_part.EQ.action_kick_only)then
+
+        ! Compute proper time step for second kick
+        do i=1,ngrid
+           if (levelp(ipart+i-1)>=ilevel)then
+              dteff(i)=dtnew(levelp(ipart+i-1))
+           else
+              dteff(i)=dtold(levelp(ipart+i-1))
+           endif
+        end do
+
+        ! Update level
+        do i=1,ngrid
+           levelp(ipart+i-1)=ilevel
+        end do
+
+        ! Update velocity
+        do idim=1,ndim
+           do i=1,ngrid
+              vp(ipart+i-1,idim)=vp(ipart+i-1,idim)+ff(i,idim)*0.5d0*dteff(i)
+           end do
+        end do
+
+     endif
+
+  end do
+  ! End loop over particles
+  
+  call close_cache(grid_dict)
+
+  ! Periodic boundary conditions
+  if(action_part==action_kick_drift)then
+     do ipart=headp(ilevel),tailp(ilevel)
+        do idim=1,ndim
+           if(xp(ipart,idim)>boxlen)then
+              xp(ipart,idim)=xp(ipart,idim)-boxlen
+           end if
+           if(xp(ipart,idim)<0.d0)then
+              xp(ipart,idim)=xp(ipart,idim)+boxlen
+           end if
+        end do
+     end do
+  end if
+
+111 format('   Entering kick_and_drift_part for level',i2)
+
+end subroutine kick_drift_part_vec
+!#########################################################################
+!#########################################################################
+!#########################################################################
+!#########################################################################

@@ -363,11 +363,10 @@ subroutine make_new_oct(iparent,icell,ilevel)
   ! and the cell index icell (from 1 to 8).
   !--------------------------------------------------------------
   integer::icpu,idim,ivar,ichild,ind,inbor,nstride,grid_cpu
-  integer(kind=4), dimension(1:nvector),save::dummy_state
-  integer(kind=8), dimension(1:nvector,1:nhilbert),save::hk
-  integer(kind=8), dimension(1:nvector,1:ndim),save::ix
-  integer(kind=8), dimension(1:ndim),save::cart_key
-  integer(kind=8), dimension(0:ndim)::hash_key
+  integer(kind=8),dimension(1:nhilbert)::hk
+  integer(kind=8),dimension(1:ndim)::ix
+  integer(kind=8),dimension(1:ndim)::cart_key
+  integer(kind=8),dimension(0:ndim)::hash_key
   integer,dimension(0:twondim)::igrid_nbor,ind_nbor
   real(dp),dimension(0:twondim  ,1:nvar)::u1
   real(dp),dimension(1:twotondim,1:nvar)::u2
@@ -391,12 +390,12 @@ subroutine make_new_oct(iparent,icell,ilevel)
   end do
 
   ! Compute Hilbert keys of new octs
-  ix(1,1:ndim)=cart_key(1:ndim)
-  call hilbert_key(ix,hk,dummy_state,0,ilevel-1,1)
+  ix(1:ndim)=cart_key(1:ndim)
+  call hilbert_key(ix,hk,ilevel-1)
 
   ! Check if grid sits inside processor boundaries
-  if(    ge_keys(hk(1,1:nhilbert),bound_key_level(1:nhilbert,myid-1,ilevel)).AND. &
-       & gt_keys(bound_key_level(1:nhilbert,myid,ilevel),hk(1,1:nhilbert)))then
+  if(    ge_keys(hk(1:nhilbert),bound_key_level(1:nhilbert,myid-1,ilevel)).AND. &
+       & gt_keys(bound_key_level(1:nhilbert,myid,ilevel),hk(1:nhilbert)))then
 
      ! Set grid index to a virtual grid in local main memory
      ichild=ifree
@@ -413,8 +412,8 @@ subroutine make_new_oct(iparent,icell,ilevel)
   ! Otherwise, determine parent processor and use the cache
   else
      do icpu=1,ncpu
-        if(    ge_keys(hk(1,1:nhilbert),bound_key_level(1:nhilbert,icpu-1,ilevel)).AND. &
-             & gt_keys(bound_key_level(1:nhilbert,icpu,ilevel),hk(1,1:nhilbert)))then
+        if(    ge_keys(hk(1:nhilbert),bound_key_level(1:nhilbert,icpu-1,ilevel)).AND. &
+             & gt_keys(bound_key_level(1:nhilbert,icpu,ilevel),hk(1:nhilbert)))then
            grid_cpu=icpu
         end if
      end do
@@ -435,7 +434,7 @@ subroutine make_new_oct(iparent,icell,ilevel)
 
   grid(ichild)%lev=ilevel
   grid(ichild)%ckey(1:ndim)=cart_key(1:ndim)
-  grid(ichild)%hkey(1:nhilbert)=hk(1,1:nhilbert)
+  grid(ichild)%hkey(1:nhilbert)=hk(1:nhilbert)
   grid(ichild)%refined(1:twotondim)=.false.
   grid(ichild)%flag1(1:twotondim)=0
   grid(ichild)%flag2(1:twotondim)=0
