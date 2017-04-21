@@ -34,7 +34,7 @@ subroutine refine_fine(ilevel)
   ! automatically satisfied. For adaptive time-stepping,
   ! numerical rules are checked before refining any cell.
   !---------------------------------------------------------
-  integer::igrid,icell,i,j,ibit,ibucket,ilev,ind,inew,ioct,iold,iold_true
+  integer::igrid,icell,i,j,ibit,ibucket,ilev,ind,inew,ioct
   integer::noct_zero,head_zero,indx_zero,info
   integer::ncreate_tot,nkill_tot
   integer::parent_cell,skip_bit,ikey,true_level
@@ -47,7 +47,7 @@ subroutine refine_fine(ilevel)
   integer,dimension(:),allocatable::noct_level,head_level,indx_level
   integer,dimension(:),allocatable::swap_table,swap_tmp
   integer,dimension(0:twotondim-1)::bucket_count,bucket_offset
-  logical::ok_free,ok_all,ok
+  logical::ok
   type(oct)::oct_tmp
 
   if(ilevel==nlevelmax)return

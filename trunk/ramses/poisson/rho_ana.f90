@@ -16,7 +16,6 @@ subroutine rho_ana(x,d,dx)
   ! x(1:3) are in [0,boxlen]**ndim.
   ! d is the density field in user units.
   !================================================================
-  integer::i
   real(dp)::dmass,emass,xmass,ymass,zmass,rr,rx,ry,rz,dd
 
   emass=gravity_params(1) ! Softening length

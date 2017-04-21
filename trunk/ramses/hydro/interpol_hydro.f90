@@ -12,7 +12,7 @@ subroutine upload_fine(ilevel)
   ! for the hydro variables.
   !----------------------------------------------------------------------
   integer::ioct,parent_cell,get_parent_cell
-  integer::ind,ivar,igrid,icell,idim
+  integer::ind,ivar,irad,igrid,icell,idim
   integer(kind=8),dimension(0:ndim)::hash_key
   real(dp)::average,ekin,erad
 
@@ -102,7 +102,6 @@ subroutine interpol_hydro(u1,u2)
   use hydro_commons
   use poisson_commons
   implicit none
-  integer::nn
   real(dp),dimension(0:twondim  ,1:nvar)::u1
   real(dp),dimension(1:twotondim,1:nvar)::u2
   !----------------------------------------------------------
@@ -121,7 +120,7 @@ subroutine interpol_hydro(u1,u2)
   !                 type 3 for velocity and type 2 for density and
   !                 internal energy.
   !----------------------------------------------------------
-  integer::i,j,ivar,irad,idim,ind,ix,iy,iz,ind2
+  integer::j,ivar,irad,idim,ind,ix,iy,iz
   real(dp)::oneover_twotondim
   real(dp),dimension(1:8,1:3)::xc
   real(dp),dimension(0:twondim)::a
@@ -294,7 +293,7 @@ subroutine compute_limiter_central(a,w)
   !---------------------------
   ! Monotonized Central slope
   !---------------------------
-  integer::i,j,idim,ind,ix,iy,iz
+  integer::j,idim,ind,ix,iy,iz
   real(dp),dimension(1:twotondim,1:3)::xc
   real(dp)::xxc
   real(dp),dimension(1:twotondim)::ac

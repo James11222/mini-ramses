@@ -39,9 +39,8 @@ subroutine multigrid(ilevel,icount)
   integer, parameter  :: MAXITER  = 10
   real(dp), parameter :: SAFE_FACTOR = 0.5
   
-  integer  :: igrid, ifine, i, iter, info, icpu
+  integer  :: igrid, ifine, i, iter, info
   real(kind=8) :: res_norm2, i_res_norm2, i_res_norm2_tot, res_norm2_tot
-  real(kind=8) :: debug_norm2, debug_norm2_tot
   real(kind=8) :: err, last_err
   
   logical :: allmasked
@@ -255,9 +254,7 @@ recursive subroutine recursive_multigrid(ifinelevel, safe)
   
   integer, intent(in) :: ifinelevel
   logical, intent(in) :: safe
-  real(dp) :: debug_norm2,debug_norm2_tot
-
-  integer :: i, igrid, icpu, info, icycle, ncycle
+  integer :: i, igrid, icycle, ncycle
   
   if(ifinelevel<=levelmin_mg) then
      ! Solve 'directly' :
@@ -625,15 +622,14 @@ subroutine make_bc_rhs(ilevel,icount)
   integer,dimension(1:8,1:8)::ccc
   real(dp)::aa,bb,cc,dd,tfrac
   real(dp),dimension(1:8)::bbb
-  integer(kind=8),dimension(0:ndim)::hash_key,hash_nbor
+  integer(kind=8),dimension(0:ndim)::hash_nbor
   integer,dimension(1:threetondim),save::igrid_nbor,ind_nbor
-  real(dp),dimension(1:twotondim),save::phi_int
   real(dp),dimension(1:twotondim,0:twondim),save::phi_nbor,dis_nbor
   integer,dimension(1:3,1:6),save::shift=reshape(&
        & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))
 
   real(dp) :: dx, oneoverdx2, phi_b, nb_mask, nb_phi, w
-  real(dp) :: scale, fourpi
+  real(dp) :: fourpi
   
   ! Set constants
   fourpi = 4.D0*ACOS(-1.0D0)
@@ -782,7 +778,6 @@ subroutine make_bc_rhs_vec(ilevel,icount)
   
   integer, dimension(1:3,1:2,1:8) :: iii, jjj
   integer::igrid,idim,ind,inbor,ig,id,i,ngrid
-  integer::get_grid
   integer,dimension(1:8,1:8)::ccc
   real(dp)::aa,bb,cc,dd,tfrac
   real(dp),dimension(1:8)::bbb
@@ -797,7 +792,7 @@ subroutine make_bc_rhs_vec(ilevel,icount)
   real(dp),dimension(1:nvector,1:twotondim,0:twondim),save::phi_nbor,dis_nbor
 
   real(dp) :: dx, oneoverdx2, phi_b, nb_mask, nb_phi, w
-  real(dp) :: scale, fourpi
+  real(dp) :: fourpi
   
   ! Set constants
   fourpi = 4.D0*ACOS(-1.0D0)
@@ -981,11 +976,11 @@ subroutine build_comm_mg(hash_dict,ilevel)
   type(hash_table)::hash_dict
   !
   integer::get_grid
-  integer::icoarselevel,igrid,inbor,idim,ichild,icpu,grid_cpu,ind,info
+  integer::igrid,inbor,idim,icpu,grid_cpu,ind,info
   integer::i,igridn,iremote,ngrid
   integer(kind=8),dimension(1:nvector,0:ndim),save::hash_key
   integer(kind=4),dimension(1:nvector),save::ipos
-  integer(kind=8),dimension(0:ndim)::hash_father,hash_nbor
+  integer(kind=8),dimension(0:ndim)::hash_nbor
   integer,dimension(1:ndim)::cart_key
   integer,dimension(1:3,1:6),save::shift=reshape(&
        & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))

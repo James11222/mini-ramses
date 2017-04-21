@@ -13,7 +13,7 @@ subroutine godunov_fine(ilevel)
   ! hydro solver. On entry, hydro variables are gathered from array uold.
   ! On exit, unew has been updated. 
   !--------------------------------------------------------------------------
-  integer::i,ivar,igrid
+  integer::igrid
 
   if(noct_tot(ilevel)==0)return
   if(static)return
@@ -95,7 +95,7 @@ subroutine set_unew(ilevel)
   ! This routine sets array unew to its initial value uold before calling
   ! the hydro scheme. unew is set to zero in virtual boundaries.
   !--------------------------------------------------------------------------
-  integer::i,ivar,irad,ind,icpu,iskip
+  integer::i,ivar,irad,ind,icpu
   real(dp)::d,u,v,w,e
 
 #ifdef HYDRO
@@ -148,8 +148,8 @@ subroutine set_uold(ilevel)
   ! This routine sets array uold to its new value unew 
   ! after the hydro step.
   !---------------------------------------------------------
-  integer::i,ivar,irad,ind,iskip,nx_loc,ind_cell
-  real(dp)::scale,d,u,v,w
+  integer::i,ivar,irad,ind
+  real(dp)::d,u,v,w
   real(dp)::e_kin,e_cons,e_prim,e_trunc,div,dx,fact,d_old
 
 #ifdef HYDRO
@@ -240,20 +240,19 @@ subroutine godfine1(ind_grid,ilevel,&
   ! and stored in array unew(:), both at the current level and at the 
   ! coarser level if necessary.
   !-------------------------------------------------------------------
-  integer::get_grid,get_parent_cell
-  integer::i,j,ivar,idim,ind_son,iskip,nbuffer,ibuffer,ipos,ind_oct
-  integer::igrid,icell,inbor,ichild,parent_cell,indf,parent_cell2
+  integer::get_parent_cell
+  integer::i,ivar,idim,ind_son,ind_oct
+  integer::igrid,icell,inbor,ichild,parent_cell
   integer::i0,j0,k0,i1,j1,k1,i2,j2,k2,i3,j3,k3
   integer::ii0,jj0,kk0,ii1,jj1,kk1
   integer::i1min,i1max,j1min,j1max,k1min,k1max
   integer::ii1min,ii1max,jj1min,jj1max,kk1min,kk1max
   integer::i2min=0,i2max=0,j2min=0,j2max=0,k2min=0,k2max=0
   integer::i3min=1,i3max=1,j3min=1,j3max=1,k3min=1,k3max=1
-  integer,dimension(1:ndim)::ii
   integer,dimension(1:ndim)::ckey_corner,ckey
   integer(kind=8),dimension(0:ndim)::hash_key,hash_nbor
   integer,dimension(0:twondim)::igrid_nbor,ind_nbor
-  real(dp)::dx,scale,oneontwotondim
+  real(dp)::dx,oneontwotondim
   real(dp),dimension(0:twondim  ,1:nvar)::u1
   real(dp),dimension(1:twotondim,1:nvar)::u2
   logical::okx=.true.,oky=.true.,okz=.true.

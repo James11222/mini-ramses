@@ -418,7 +418,7 @@ contains
   !================================================================
 
   recursive subroutine sort_hilbert(head_part, tail_part, ix_coarse, cstate_coarse, ilevel, final_level)
-    use amr_commons, only: boxlen, dp, ndim, twotondim, myid
+    use amr_commons, only: boxlen, dp, ndim, twotondim
     use pm_commons,  only: workp, sortp, xp
     implicit none
 
@@ -447,7 +447,7 @@ contains
     ! On output, array sortp is modified.
 
     ! Local variables
-    integer :: ibit, ip, ind_part, idim, np, ioft, ipart, new_ipart
+    integer :: ip, ind_part, idim, ipart, new_ipart
     integer :: ckey_max, cstate_fine, ind_cart_part, head_fine, tail_fine
     real(dp) :: ckey_factor
     integer, dimension(1:ndim) :: ix_fine, ix_ref, ix_part

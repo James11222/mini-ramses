@@ -6,7 +6,7 @@ subroutine init_flow
   use amr_commons
   implicit none
 
-  integer::ilevel,ivar
+  integer::ilevel
   
   if(verbose)write(*,*)'Entering init_flow'
   do ilevel=nlevelmax,levelmin,-1
@@ -29,7 +29,7 @@ subroutine init_flow_fine(ilevel)
 #endif
   integer::ilevel
   
-  integer::igrid,ngrid,ind,idim,nstride,i,ivar
+  integer::igrid,ngrid,ind,idim,nstride,i,ivar 
   real(dp),dimension(1:nvector,1:ndim),save::xx
   real(dp),dimension(1:nvector,1:nvar),save::uu
   real(dp)::dx
@@ -231,13 +231,13 @@ subroutine init_grafic(ilevel)
   ! Compute initial conditions from files
   ! with the grafic format.
   !--------------------------------------
-  integer::i,igrid,ilun
-  integer::ind,idim,ivar,ix,iy,iz,nx_loc
+  integer::igrid,ilun
+  integer::ind,idim,ivar
   integer::i1,i2,i3,i1_min,i1_max,i2_min,i2_max,i3_min,i3_max
-  integer::buf_count,info,nvar_in
+  integer::buf_count,info
 
   real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v
-  real(dp)::dx,rr,vx,vy=0,vz=0,ek,ei,pp,xx1,xx2,xx3,dx_loc,xval
+  real(dp)::dx,rr,vx,vy=0,vz=0,ek,ei,pp,xx1,xx2,xx3,dx_loc
 
   real(dp),allocatable,dimension(:,:,:)::init_array
   real(kind=4),allocatable,dimension(:,:)  ::init_plane

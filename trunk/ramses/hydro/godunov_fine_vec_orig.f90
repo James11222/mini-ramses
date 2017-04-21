@@ -13,7 +13,7 @@ subroutine godunov_fine_vec_orig(ilevel)
   ! hydro solver. On entry, hydro variables are gathered from array uold.
   ! On exit, unew has been updated. 
   !--------------------------------------------------------------------------
-  integer::i,ivar,igrid,ngrid
+  integer::i,igrid,ngrid
   integer,dimension(1:nvector),save::ind_grid
 
   if(noct_tot(ilevel)==0)return
@@ -68,9 +68,7 @@ subroutine godfine1_vec_origin(ind_grid,ngrid,ilevel)
   integer ,dimension(1:nvector,0:twondim),save::ind_nbor2
 
   real(dp),dimension(1:nvector,0:twondim,1:nvar),save::u1
-  real(dp),dimension(1:nvector,0:twondim,1:ndim),save::g1=0.0d0
   real(dp),dimension(1:nvector,1:twotondim,1:nvar),save::u2
-  real(dp),dimension(1:nvector,1:twotondim,1:ndim),save::g2=0.0d0
 
   real(dp),dimension(1:nvector,iu1:iu2,ju1:ju2,ku1:ku2,1:nvar),save::uloc
   real(dp),dimension(1:nvector,iu1:iu2,ju1:ju2,ku1:ku2,1:ndim),save::gloc=0.0d0
@@ -82,12 +80,12 @@ subroutine godfine1_vec_origin(ind_grid,ngrid,ilevel)
   integer,dimension(1:nvector),save::igrid_father,ind_father,ind_exist,igrid_exist,ind_nexist
   integer,dimension(1:nvector),save::grid_address
 
-  integer::i,j,ind,ivar,idim,ioct,ind_son,inbor,ind_nbor,iskip,nbuffer,ibuffer,get_grid
-  integer::i0,j0,k0,ii0,jj0,kk0,i1,j1,k1,i2,j2,k2,i3,j3,k3,nx_loc,nb_noneigh,nexist
+  integer::i,ind,ivar,idim,ioct,ind_son,inbor,ind_nbor,nbuffer
+  integer::i0,j0,k0,ii0,jj0,kk0,i1,j1,k1,i2,j2,k2,i3,j3,k3,nb_noneigh,nexist
   integer::i1min,i1max,j1min,j1max,k1min,k1max
   integer::i2min,i2max,j2min,j2max,k2min,k2max
   integer::i3min,i3max,j3min,j3max,k3min,k3max
-  real(dp)::dx,scale,oneontwotondim
+  real(dp)::dx,oneontwotondim
 
   oneontwotondim = 1.d0/dble(twotondim)
 
@@ -255,8 +253,8 @@ subroutine godfine1_vec_origin(ind_grid,ngrid,ilevel)
                              uloc(ind_nexist(i),i3,j3,k3,ivar)=grid(igrid_father(i))%uold(ind_father(i),ivar)
                           end do
                        endif
-                    end do
-                    
+                    end do             
+#ifdef GRAV
                     ! Gather gravitational acceleration
                     if(poisson)then
                        do idim=1,ndim
@@ -269,7 +267,7 @@ subroutine godfine1_vec_origin(ind_grid,ngrid,ilevel)
                           end do
                        end do
                     end if
-                    
+#endif                    
                     ! Gather refinement flag
                     do i=1,nexist
                        ok(ind_exist(i),i3,j3,k3)=grid(igrid_exist(i))%refined(ind_son)

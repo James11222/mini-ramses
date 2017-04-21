@@ -16,7 +16,7 @@ subroutine kick_drift_part(ilevel,action_part)
   integer,dimension(1:ndim,1:twotondim),save::ckey
   integer,dimension(1:twotondim),save::igrid,icell
   integer(kind=8),dimension(0:ndim),save::hash_nbor
-  integer::i,ipart,inbor,ind,idim
+  integer::ipart,ind,idim
   integer::parent_cell,get_parent_cell
   real(kind=8)::dx_loc,vol_loc,dteff
   real(dp),dimension(1:ndim),save::ff

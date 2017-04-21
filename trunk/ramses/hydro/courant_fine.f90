@@ -11,9 +11,9 @@ subroutine courant_fine(ilevel)
   ! Using the Courant-Friedrich-Levy stability condition,               !
   ! this routine computes the maximum allowed time-step.                !
   !----------------------------------------------------------------------
-  integer::i,ivar,idim,ind,igrid,iskip
-  integer::info,nleaf,ngrid,nx_loc
-  real(dp)::dt_lev,dx,vol,scale
+  integer::ivar,idim,ind,igrid
+  integer::info
+  real(dp)::dt_lev,dx,vol
   real(kind=8)::mass_loc,ekin_loc,eint_loc,dt_loc
   real(kind=8)::mass_all,ekin_all,eint_all,dt_all
   real(kind=8),dimension(3)::comm_buffin,comm_buffout
@@ -129,15 +129,13 @@ subroutine check_cons(ilevel)
   ! end do
   ! if(myid==1)write(*,*)'after cooling ',ilevel,mass_tot
   !----------------------------------------------------------------------
-  integer::i,ivar,idim,ind,igrid,iskip
-  integer::info,nleaf,ngrid,nx_loc
-
-  real(dp)::dt_lev,dx,vol,scale
-  real(kind=8)::mass_loc,ekin_loc,eint_loc,dt_loc
-  real(kind=8)::mass_all,ekin_all,eint_all,dt_all
+  integer::ivar,ind,igrid
+  integer::info
+  real(dp)::dx,vol
+  real(kind=8)::mass_loc,ekin_loc,eint_loc
+  real(kind=8)::mass_all,ekin_all,eint_all
   real(kind=8),dimension(3)::comm_buffin,comm_buffout
-  real(dp),dimension(1:nvar),save::uu
-  real(dp),dimension(1:ndim),save::gg=0.0
+  real(dp),dimension(1:nvar)::uu
 
   if(noct_tot(ilevel)==0)return
   if(verbose)write(*,111)ilevel

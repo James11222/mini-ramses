@@ -5,8 +5,6 @@ subroutine init_hydro
 #ifndef WITHOUTMPI
   include 'mpif.h'
 #endif
-  character(LEN=80)::fileloc
-  character(LEN=5)::nchar
 
   if(verbose)write(*,*)'Entering init_hydro'
 

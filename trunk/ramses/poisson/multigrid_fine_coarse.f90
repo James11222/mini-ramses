@@ -245,12 +245,8 @@ subroutine cmp_residual_mg_fast(hash_dict, ilevel)
 
   ! Computes the residual for MG levels, and stores it into grid(igrid)%f(ind,1)
     
-  integer :: get_grid
   integer, dimension(1:3,1:2,1:8) :: iii, jjj
   real(dp),dimension(1:twotondim,0:twondim),save::phi_nbor,dis_nbor
-  integer,dimension(1:3,1:6),save::shift=reshape(&
-       & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))
-  integer(kind=8),dimension(0:ndim) :: hash_nbor
   real(dp) :: dx, oneoverdx2, phi_c, dis_c, nb_sum
   integer  :: igrid, ind, inbor, idim, igridn, id, ig
   real(dp) :: dtwondim = (twondim)
@@ -619,16 +615,13 @@ subroutine gauss_seidel_mg(hash_dict,ilevel,safe,redstep)
   ! The domain mask is also needed.
   
   integer :: get_grid
-  integer(kind=4),dimension(1:nvector),save::dummy_state
-  integer(kind=8),dimension(1:nvector),save::hk0,hk1,hk2
-  integer(kind=8),dimension(1:nvector),save::ix,iy,iz
   integer, dimension(1:3,1:2,1:8) :: iii, jjj
   real(dp),dimension(1:twotondim,0:twondim),save::phi_nbor,dis_nbor
   integer,dimension(1:3,1:6),save::shift=reshape(&
        & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))
   integer(kind=8),dimension(0:ndim) :: hash_nbor
-  real(dp) :: dx, oneoverdx2, phi_c, dis_c, dx2, nb_sum, weight
-  integer  :: igrid, ind, inbor, idim, igridn, id, ig, ind0, ipos
+  real(dp) :: phi_c, dis_c, dx2, nb_sum, weight
+  integer  :: igrid, ind, inbor, idim, igridn, id, ig, ind0
   real(dp) :: dtwondim = (twondim)
 
   integer, dimension(1:4) :: ired, iblack
@@ -785,17 +778,10 @@ subroutine gauss_seidel_mg_fast(hash_dict,ilevel,safe,redstep)
   ! Perform a Gauss-Seidel update of grid(igrid)%phi(ind).
   ! The domain mask is also needed.
   
-  integer :: get_grid
-  integer(kind=4),dimension(1:nvector),save::dummy_state
-  integer(kind=8),dimension(1:nvector),save::hk0,hk1,hk2
-  integer(kind=8),dimension(1:nvector),save::ix,iy,iz
   integer, dimension(1:3,1:2,1:8) :: iii, jjj
   real(dp),dimension(1:twotondim,0:twondim),save::phi_nbor,dis_nbor
-  integer,dimension(1:3,1:6),save::shift=reshape(&
-       & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))
-  integer(kind=8),dimension(0:ndim) :: hash_nbor
-  real(dp) :: dx, oneoverdx2, phi_c, dis_c, dx2, nb_sum, weight
-  integer  :: igrid, ind, inbor, idim, igridn, id, ig, ind0, ipos
+  real(dp) :: phi_c, dis_c, dx2, nb_sum, weight
+  integer  :: igrid, ind, inbor, idim, igridn, id, ig, ind0
   real(dp) :: dtwondim = (twondim)
   integer  :: icpu,info,i,istart,nbuffer,countrecv,countsend,tag=101
   integer,dimension(ncpu) :: reqsend,reqrecv  
@@ -990,16 +976,14 @@ subroutine gauss_seidel_mg_vec(hash_dict,ilevel,safe,redstep)
   ! The domain mask is also needed.
   
   integer, dimension(1:3,1:2,1:8) :: iii, jjj
-  integer,dimension(1:3,1:6),save::shift=reshape(&
-       & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))
 
   real(dp),dimension(1:nvector,1:twotondim,0:twondim),save::phi_nbor,dis_nbor
   real(dp),dimension(1:nvector),save::phi_c, dis_c, nb_sum, weight
   integer,dimension(1:nvector),save::ind_ok, igridn
   logical,dimension(1:nvector),save::ok_scan, ok_cycle
 
-  real(dp) :: dx, oneoverdx2, dx2
-  integer  :: igrid, ind, inbor, idim, id, ig, ind0, ipos
+  real(dp) :: dx2
+  integer  :: igrid, ind, inbor, idim, id, ig, ind0
   integer  :: ngrid, ii, n_ok
   real(dp) :: dtwondim = (twondim)
   integer  :: icpu,info,i,istart,nbuffer,countrecv,countsend,tag=101
@@ -1383,7 +1367,7 @@ subroutine interpolate_and_correct(ifinelevel)
   real(dp), dimension(1:8)     :: bbb
   integer,  dimension(1:8,1:8) :: ccc
   integer::ind_average,ind_father
-  integer::igrid_nbr,ind_nbr,igrid_cen,ind_cen
+  integer::igrid_nbr,ind_nbr
   real(dp),dimension(1:twotondim)::corr
   
   ! Local constants
@@ -1479,7 +1463,7 @@ subroutine interpolate_and_correct_vec(ifinelevel)
   real(dp), dimension(1:8)     :: bbb
   integer,  dimension(1:8,1:8) :: ccc
   integer::ind_average,ind_father
-  integer::igrid_nbr,ind_nbr,igrid_cen,ind_cen
+  integer::igrid_nbr,ind_nbr
 
   integer(kind=8),dimension(1:nvector,0:ndim),save :: hash_key
   integer,dimension(1:nvector,1:threetondim),save :: igrid_nbor,ind_nbor

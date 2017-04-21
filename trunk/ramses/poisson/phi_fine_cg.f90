@@ -21,7 +21,7 @@ subroutine phi_fine_cg(ilevel,icount)
   ! x  : stored in phi
   ! b  : stored in rho
   !=========================================================
-  integer::i,igrid,idim,info,ind,iter,itermax
+  integer::igrid,info,ind,iter,itermax
   real(dp)::error,error_ini
   real(dp)::dx2,fourpi,oneoversix,fact,fact2
   real(dp)::r2_old,alpha_cg,beta_cg
@@ -436,16 +436,12 @@ subroutine cmp_Ap_cg_fast(ilevel)
   ! This routine computes Ap for the Conjugate Gradient
   ! Poisson Solver and store the result into f(i,3).
   !------------------------------------------------------------------
-  integer::get_grid
   integer::inbor,igrid,idim,ind,igridn
   integer::id1,id2,ig1,ig2,i,info
   integer::icpu,nbuffer,istart
   real(dp)::oneoversix,residu
   integer,dimension(1:3,1:2,1:8)::iii,jjj
   real(dp),dimension(1:twotondim,0:twondim),save::phi_nbor
-  integer(kind=8),dimension(0:ndim)::hash_nbor
-  integer,dimension(1:3,1:6),save::shift=reshape(&
-       & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))
   integer::countrecv,countsend,tag=101
   integer,dimension(ncpu)::reqsend,reqrecv
 
@@ -573,7 +569,7 @@ subroutine make_initial_phi(ilevel,icount)
   !
   !
   !
-  integer::igrid,idim,ind,igridn
+  integer::igrid,idim,ind
   integer,dimension(1:8,1:8)::ccc
   real(dp)::aa,bb,cc,dd,tfrac
   real(dp),dimension(1:8)::bbb
@@ -673,9 +669,9 @@ subroutine build_cg(ilevel)
   integer,intent(in)::ilevel
   !
   integer::get_grid
-  integer::icoarselevel,igrid,inbor,idim,ipos,ichild,icpu,grid_cpu,ind,info
+  integer::igrid,inbor,idim,ipos,icpu,grid_cpu,info
   integer::i,igridn,iremote
-  integer(kind=8),dimension(0:ndim)::hash_key,hash_father,hash_nbor
+  integer(kind=8),dimension(0:ndim)::hash_key,hash_nbor
   integer,dimension(1:ndim)::cart_key
   integer,dimension(1:3,1:6),save::shift=reshape(&
        & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))

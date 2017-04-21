@@ -70,7 +70,7 @@ subroutine add_gravity_source_terms(ilevel)
   ! with only half a time step. Only the momentum and the
   ! total energy are modified in array unew.
   !--------------------------------------------------------------
-  integer::igrid,ivar,ind
+  integer::igrid,ind
   real(dp)::d,u,v,w,e_kin,e_prim,d_old,fact
 
 #ifdef HYDRO

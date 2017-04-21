@@ -189,10 +189,9 @@ subroutine smooth_fine(ilevel)
   ! step 3: flag1 cells with at least 2 flag1 neighbors (if ndim > 2) 
   ! Array flag2 is used as temporary workspace.
   ! -------------------------------------------------------------------
-  integer::ismooth,count_nbor,ig,ih,in
-  integer::i,iskip,ngrid
+  integer::ismooth,count_nbor,ig,in
   integer::igrid,idim,ind,i_nbor,igrid_nbor,icell_nbor
-  integer::parent_cell,get_parent_cell,get_grid
+  integer::get_grid
   integer,dimension(1:3),save::n_nbor=(/1,2,2/)
   integer(kind=8),dimension(0:ndim)::hash_nbor
   integer,dimension(0:twondim)::igridn
@@ -314,11 +313,10 @@ subroutine smooth_fine_fast(ilevel)
   ! step 3: flag1 cells with at least 2 flag1 neighbors (if ndim > 2) 
   ! Array flag2 is used as temporary workspace.
   ! -------------------------------------------------------------------
-  integer::ismooth,count_nbor,ig,id,ih,in
-  integer::i,iskip,ngrid
-  integer::igrid,idim,ind,inbor,igrid_nbor,icell_nbor
+  integer::ismooth,count_nbor,ig,id,in
+  integer::i
+  integer::igrid,ind,inbor
   integer::icpu,nbuffer,istart,info
-  integer::parent_cell,get_parent_cell,get_grid
   integer,dimension(1:3),save::n_nbor=(/1,2,2/)
   integer(kind=8),dimension(0:ndim)::hash_nbor
   integer::igridn
@@ -326,10 +324,6 @@ subroutine smooth_fine_fast(ilevel)
   integer::countrecv,countsend,tag=101
   integer,dimension(ncpu)::reqsend,reqrecv
 
-  integer,dimension(1:3,1:6),save::shift=reshape(&
-       & (/-1,0,0,1,0,0,&
-       &   0,-1,0,0,1,0,&
-       &   0,0,-1,0,0,1/),(/3,6/))
   integer,dimension(1:8,1:6),save::ggg=reshape(&
        & (/1,0,1,0,1,0,1,0,&
        &   0,2,0,2,0,2,0,2,&
@@ -574,9 +568,9 @@ subroutine build_smooth(ilevel)
   integer,intent(in)::ilevel
   !
   integer::get_grid
-  integer::icoarselevel,igrid,inbor,idim,ipos,ichild,icpu,grid_cpu,ind,info
+  integer::igrid,inbor,idim,ipos,icpu,grid_cpu,info
   integer::i,igridn,iremote
-  integer(kind=8),dimension(0:ndim)::hash_key,hash_father,hash_nbor
+  integer(kind=8),dimension(0:ndim)::hash_key,hash_nbor
   integer,dimension(1:ndim)::cart_key
   integer,dimension(1:3,1:6),save::shift=reshape(&
        & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))

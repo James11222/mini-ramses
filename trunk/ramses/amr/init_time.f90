@@ -3,8 +3,7 @@ subroutine init_time
   use hydro_commons
   use pm_commons
   implicit none
-  integer::i,Nmodel
-  real(kind=8)::T2_sim  
+  integer::i
 
   if(verbose)write(*,*)'Entering init_time'
 

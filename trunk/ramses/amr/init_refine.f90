@@ -14,11 +14,11 @@ subroutine init_refine_basegrid
   !------------------------------------------
   ! This routine builds the coarse level grid
   !------------------------------------------
-  integer::ilevel,i,j,k,igrid,ioct,ilev,info
+  integer::i,igrid,ioct,ilev,info
   integer(kind=8)::ikey
   integer(kind=8),dimension(1:nhilbert)::hk=0
   integer(kind=8),dimension(1:ndim)::ix=0
-  integer(kind=8),dimension(0:ndim)::hash_key,hash_test
+  integer(kind=8),dimension(0:ndim)::hash_key
   integer(kind=8),dimension(1:nhilbert,1:nlevelmax)::key_ref
   integer(kind=8),dimension(1:nhilbert)::coarse_key
   integer,dimension(1:nlevelmax)::n_same,npatch
@@ -107,7 +107,7 @@ subroutine init_refine_adaptive
   use pm_commons
   use poisson_commons
   implicit none
-  integer::ilevel,i,ivar, ilev
+  integer::ilevel,i
 
   if(myid==1)write(*,*)'Building initial adaptive grid'
 

@@ -14,7 +14,7 @@ subroutine load_balance(ilevel)
   !------------------------------------------------
   ! This routine performs parallel load balancing.
   !------------------------------------------------
-  integer::igrid,i,ind,jlevel,info
+  integer::i,info
   integer::icpu,grid_cpu,ichild
   integer::nleft,nright,ileft,iright,istart,nstart
   integer::ilev,ioct
@@ -24,20 +24,16 @@ subroutine load_balance(ilevel)
   integer(kind=8),allocatable,dimension(:,:)::bound_key_target_tot
   real(dp)::xtarget
 
-  integer::icell,j,ibit,ibucket,inew,iold,iold_true
+  integer::j,ibit,ibucket,inew
   integer::noct_zero,head_zero,indx_zero
-  integer::ncreate_tot,nkill_tot
-  integer::parent_cell,skip_bit,ikey,true_level
-  integer::ind_cell,ind_parent
+  integer::skip_bit,ikey,true_level
   integer(kind=8),dimension(0:ndim)::hash_key
-  integer(kind=8),dimension(1:ndim)::cart_key
   integer(kind=8),dimension(1:nhilbert)::coarse_key,one_key,zero_key
   integer(kind=8),dimension(1:nhilbert,1:nlevelmax)::key_ref
   integer,dimension(1:nlevelmax)::n_same,npatch
   integer,dimension(:),allocatable::noct_level,head_level,indx_level
   integer,dimension(:),allocatable::swap_table,swap_tmp
   integer,dimension(0:twotondim-1)::bucket_count,bucket_offset
-  logical::ok_free,ok_all,ok
   type(oct)::grid_tmp
 
 #ifndef WITHOUTMPI
@@ -426,7 +422,7 @@ subroutine balance_part(ilevel)
 
   integer,dimension(1:ndim),save::ix
   integer::i,istart,info,ipart,jpart,idim,grid_cpu
-  integer::ilev,icpu,jcpu,count_loc,recv_cnt_tot,send_cnt_tot
+  integer::ilev,icpu,count_loc,recv_cnt_tot,send_cnt_tot
   integer::nbuffer,countrecv,countsend,tag=101
   real(kind=8)::dx_loc
 
@@ -443,7 +439,6 @@ subroutine balance_part(ilevel)
   integer(kind=8),allocatable,dimension(:,:,:)::bound_key_part
   integer(kind=8),allocatable,dimension(:,:)::bound_key_target,bound_key_new
   integer(kind=8),allocatable,dimension(:,:)::bound_key_left,bound_key_right
-  integer,dimension(1:ncpu)::npart_proc,npart_proc_tot
   integer::npart_lev,npart_lev_tot,iter
   integer,dimension(0:ncpu)::npart_cum,npart_cum_tot
   integer,dimension(1:ncpu)::npart_cpu,npart_cpu_tot
@@ -1066,7 +1061,7 @@ subroutine balance_part_vec(ilevel)
 
   integer,dimension(1:ndim),save::ix
   integer::i,ip,istart,info,ipart,jpart,idim,ngrid
-  integer::ilev,icpu,jcpu,count_loc,recv_cnt_tot,send_cnt_tot
+  integer::ilev,icpu,count_loc,recv_cnt_tot,send_cnt_tot
   integer::nbuffer,countrecv,countsend,tag=101
   real(kind=8)::dx_loc
 
@@ -1083,7 +1078,6 @@ subroutine balance_part_vec(ilevel)
   integer(kind=8),allocatable,dimension(:,:,:)::bound_key_part
   integer(kind=8),allocatable,dimension(:,:)::bound_key_target,bound_key_new
   integer(kind=8),allocatable,dimension(:,:)::bound_key_left,bound_key_right
-  integer,dimension(1:ncpu)::npart_proc,npart_proc_tot
   integer::npart_lev,npart_lev_tot,iter
   integer,dimension(0:ncpu)::npart_cum,npart_cum_tot
   integer,dimension(1:ncpu)::npart_cpu,npart_cpu_tot

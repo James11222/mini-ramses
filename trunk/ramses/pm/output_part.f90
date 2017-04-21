@@ -3,15 +3,12 @@ subroutine output_part(filename)
   use pm_commons
   implicit none
   character(LEN=80)::filename
-  integer::dummyint=0
-  integer::i,idim,nsink=0,ilun,ipart
+  integer::i,idim,ilun
   character(LEN=80)::fileloc
   character(LEN=5)::nchar
   real(dp),allocatable,dimension(:)::xdp
-  integer,allocatable,dimension(:)::ii
   integer(i8b),allocatable,dimension(:)::ii8
   integer,allocatable,dimension(:)::ll
-  logical,allocatable,dimension(:)::nb
   
   if(verbose)write(*,*)'Entering backup_part'
   

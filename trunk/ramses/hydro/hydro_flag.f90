@@ -12,7 +12,7 @@ subroutine hydro_flag(ilevel)
        & (/0,0,0,1,0,0,0,1,0,1,1,0,0,0,1,1,0,1,0,1,1,1,1,1/),(/3,8/))
   integer,dimension(1:3,1:6),save::shift=reshape(&
        & (/-1,0,0,1,0,0,0,-1,0,0,1,0,0,0,-1,0,0,1/),(/3,6/))
-  integer::igrid,ind,idim,ngrid,ivar,i_nbor
+  integer::igrid,ind,idim,ivar,i_nbor
   integer::parent_cell,get_parent_cell
   integer::igridd,igridg,indd,indg,igridp
   integer,dimension(1:twondim),save::indn

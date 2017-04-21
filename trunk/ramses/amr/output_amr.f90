@@ -12,7 +12,7 @@ subroutine dump_all
 #endif
   character(LEN=5)::nchar
   character(LEN=80)::filename,filedir,filecmd
-  integer::i,itest,info,irec,ierr
+  integer::i,info
 
   if(nstep_coarse==nstep_coarse_old.and.nstep_coarse>0)return
   if(nstep_coarse==0.and.nrestart>0)return
@@ -157,8 +157,7 @@ subroutine output_params(filename)
   implicit none
   character(LEN=80)::filename
 
-  integer::ilun
-  integer::ilevel,ibound,istart,i,igrid,idim,ind,iskip
+  integer::ilun,ilevel
   character(LEN=80)::fileloc
 
   if(verbose)write(*,*)'Entering output_params'
@@ -352,10 +351,9 @@ subroutine output_info(filename)
   implicit none
   character(LEN=80)::filename
 
-  integer::ilun,icpu,idom
+  integer::ilun
   real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v
   character(LEN=80)::fileloc
-  character(LEN=5)::nchar
 
   if(verbose)write(*,*)'Entering output_info'
 
@@ -408,8 +406,7 @@ subroutine output_header(filename)
 #endif
   character(LEN=80)::filename
 
-  integer::info,ilun
-  integer(i8b)::tmp_long
+  integer::ilun
   character(LEN=80)::fileloc
 
   if(verbose)write(*,*)'Entering output_header'
@@ -452,8 +449,7 @@ subroutine input_header(filename,npart_tot_file,ncpu_file)
   integer(i8b)::npart_tot_file
   integer::ncpu_file
 
-  integer::info,ilun
-  integer(i8b)::tmp_long
+  integer::ilun
   character(LEN=80)::fileloc
 
   if(verbose)write(*,*)'Entering input_header'

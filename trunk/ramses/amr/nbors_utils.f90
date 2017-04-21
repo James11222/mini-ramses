@@ -316,7 +316,7 @@ integer function remote_acquire(hash_key,hash_dict,flush_cache,fetch_cache) resu
   type(large_realdp_msg),save::response_refine
   type(twin_realdp_msg),save::response_mg
   type(three_realdp_msg),save::response_interpol
-  logical::failed_request,send_request_completed
+  logical::failed_request
 #ifndef WITHOUTMPI
   integer,dimension(MPI_STATUS_SIZE)::send_request_status
 #endif
@@ -738,7 +738,7 @@ subroutine check_mail(comm_id,hash_dict)
   integer::comm_id
   !
   integer::i,ind,ivar,idim,info,ipos,igrid,ichild,grid_cpu,ilevel,itile,ntile_reply
-  logical::comm_completed,request_received,flush_received=.false.,reply_sent
+  logical::comm_completed,request_received,flush_received=.false.
 #ifndef WITHOUTMPI
   integer,dimension(MPI_STATUS_SIZE)::reply_status,request_status,flush_status,comm_status
 #endif
@@ -1693,10 +1693,9 @@ subroutine close_cache(hash_dict)
   type(hash_table)::hash_dict
   !
   integer::info,icache,igrid,icpu
-  integer::send_flush_id,ndebug
+  integer::send_flush_id
   integer::dummy_int,close_tag=7,close_id
   integer(kind=8),dimension(0:ndim)::hash_child
-  logical::request_received,flush_received
 #ifndef WITHOUTMPI
   integer,dimension(MPI_STATUS_SIZE)::reply_status,request_status,flush_status
 #endif

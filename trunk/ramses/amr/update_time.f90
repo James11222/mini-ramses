@@ -6,7 +6,6 @@ real(kind=8) function wallclock()
   integer            :: tcur
   integer            :: count_rate
 #else
-  integer            :: info
   real(kind=8), save :: tstart
   real(kind=8)       :: tcur
 #endif
@@ -64,7 +63,6 @@ subroutine timer (label, cmd)
   implicit none
   character(len=*) label, cmd
   real(kind=8) wallclock, current
-  integer ierr
 !-----------------------------------------------------------------------
   current = wallclock()                                                 ! current time
   if (itimer > 0) then                                                  ! if timer is active ..
@@ -369,7 +367,7 @@ end subroutine clean_abort
 
 subroutine writemem(usedmem)
   real::usedmem
-  integer::getpagesize
+!  integer::getpagesize
 
 #ifdef NOSYSTEM
 !  call PXFSYSCONF(_SC_PAGESIZE,ipagesize,ierror)
@@ -396,7 +394,7 @@ end subroutine writemem
 
 subroutine getmem(outmem)
   real::outmem
-  character(len=300) :: dir, dir2,  cmd, file
+  character(len=300) :: dir, dir2, file
   integer::read_status
   file='/proc/self/stat'
   open(unit=1,file=file,form='formatted',err=101)

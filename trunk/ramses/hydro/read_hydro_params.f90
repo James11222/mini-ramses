@@ -9,8 +9,7 @@ subroutine read_hydro_params(nml_ok)
   !--------------------------------------------------
   ! Local variables  
   !--------------------------------------------------
-  integer::i,idim
-  real(dp)::scale
+  integer::i
 
   !--------------------------------------------------
   ! Namelist definitions

@@ -19,8 +19,8 @@ subroutine rho_fine(ilevel)
   ! On output, particles are sorted according to the level they sit in
   ! and inside their level, they are sorted in grid Hilbert order.
   !------------------------------------------------------------------
-  integer::i,igrid,ind,info
-  real(dp)::dx_loc,d_scale,scalar
+  integer::i,info
+  real(dp)::dx_loc
   real(kind=8),dimension(1:ndim+1)::multipole_in,multipole_out
 
   if(.not. poisson)return
@@ -524,7 +524,7 @@ subroutine cic_cell_vec(ilevel)
                  grid(ioct(i))%rho(icell(i))=grid(ioct(i))%rho(icell(i))+&
                       & mmm(i)*vol(i,inbor)/vol_loc
               end if
-           end do
+           end do    
            
            ! Unlock grids
            do i=1,ngrid
@@ -559,8 +559,8 @@ subroutine cic_part(ilevel)
   real(dp),dimension(1:twotondim),save::vol
   integer,dimension(1:ndim,1:twotondim),save::ckey
   integer(kind=8),dimension(0:ndim),save::hash_nbor
-  integer::i,ipart,inbor,igrid,ind,idim
-  integer::ioct,icell,parent_cell,get_parent_cell
+  integer::i,ipart,igrid,ind,idim
+  integer::icell,parent_cell,get_parent_cell
   real(kind=8)::dx_loc,vol_loc,vol2
   
   if(noct_tot(ilevel)==0)return
@@ -705,7 +705,7 @@ subroutine cic_part_vec(ilevel)
   integer,dimension(1:nvector,1:ndim,1:twotondim)::ckey
   integer(kind=8),dimension(1:nvector,0:ndim),save::hash_nbor
   integer,dimension(1:ndim)::ix
-  integer::ip,ipart,inbor,igrid,ind,idim,i,ngrid
+  integer::ip,ipart,ind,idim,i,ngrid
   real(dp),dimension(1:nvector),save::mmm
   integer,dimension(1:nvector),save::ioct,icell
   real(kind=8)::dx_loc,vol_loc,vol2
@@ -879,9 +879,9 @@ subroutine split_part(ilevel)
   real(dp),dimension(1:ndim),save::x,xp_tmp,vp_tmp
   integer,dimension(1:ndim),save::ii,ix,ix_ref
   integer(kind=8),dimension(0:ndim),save::hash_key
-  integer::i,ipart,jpart,inbor,igrid,ind,idim,ioct,icell,ipos,get_grid
+  integer::i,ipart,jpart,igrid,idim,icell,get_grid
   integer::npart_coarse,npart_fine
-  real(kind=8)::dx_loc,vol_loc,vol2
+  real(kind=8)::dx_loc,vol_loc
   real(dp)::mp_tmp
   integer::levelp_tmp
   integer(i8b)::idp_tmp
@@ -1027,9 +1027,9 @@ subroutine split_part_vec(ilevel)
   integer,dimension(1:nvector,1:ndim),save::ii
   integer,dimension(1:nvector),save::igrid,icell
   integer(kind=8),dimension(1:nvector,0:ndim),save::hash_key
-  integer::i,ip,ipart,jpart,inbor,ind,idim,ioct,ipos,ngrid
+  integer::i,ip,ipart,jpart,idim,ngrid
   integer::npart_coarse,npart_fine
-  real(kind=8)::dx_loc,vol_loc,vol2,xx
+  real(kind=8)::dx_loc,vol_loc,xx
   real(dp)::mp_tmp
   integer::levelp_tmp
   integer(i8b)::idp_tmp

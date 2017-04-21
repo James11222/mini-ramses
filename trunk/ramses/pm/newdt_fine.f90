@@ -19,14 +19,7 @@ subroutine newdt_fine(ilevel)
   ! 3- 10% maximum variation for aexp 
   ! This routine also compute the particle kinetic energy.
   !-----------------------------------------------------------
-  integer::igrid,jgrid,ipart,jpart,nx_loc
-  integer::npart1,ip,info,ilev
-  integer,dimension(1:nvector),save::ind_part
-  real(kind=8)::dt_loc,dt_all,ekin_loc,ekin_all,dt_acc_min
   real(dp)::tff,fourpi,threepi2
-  real(dp)::aton_time_step,dt_aton,dt_rt
-  real(dp)::dx_min,dx,scale,dt_fact,limiting_dt_fact
-  logical::highest_level
 
   if(noct_tot(ilevel)==0)return
   if(verbose)write(*,111)ilevel

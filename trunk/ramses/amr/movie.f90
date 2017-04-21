@@ -15,41 +15,32 @@ subroutine output_frame()
   include "mpif.h"
 #endif
   
-  integer::dummy_io,info
+  integer::info
   integer,parameter::tag=100
 
   character(len=5) :: istep_str
-  character(len=100) :: moviedir, moviecmd, infofile, sinkfile
+  character(len=100) :: moviedir, moviecmd, infofile
   character(len=100),dimension(0:NVAR+2) :: moviefiles
-  integer::icell,iskip,nlevelmax_frame,nstride
-  integer::ilun,ipout,npout,npart_out,ind,ix,iy,iz
+  integer::nlevelmax_frame,nstride
+  integer::ilun,ind
   integer::imin,imax,jmin,jmax,ii,jj,kk,ll
-  character(LEN=80)::fileloc
-  character(LEN=5)::nchar,dummy
-  real(dp)::scale,scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v
+  character(LEN=5)::dummy
+  real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v
   real(dp)::xcen,ycen,zcen,delx,dely,delz
   real(dp)::xleft_frame,xright_frame,yleft_frame,yright_frame,zleft_frame,zright_frame
   real(dp)::xleft,xright,yleft,yright,zleft,zright
-  real(dp)::xxleft,xxright,yyleft,yyright,zzleft,zzright
-  real(dp)::xpf,ypf,zpf
+  real(dp)::xxleft,xxright,yyleft,yyright
   real(dp)::dx_frame,dy_frame,dx,dx_loc,dx_min
   real(dp)::dx_cell,dy_cell,dz_cell,dvol
-  real(kind=8)::cell_value
-  integer ,dimension(1:nvector)::ind_grid,ind_cell
   logical::ok
   real(dp),dimension(1:ndim)::xx
   real(kind=8),dimension(:,:,:),allocatable::data_frame,data_frame_all
   real(kind=8),dimension(:,:),allocatable::dens,dens_all,vol,vol_all
   real(kind=4),dimension(:,:),allocatable::data_single
-  real(kind=8) :: z1,z2,om0in,omLin,hubin,Lbox
-  real(kind=8) :: observer(3),thetay,thetaz,theta,phi,temp,ekk
-  integer::igrid,jgrid,ipart,jpart,idim,icpu,ilevel,next_part
-  integer::i,j,ig,ip,npart1
-  integer::nalloc1,nalloc2
-  integer::proj_ind,l,nh_temp,nw_temp
+  real(kind=8) :: temp,ekk
+  integer::igrid,idim,ilevel
+  integer::proj_ind,nh_temp,nw_temp
   real(kind=4)::ratio
-
-  integer,dimension(1:nvector),save::ind_part,ind_grid_part
   logical::opened
 
   character(len=1)::temp_string
@@ -133,14 +124,6 @@ subroutine output_frame()
      end do
   endif
 #endif
-
-#ifdef TOTO
-  ! sink filename
-  if(sink)then
-    sinkfile = trim(moviedir)//'sink_'//trim(istep_str)//'.txt'
-    if(myid==1.and.proj_ind==1) call output_sink_csv(sinkfile)
-  endif
-#endif  
 
   if(levelmax_frame==0)then
      nlevelmax_frame=nlevelmax
@@ -364,84 +347,6 @@ subroutine output_frame()
      end do
   ! End loop over levels
   end if
-
-#ifdef TOTO
-  ! Loop over particles
-  do j=1,npartmax
-#if NDIM>2                 
-     if(proj_axis(proj_ind:proj_ind).eq.'x')then
-       xpf  = xp(j,2)
-       ypf  = xp(j,3)
-     elseif(proj_axis(proj_ind:proj_ind).eq.'y')then
-       xpf  = xp(j,1)
-       ypf  = xp(j,3)
-     else
-       xpf  = xp(j,1)
-       ypf  = xp(j,2)
-     endif
-     
-     if(proj_axis(proj_ind:proj_ind).eq.'x')then
-       zpf  = xp(j,1)
-     elseif(proj_axis(proj_ind:proj_ind).eq.'y')then
-       zpf  = xp(j,2)
-     else
-       zpf  = xp(j,3)
-     endif
-     if(    xpf.lt.xleft_frame.or.xpf.ge.xright_frame.or.&
-          & ypf.lt.yleft_frame.or.ypf.ge.yright_frame.or.&
-          & zpf.lt.zleft_frame.or.zpf.ge.zright_frame)cycle
-#else
-     xpf  = xp(j,1)
-     ypf  = xp(j,2)
-     
-     if(    xpf.lt.xleft_frame.or.xpf.ge.xright_frame.or.&
-          & ypf.lt.yleft_frame.or.ypf.ge.yright_frame)cycle
-#endif
-     ! Compute map indices for the cell
-     ii = min(int((xpf-xleft_frame)/dx_frame)+1,nw_frame)
-     jj = min(int((ypf-yleft_frame)/dy_frame)+1,nh_frame)
-     
-     ! Fill up map with projected mass
-#ifdef SOLVERmhd
-     if(star) then
-        if(tp(j).eq.0.) then
-           if(mass_cut_refine>0.0.and.zoom_only) then
-              if(mp(j)<mass_cut_refine) data_frame(ii,jj,NVAR+5)=data_frame(ii,jj,NVAR+5)+mp(j)
-           else
-              data_frame(ii,jj,NVAR+5)=data_frame(ii,jj,NVAR+5)+mp(j)
-           endif
-        else
-           data_frame(ii,jj,NVAR+6)=data_frame(ii,jj,NVAR+6)+mp(j)
-        endif
-     else
-        if(mass_cut_refine>0.0.and.zoom_only) then
-           if(mp(j)<mass_cut_refine) data_frame(ii,jj,NVAR+5)=data_frame(ii,jj,NVAR+5)+mp(j)
-        else
-           data_frame(ii,jj,NVAR+5)=data_frame(ii,jj,NVAR+5)+mp(j)
-        endif
-     endif
-#else
-     if(star) then
-        if(tp(j).eq.0.) then
-           if(mass_cut_refine>0.0.and.zoom_only) then
-              if(mp(j)<mass_cut_refine) data_frame(ii,jj,NVAR+1)=data_frame(ii,jj,NVAR+1)+mp(j)
-           else
-              data_frame(ii,jj,NVAR+1)=data_frame(ii,jj,NVAR+1)+mp(j)
-           endif
-        else
-           data_frame(ii,jj,NVAR+2)=data_frame(ii,jj,NVAR+2)+mp(j)
-        endif
-     else
-        if(mass_cut_refine>0.0.and.zoom_only) then
-           if(mp(j)<mass_cut_refine) data_frame(ii,jj,NVAR+1)=data_frame(ii,jj,NVAR+1)+mp(j)
-        else
-           data_frame(ii,jj,NVAR+1)=data_frame(ii,jj,NVAR+1)+mp(j)
-        endif
-     endif
-#endif
-  end do
-  ! End loop over particles
-#endif
 
 #ifndef WITHOUTMPI
 #ifdef SOLVERmhd

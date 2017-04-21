@@ -16,16 +16,11 @@ subroutine init_part_file
   ! grafic initial conditions are performed after the AMR grid 
   ! has been constructed.
   !------------------------------------------------------------
-  integer::dummyint
-  integer::npart2,ndim2,ncpu2
-  integer::ipart,jpart,jpart_loc,ipart_old,ilevel,idim
-  integer::i,igrid,ngrid,iskip,nsink
-  integer::ind,ix,iy,iz,ilun,info,icpu,nx_loc
-  integer::i1,i2,i3,i1_min,i1_max,i2_min,i2_max,i3_min,i3_max
-  integer::buf_count,indglob,npart_new
-  real(dp)::dx,xx1,xx2,xx3,vv1,vv2,vv3,mm1,ll1,ll2,ll3
-  real(dp)::scale,dx_loc,rr,rmax,dx_min,mp_min_all
-  integer::ncode,bit_length,temp,ncpu_file
+  integer::ipart,jpart,jpart_loc,ipart_old,idim
+  integer::i,ilun,info,icpu,indglob
+  real(dp)::xx1,xx2,xx3,vv1,vv2,vv3,mm1
+  real(dp)::mp_min_all
+  integer::ncpu_file
   integer::ileft,iright,nrest,ipos
   integer(i8b)::npart_tot_file
   integer(i8b)::istart,iend,nleft,nright
@@ -37,8 +32,7 @@ subroutine init_part_file
   integer(i8b),allocatable,dimension(:)::ncum_file
 
   integer,dimension(1:ncpu+1)::start_ind
-  logical::error,keep_part,eof,jumped,read_pos=.false.,ok
-  character(LEN=80)::filename,filename_x
+  character(LEN=80)::filename
   character(LEN=80)::fileloc,file_part
   character(LEN=20)::filetype_loc
   character(LEN=5)::nchar,ncharcpu
@@ -325,7 +319,7 @@ subroutine init_part_file
 #ifndef WITHOUTMPI
   call MPI_ALLREDUCE(mp_min,mp_min_all,1,MPI_DOUBLE_PRECISION,MPI_MIN,MPI_COMM_WORLD,info)  
   mp_min=mp_min_all
-#endif
+#endif 
   if(myid==1)write(*,*)'Minimum particle mass=',mp_min
   
   ! Compute maximum number of particles in all processors
@@ -354,21 +348,19 @@ subroutine init_part_grid
   ! Initialize particle position from grid cell positions.
   ! Read particles displacement and velocities from grafic files.
   !------------------------------------------------------------
-  integer::dummyint
-  integer::npart2,ndim2,ncpu2
-  integer::ipart,jpart,jpart_loc,ipart_old,ilevel,idim
-  integer::i,igrid,ngrid,iskip,nsink
-  integer::ind,ix,iy,iz,ilun,info,icpu,nx_loc
+  integer::ipart,ipart_old,ilevel,idim
+  integer::igrid
+  integer::ind,ilun,info
   integer::i1,i2,i3,i1_min,i1_max,i2_min,i2_max,i3_min,i3_max
-  integer::buf_count,indglob,npart_new
+  integer::buf_count
   integer,parameter::tagg=1109,tagg2=1110,tagg3=1111
   integer::dummy_io,info2
-  real(dp)::dx,dx_loc,xx1,xx2,xx3,xn1,xn2,xn3,vv1,vv2,vv3
-  real(kind=8)::dispmax=0.0,dispall,mp_min_all
+  real(dp)::dx,dx_loc,xx1,xx2,xx3
+  real(kind=8)::dispmax=0.0,mp_min_all
   real(kind=4),allocatable,dimension(:,:)::init_plane,init_plane_x
   real(dp),allocatable,dimension(:,:,:)::init_array,init_array_x
   character(LEN=80)::filename,filename_x
-  character(LEN=5)::nchar,ncharcpu
+  character(LEN=5)::nchar
   logical::ok,error,keep_part,read_pos=.false.
 
   if(verbose)write(*,*)'Entering init_part_from_grid'

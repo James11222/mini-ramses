@@ -89,7 +89,7 @@ subroutine jeans_length_refine(uu,factG,size_cell,n_jeans,ok)
   logical ::ok
   ! 
   real(dp)::lamb_jeans
-  real(dp)::dens,tempe,emag,etherm
+  real(dp)::dens,tempe,etherm
 
   ! compute the thermal energy
   dens = max( uu(1) , smallr )

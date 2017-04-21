@@ -7,11 +7,10 @@ subroutine init_amr
 #ifndef WITHOUTMPI
   include 'mpif.h'  
 #endif
-  integer::ilevel,icpu,info,igrid,i
+  integer::ilevel,icpu,info,igrid
   integer::intex,realdpex,msg_size
   integer(kind=8)::max_key
-  integer,dimension(1:10)::new_type_disp,new_type_type,new_type_length,new_type_address
-  real(kind=4)::real_mem,real_mem_tot
+  integer,dimension(1:10)::new_type_disp,new_type_type,new_type_length
   character(len=5)::nchar
   character(len=80)::file_params
   integer::ncpu_file,levelmin_file,nlevelmax_file
