@@ -1,1 +1,0 @@
-lightweight version of the RAMSES code for experimentation towards an exascale AMR code
