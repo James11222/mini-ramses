@@ -24,7 +24,12 @@ module amr_commons
   real(dp)::rho_tot=0.0D0                       ! Mean density in the box
   real(dp)::t=0.0D0                             ! Time variable
 
-  ! executable identification
+  ! Default units
+  real(dp)::units_density=1.0 ! [g/cm^3]
+  real(dp)::units_time=1.0    ! [seconds]
+  real(dp)::units_length=1.0  ! [cm]
+
+  ! Executable identification
   CHARACTER(LEN=80)::builddate,patchdir
   CHARACTER(LEN=80)::gitrepo,gitbranch,githash
 
@@ -97,19 +102,6 @@ module amr_commons
   ! Hilbert key
   integer(kind=8),allocatable,dimension(:,:,:)::bound_key_level,bound_hilbert_key,bound_key_mg
 
-  ! Software cache parameters
-  integer::cache_operation
-  integer::operation_initflag=1,operation_upload=2,operation_godunov=3,operation_smooth=4
-  integer::operation_hydro=5,operation_refine=6,operation_derefine=7,operation_loadbalance=8
-  integer::operation_phi=9,operation_rho=10,operation_multipole=11,operation_cg=12
-  integer::operation_build_mg=13,operation_restrict_mask=14,operation_mg=15
-  integer::operation_restrict_res=16,operation_scan=17,operation_interpol=18
-  integer::operation_split=19,operation_kick=20
-  integer::cache_operation_type
-  integer::operation_type_flag=1,operation_type_hydro=2,operation_type_poisson=3  
-  integer::operation_type_refine=4,operation_type_mg=5,operation_type_interpol=6
-  integer::domain_decompos_amr=1,domain_decompos_mg=2
-
   ! Software cache array for the AMR grid
   logical,allocatable,dimension(:)::dirty
   logical,allocatable,dimension(:)::occupied
@@ -123,10 +115,18 @@ module amr_commons
   integer,allocatable,dimension(:,:)::ckey_null
   integer::free_null,nnull
 
-  ! Default units
-  real(dp)::units_density=1.0 ! [g/cm^3]
-  real(dp)::units_time=1.0    ! [seconds]
-  real(dp)::units_length=1.0  ! [cm]
+  ! Software cache parameters
+  integer::cache_operation
+  integer::operation_initflag=1,operation_upload=2,operation_godunov=3,operation_smooth=4
+  integer::operation_hydro=5,operation_refine=6,operation_derefine=7,operation_loadbalance=8
+  integer::operation_phi=9,operation_rho=10,operation_multipole=11,operation_cg=12
+  integer::operation_build_mg=13,operation_restrict_mask=14,operation_mg=15
+  integer::operation_restrict_res=16,operation_scan=17,operation_interpol=18
+  integer::operation_split=19,operation_kick=20
+  integer::cache_operation_type
+  integer::operation_type_flag=1,operation_type_hydro=2,operation_type_poisson=3  
+  integer::operation_type_refine=4,operation_type_mg=5,operation_type_interpol=6
+  integer::domain_decompos_amr=1,domain_decompos_mg=2
 
   ! Communication-related objects
   integer::mail_counter=0

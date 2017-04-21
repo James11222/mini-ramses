@@ -9,7 +9,7 @@ NPRE = 8
 NVAR = 5
 NENER = 0
 SOLVER = hydro
-PATCH = 
+PATCH = /home/cluster/rteyss/mini-ramses/trunk/ramses/patch/hydro/coeur
 EXEC = ramses
 #############################################################################
 GITBRANCH = $(shell git rev-parse --abbrev-ref HEAD)
@@ -49,7 +49,7 @@ DEFINES = -DNVECTOR=$(NVECTOR) -DNDIM=$(NDIM) -DNPRE=$(NPRE) -DNENER=$(NENER) -D
 #FFLAGS = -x f95-cpp-input $(DEFINES)
 
 # --- MPI, gfortran DEBUG syntax ------------------------------ 
-F90 = mpif90 -frecord-marker=4 -ffree-line-length-none -fbacktrace -g -O -fbounds-check -Wunused-variable
+F90 = mpif90 -frecord-marker=4 -ffree-line-length-none -fbacktrace -g -O -fbounds-check
 FFLAGS = -x f95-cpp-input  $(DEFINES)    
 
 # --- MPI, pgf90 syntax ------------------------------
