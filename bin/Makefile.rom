@@ -9,7 +9,7 @@ NPRE = 8
 NVAR = 5
 NENER = 0
 SOLVER = hydro
-PATCH = /home/cluster/rteyss/mini-ramses/trunk/ramses/patch/hydro/coeur
+PATCH = /home/cluster/rteyss/mini-ramses/patch/hydro/coeur
 EXEC = ramses
 #############################################################################
 GITBRANCH = $(shell git rev-parse --abbrev-ref HEAD)
