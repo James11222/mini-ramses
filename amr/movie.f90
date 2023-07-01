@@ -212,7 +212,7 @@ end subroutine r_output_frame
 !=======================================================================
 !=======================================================================
 subroutine output_frame(r,g,m,ind_proj,ind_var,map_size,map)
-  use amr_parameters, only: dp,ndim,nvector,twotondim
+  use amr_parameters, only: dp,ndim,nvector,twotondim,ndof
   use hydro_parameters, only: nvar
   use amr_commons, only: run_t,global_t,mesh_t
   implicit none
@@ -225,7 +225,7 @@ subroutine output_frame(r,g,m,ind_proj,ind_var,map_size,map)
   ! Local variables
   integer::nlevelmax_frame,nstride
   integer::ilun,ind,ind_map
-  integer::imin,imax,jmin,jmax,ii,jj
+  integer::imin,imax,jmin,jmax,ii,jj,i,j,k
   real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v
   real(dp)::xcen,ycen,zcen
   real(dp)::xleft_frame,xright_frame,yleft_frame,yright_frame,zleft_frame,zright_frame
@@ -237,7 +237,8 @@ subroutine output_frame(r,g,m,ind_proj,ind_var,map_size,map)
   logical::ok
   real(dp),dimension(1:ndim)::xx
   real(kind=8)::temp,ekk
-  integer::igrid,idim,ilevel
+  integer::igrid,idim,ilevel,idof
+  integer,dimension(1:ndim)::iskip
 
   if(r%levelmax_frame==0)then
      nlevelmax_frame=r%nlevelmax
@@ -308,55 +309,77 @@ subroutine output_frame(r,g,m,ind_proj,ind_var,map_size,map)
         ! Loop over cells
         do ind=1,twotondim
            
+#if NDOF>1
+#if NDIM>2
+           do k=1,ndof
+           iskip(3)=k
+#else
+           k=1
+#endif
+#if NDIM>1
+           do j=1,ndof
+           iskip(2)=j
+#else
+           j=1
+#endif
+           do i=1,ndof
+           iskip(1)=i
+           idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+           ! Compute cell centre position in code units
+           do idim=1,ndim
+              nstride=2**(idim-1)
+              xx(idim)=(2*m%grid(igrid)%ckey(idim)+MOD((ind-1)/nstride,2)+(iskip(idim)-1+0.5d0)/dble(ndof))*dx
+           end do
+#else
            ! Compute cell centre position in code units
            do idim=1,ndim
               nstride=2**(idim-1)
               xx(idim)=(2*m%grid(igrid)%ckey(idim)+MOD((ind-1)/nstride,2)+0.5d0)*dx
            end do
-           
+#endif
            ! Check if cell is to be considered
            ok=(.NOT.m%grid(igrid)%refined(ind)).or.(ilevel==nlevelmax_frame)
            
            if(ok)then
               ! Check if the cell intersect the domain
-#if NDIM>2                 
+#if NDIM>2
               if(r%proj_axis(ind_proj:ind_proj).eq.'x')then
-                 xleft =xx(2)-dx/2.0d0
-                 xright=xx(2)+dx/2.0d0
-                 yleft =xx(3)-dx/2.0d0
-                 yright=xx(3)+dx/2.0d0
+                 xleft =xx(2)-dx/2.0d0/dble(ndof)
+                 xright=xx(2)+dx/2.0d0/dble(ndof)
+                 yleft =xx(3)-dx/2.0d0/dble(ndof)
+                 yright=xx(3)+dx/2.0d0/dble(ndof)
               elseif(r%proj_axis(ind_proj:ind_proj).eq.'y')then
-                 xleft =xx(1)-dx/2.0d0
-                 xright=xx(1)+dx/2.0d0
-                 yleft =xx(3)-dx/2.0d0
-                 yright=xx(3)+dx/2.0d0
+                 xleft =xx(1)-dx/2.0d0/dble(ndof)
+                 xright=xx(1)+dx/2.0d0/dble(ndof)
+                 yleft =xx(3)-dx/2.0d0/dble(ndof)
+                 yright=xx(3)+dx/2.0d0/dble(ndof)
               else
-                 xleft =xx(1)-dx/2.0d0
-                 xright=xx(1)+dx/2.0d0
-                 yleft =xx(2)-dx/2.0d0
-                 yright=xx(2)+dx/2.0d0
+                 xleft =xx(1)-dx/2.0d0/dble(ndof)
+                 xright=xx(1)+dx/2.0d0/dble(ndof)
+                 yleft =xx(2)-dx/2.0d0/dble(ndof)
+                 yright=xx(2)+dx/2.0d0/dble(ndof)
               endif
               
               if(r%proj_axis(ind_proj:ind_proj).eq.'x')then
-                 zleft =xx(1)-dx/2.
-                 zright=xx(1)+dx/2.
+                 zleft =xx(1)-dx/2.0d0/dble(ndof)
+                 zright=xx(1)+dx/2.0d0/dble(ndof)
               elseif(r%proj_axis(ind_proj:ind_proj).eq.'y')then
-                 zleft =xx(2)-dx/2.
-                 zright=xx(2)+dx/2.
+                 zleft =xx(2)-dx/2.0d0/dble(ndof)
+                 zright=xx(2)+dx/2.0d0/dble(ndof)
               else
-                 zleft =xx(3)-dx/2.
-                 zright=xx(3)+dx/2.
+                 zleft =xx(3)-dx/2.0d0/dble(ndof)
+                 zright=xx(3)+dx/2.0d0/dble(ndof)
               endif
               if(    xright.lt.xleft_frame.or.xleft.ge.xright_frame.or.&
                    & yright.lt.yleft_frame.or.yleft.ge.yright_frame.or.&
                    & zright.lt.zleft_frame.or.zleft.ge.zright_frame)cycle
 #else
-              xleft =xx(1)-dx/2.
-              xright=xx(1)+dx/2.
+              xleft =xx(1)-dx/2.0d0/dble(ndof)
+              xright=xx(1)+dx/2.0d0/dble(ndof)
 #if NDIM>1
-              yleft =xx(2)-dx/2.
-              yright=xx(2)+dx/2.
-#endif              
+              yleft =xx(2)-dx/2.0d0/dble(ndof)
+              yright=xx(2)+dx/2.0d0/dble(ndof)
+#endif
               if(    xright.lt.xleft_frame.or.xleft.ge.xright_frame.or.&
                    & yright.lt.yleft_frame.or.yleft.ge.yright_frame)cycle
 #endif
@@ -375,7 +398,7 @@ subroutine output_frame(r,g,m,ind_proj,ind_var,map_size,map)
               jmax=min(int((yright-yleft_frame)/dy_frame)+1,r%nh_frame) ! change
               
               ! Fill up map with projected mass
-#if NDIM>2                 
+#if NDIM>2
               dz_cell=min(zright_frame,zright)-max(zleft_frame,zleft) ! change
 #endif
               do ii=imin,imax
@@ -388,11 +411,35 @@ subroutine output_frame(r,g,m,ind_proj,ind_var,map_size,map)
                     dy_cell=min(yyright,yright)-max(yyleft,yleft)
                     ! Intersection volume
                     dvol=dx_cell*dy_cell
-#if NDIM>2                 
+#if NDIM>2
                     dvol=dvol*dz_cell
 #endif
                     ind_map=ii+(jj-1)*r%nw_frame
 #ifdef HYDRO
+#if NDOF>1
+                    if(ind_var==0)then
+                       ! Compute column density map
+                       map(ind_map)=map(ind_map)+dvol*max(m%grid(igrid)%uold(idof,ind,1),r%smallr)
+                    else if(ind_var==1)then
+                       ! Compute mass-weighted mean density
+                       map(ind_map)=map(ind_map)+dvol*max(m%grid(igrid)%uold(idof,ind,1),r%smallr)**2
+                    else if(ind_var==(ndim+2))then
+                       ! Compute mass-weighted mean temperature
+                       ! Kinetic energy
+                       ekk=0.0d0
+                       do idim=1,3
+                          ekk=ekk+0.5d0*m%grid(igrid)%uold(idof,ind,idim+1)**2/max(m%grid(igrid)%uold(idof,ind,1),r%smallr)
+                       enddo
+                       ! Pressure
+                       temp=(r%gamma-1.0d0)*(m%grid(igrid)%uold(idof,ind,ndim+2)-ekk)
+                       ! Temperature in K
+                       temp=max(temp/max(m%grid(igrid)%uold(idof,ind,1),r%smallr),r%smallc**2)*scale_T2
+                       map(ind_map)=map(ind_map)+dvol*max(m%grid(igrid)%uold(idof,ind,1),r%smallr)*temp
+                    else
+                       ! Other variables
+                       map(ind_map)=map(ind_map)+dvol*m%grid(igrid)%uold(idof,ind,ind_var)
+                    end if
+#else
                     if(ind_var==0)then
                        ! Compute column density map
                        map(ind_map)=map(ind_map)+dvol*max(m%grid(igrid)%uold(ind,1),r%smallr)
@@ -416,10 +463,19 @@ subroutine output_frame(r,g,m,ind_proj,ind_var,map_size,map)
                        map(ind_map)=map(ind_map)+dvol*m%grid(igrid)%uold(ind,ind_var)
                     end if
 #endif
+#endif
                  end do
               end do
            end if
-           
+#if NDOF>1
+           end do
+#if NDIM>1
+           end do
+#endif
+#if NDIM>2
+           end do
+#endif
+#endif
         end do
         ! End loop over cells
         

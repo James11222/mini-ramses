@@ -35,6 +35,14 @@ module amr_parameters
   integer,parameter::threetondim=3**ndim
   integer,parameter::twondim=2*ndim
 
+  ! Number of degree of freedom per element
+#ifndef NDOF
+  integer,parameter::ndof=1
+#else
+  integer,parameter::ndof=NDOF
+#endif
+  integer,parameter::ndoftondim=ndof**ndim
+
   ! Number of 64-bit integers needed to store one Hilbert key
 #ifndef NHILBERT
   integer, parameter :: nhilbert = 1

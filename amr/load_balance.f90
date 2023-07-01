@@ -586,7 +586,7 @@ end subroutine load_balance
 !#########################################################################
 !#########################################################################
 subroutine pack_flush_loadbalance(grid,msg_size,msg_array)
-  use amr_parameters, only: ndim,twotondim
+  use amr_parameters, only: ndim,twotondim,ndoftondim
   use hydro_parameters, only: nvar
   use amr_commons, only: oct
   use cache_commons, only: msg_large_realdp
@@ -594,7 +594,7 @@ subroutine pack_flush_loadbalance(grid,msg_size,msg_array)
   integer::msg_size
   integer,dimension(1:msg_size),optional::msg_array
 
-  integer::ind,ivar,idim
+  integer::ind,ivar,idim,idof
   type(msg_large_realdp)::msg
 
   do ind=1,twotondim
@@ -606,11 +606,21 @@ subroutine pack_flush_loadbalance(grid,msg_size,msg_array)
   end do
   
 #ifdef HYDRO
+#if NDOF>1
+  do ind=1,twotondim
+     do ivar=1,nvar
+        do idof=1,ndoftondim
+           msg%realdp_hydro(idof,ind,ivar)=grid%uold(idof,ind,ivar)
+        end do
+     end do
+  end do
+#else
   do ind=1,twotondim
      do ivar=1,nvar
         msg%realdp_hydro(ind,ivar)=grid%uold(ind,ivar)
      end do
   end do
+#endif
 #endif
   
 #ifdef GRAV
@@ -631,7 +641,7 @@ end subroutine pack_flush_loadbalance
 !#########################################################################
 !#########################################################################
 subroutine unpack_flush_loadbalance(grid,msg_size,msg_array,hash_key)
-  use amr_parameters, only: ndim,twotondim
+  use amr_parameters, only: ndim,twotondim,ndoftondim
   use hydro_parameters, only: nvar
   use amr_commons, only: oct
   use cache_commons, only: msg_large_realdp
@@ -640,15 +650,12 @@ subroutine unpack_flush_loadbalance(grid,msg_size,msg_array,hash_key)
   integer,dimension(1:msg_size),optional::msg_array
   integer(kind=8),dimension(0:ndim)::hash_key
 
-  integer::ind,ivar,idim
+  integer::ind,ivar,idim,idof
   type(msg_large_realdp)::msg
 
   grid%lev=hash_key(0)
   grid%ckey(1:ndim)=hash_key(1:ndim)
   msg=transfer(msg_array,msg)
-
-!  write(*,*)'UNPACK REF',msg%int4
-!  write(*,*)'UNPACK RHO',msg%realdp_hydro(1:twotondim,1)
 
   do ind=1,twotondim
      if(msg%int4(ind)==1)then
@@ -659,11 +666,21 @@ subroutine unpack_flush_loadbalance(grid,msg_size,msg_array,hash_key)
   enddo
   
 #ifdef HYDRO
+#if NDOF>1
+  do ind=1,twotondim
+     do ivar=1,nvar
+        do idof=1,ndoftondim
+           grid%uold(idof,ind,ivar)=msg%realdp_hydro(idof,ind,ivar)
+        end do
+     end do
+  end do
+#else
   do ind=1,twotondim
      do ivar=1,nvar
         grid%uold(ind,ivar)=msg%realdp_hydro(ind,ivar)
      end do
   end do
+#endif
 #endif
   
 #ifdef GRAV

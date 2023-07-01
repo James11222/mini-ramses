@@ -5,8 +5,13 @@ module oct_commons
   ! New type for oct structure
   type oct
 #ifdef HYDRO
+#if NDOF>1
+     real(kind=dp),dimension(1:ndoftondim,1:twotondim,1:nvar)::uold
+     real(kind=dp),dimension(1:ndoftondim,1:twotondim,1:nvar)::unew
+#else
      real(kind=dp),dimension(1:twotondim,1:nvar)::uold
      real(kind=dp),dimension(1:twotondim,1:nvar)::unew
+#endif
 #endif
 #ifdef GRAV
      real(kind=dp),dimension(1:twotondim,1:3)::f

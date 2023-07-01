@@ -38,7 +38,7 @@ end subroutine r_output_hydro
 !###################################################
 !###################################################
 subroutine output_hydro(r,g,m,mdl,filename)
-  use amr_parameters, only: ndim,twotondim,flen,dp
+  use amr_parameters, only: ndim,twotondim,flen,dp,ndoftondim
   use hydro_parameters, only: nvar
   use amr_commons, only: run_t,global_t,mesh_t
   use mdl_module
@@ -49,11 +49,16 @@ subroutine output_hydro(r,g,m,mdl,filename)
   type(mdl_t)::mdl
   character(LEN=flen)::filename
 
+#if NDOF>1
+  real(dp),dimension(1:ndoftondim,1:twotondim,1:nvar)::uold
+  real(kind=4),dimension(1:ndoftondim,1:twotondim,1:nvar)::uout
+#else
   real(dp),dimension(1:twotondim,1:nvar)::uold
+  real(kind=4),dimension(1:twotondim,1:nvar)::uout
+#endif
   real(dp)::etot,ekin,dd,pp
   real(dp),dimension(1:ndim)::vv
-  real(kind=4),dimension(1:twotondim,1:nvar)::uout
-  integer::ilevel,igrid,ilun,ierr,ivar,ind
+  integer::ilevel,igrid,ilun,ierr,ivar,ind,idof
   character(LEN=5)::nchar
   character(LEN=flen)::fileloc
   logical::file_exist
@@ -71,6 +76,9 @@ subroutine output_hydro(r,g,m,mdl,filename)
   open(unit=ilun,file=fileloc,access="stream",action="write",form='unformatted')
   write(ilun)ndim
   write(ilun)nvar
+#if NDOF>1
+  write(ilun)ndof
+#endif
   write(ilun)r%levelmin
   write(ilun)r%nlevelmax
   do ilevel=r%levelmin,r%nlevelmax
@@ -79,6 +87,44 @@ subroutine output_hydro(r,g,m,mdl,filename)
   do ilevel=r%levelmin,r%nlevelmax
      do igrid=m%head(ilevel),m%tail(ilevel)
         uold=m%grid(igrid)%uold
+
+#if NDOF>1
+
+        do ind=1,twotondim
+           do idof=1,ndoftondim
+              ! Compute density
+              dd=uold(idof,ind,1)
+              ! Compute velocity
+              vv(1:ndim)=uold(idof,ind,2:ndim+1)/dd
+              ! Compute kinetic energy
+              ekin=0.
+#if NDIM>0
+              ekin=ekin+0.5*dd*vv(1)**2
+#endif
+#if NDIM>1
+              ekin=ekin+0.5*dd*vv(2)**2
+#endif
+#if NDIM>2
+              ekin=ekin+0.5*dd*vv(3)**2
+#endif
+              ! Compute pressure
+              etot=uold(idof,ind,ndim+2)
+              pp=(r%gamma-1)*(etot-ekin)
+              ! Store as primitive variables
+              uold(idof,ind,1)=dd
+              uold(idof,ind,2:ndim+1)=vv
+              uold(idof,ind,ndim+2)=pp
+#if NVAR>NDIM+2+NENER
+              ! Compute passive scalars
+              do ivar=ndim+3,nvar
+                 uold(idof,ind,ivar)=uold(idof,ind,ivar)/dd
+              end do
+#endif
+           end do
+        end do
+
+#else
+
         do ind=1,twotondim
            ! Compute density
            dd=uold(ind,1)
@@ -109,6 +155,7 @@ subroutine output_hydro(r,g,m,mdl,filename)
            end do
 #endif
         end do
+#endif
         uout=real(uold,kind=4)
         write(ilun)uout
      end do
@@ -152,6 +199,9 @@ subroutine backup_hydro(r,g,m,mdl,filename)
   open(unit=ilun,file=fileloc,access="stream",action="write",form='unformatted')
   write(ilun)ndim
   write(ilun)nvar
+#if NDOF>1
+  write(ilun)ndof
+#endif
   write(ilun)r%levelmin
   write(ilun)r%nlevelmax
   do ilevel=r%levelmin,r%nlevelmax

@@ -405,7 +405,7 @@ end subroutine refine_fine
 !###############################################################
 !###############################################################
 subroutine pack_flush_refine(grid,msg_size,msg_array)
-  use amr_parameters, only: ndim,twotondim
+  use amr_parameters, only: ndim,twotondim,ndoftondim
   use hydro_parameters, only: nvar
   use amr_commons, only: oct
   use cache_commons, only: msg_large_realdp
@@ -413,15 +413,25 @@ subroutine pack_flush_refine(grid,msg_size,msg_array)
   integer::msg_size
   integer,dimension(1:msg_size),optional::msg_array
 
-  integer::ind,ivar,idim
+  integer::ind,ivar,idim,idof
   type(msg_large_realdp)::msg
 
 #ifdef HYDRO
+#if NDOF>1
+  do ivar=1,nvar
+     do ind=1,twotondim
+        do idof=1,ndoftondim
+           msg%realdp_hydro(idof,ind,ivar)=grid%uold(idof,ind,ivar)
+        end do
+     end do
+  end do
+#else
   do ivar=1,nvar
      do ind=1,twotondim
         msg%realdp_hydro(ind,ivar)=grid%uold(ind,ivar)
      end do
   end do
+#endif
 #endif
   
 #ifdef GRAV
@@ -444,7 +454,7 @@ end subroutine pack_flush_refine
 !###############################################################
 !###############################################################
 subroutine unpack_flush_refine(grid,msg_size,msg_array,hash_key)
-  use amr_parameters, only: ndim,twotondim
+  use amr_parameters, only: ndim,twotondim,ndoftondim
   use hydro_parameters, only: nvar
   use amr_commons, only: oct
   use cache_commons, only: msg_large_realdp
@@ -453,7 +463,7 @@ subroutine unpack_flush_refine(grid,msg_size,msg_array,hash_key)
   integer,dimension(1:msg_size),optional::msg_array
   integer(kind=8),dimension(0:ndim)::hash_key
 
-  integer::ind,ivar,idim
+  integer::ind,ivar,idim,idof
   type(msg_large_realdp)::msg
 
   grid%lev=hash_key(0)
@@ -465,11 +475,21 @@ subroutine unpack_flush_refine(grid,msg_size,msg_array,hash_key)
   end do
   
 #ifdef HYDRO
+#if NDOF>1
+  do ind=1,twotondim
+     do ivar=1,nvar
+        do idof=1,ndoftodim
+           grid%uold(idof,ind,ivar)=msg%realdp_hydro(idof,ind,ivar)
+        end do
+     end do
+  end do
+#emse
   do ind=1,twotondim
      do ivar=1,nvar
         grid%uold(ind,ivar)=msg%realdp_hydro(ind,ivar)
      end do
   end do
+#endif
 #endif
   
 #ifdef GRAV
@@ -558,7 +578,7 @@ end subroutine unpack_flush_derefine
 subroutine make_new_oct(s,parent,icell,ilevel)
   USE, INTRINSIC :: ISO_C_BINDING, ONLY: c_associated
   use mdl_module
-  use amr_parameters, only: ndim,nhilbert,twotondim,twondim,nvector
+  use amr_parameters, only: ndim,nhilbert,twotondim,twondim,nvector,ndoftondim,ndof
   use amr_commons, only:nbor,oct
   use hydro_parameters, only: nvar
   use ramses_commons, only: ramses_t
@@ -582,13 +602,19 @@ subroutine make_new_oct(s,parent,icell,ilevel)
   ! and the cell index icell (from 1 to 8).
   !--------------------------------------------------------------
   integer::idim,ivar,ind,inbor,nstride,grid_cpu
+  integer::i,j,k,i1,j1,k1,ii,jj,kk,idof,idof1
   integer(kind=8),dimension(1:nhilbert)::hk
   integer(kind=8),dimension(1:ndim)::ix
   integer(kind=8),dimension(1:ndim)::cart_key
   integer(kind=8),dimension(0:ndim)::hash_key
   integer,dimension(0:twondim)::igrid_nbor,ind_nbor
+#if NDOF>1
+  real(dp),dimension(1:ndoftondim,0:twondim,1:nvar)::u1
+  real(dp),dimension(1:ndoftondim,1:twotondim,1:nvar)::u2
+#else
   real(dp),dimension(0:twondim,1:nvar)::u1
   real(dp),dimension(1:twotondim,1:nvar)::u2
+#endif
   type(nbor),dimension(0:twondim)::grid_nbor
   type(oct),pointer::child
   logical::ok
@@ -675,7 +701,37 @@ subroutine make_new_oct(s,parent,icell,ilevel)
   ! Interpolate hydro variables
   do ivar=1,nvar
      do ind=1,twotondim
+#if NDOF>1
+        kk=MOD((ind-1)/4,2)
+        jj=MOD(ind-1)/2,2)
+        ii=MOD(ind-1),2)
+#if NDIM>2
+        do k=1,ndof
+#else
+        k=1
+#endif
+        k1=(k-1)/2+kk*ndof/2+1
+#if NDIM>1
+        do j=1,ndof
+#else
+        j=1
+#endif
+        j1=(j-1)/2+jj*ndof/2+1
+        do i=1,ndof
+        i1=(i-1)/2+ii*ndof/2+1
+        idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+        idof1=i1+(j1-1)*ndof+(k1-1)*ndof*ndof
+        child%uold(idof,ind,ivar)=parent%uold(idof1,icell,ivar)
+        end do
+#if NDIM>1
+        end do
+#endif
+#if NDIM>2
+        end do
+#endif
+#else
         child%uold(ind,ivar)=parent%uold(icell,ivar)
+#endif
      enddo
   end do
 
@@ -691,7 +747,13 @@ subroutine make_new_oct(s,parent,icell,ilevel)
      if(ok)then
         do inbor=0,twondim
            do ivar=1,nvar
+#if NDOF>1
+              do idof=1,ndoftondim
+                 u1(idof,inbor,ivar)=grid_nbor(inbor)%p%uold(idof,ind_nbor(inbor),ivar)
+              end do
+#else
               u1(inbor,ivar)=grid_nbor(inbor)%p%uold(ind_nbor(inbor),ivar)
+#endif
            end do
         end do
         ! Interpolate
@@ -699,7 +761,13 @@ subroutine make_new_oct(s,parent,icell,ilevel)
         ! Store hydro variables
         do ivar=1,nvar
            do ind=1,twotondim
+#if NDOF>1
+              do idof=1,ndoftondim
+                 child%uold(idof,ind,ivar)=u2(idof,ind,ivar)
+              end do
+#else
               child%uold(ind,ivar)=u2(ind,ivar)
+#endif
            enddo
         end do
      endif

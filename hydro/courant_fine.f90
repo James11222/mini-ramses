@@ -40,7 +40,7 @@ end subroutine r_courant_fine
 !###########################################################
 !###########################################################
 subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,dt)
-  use amr_parameters, only: dp,nvector,ndim,twotondim
+  use amr_parameters, only: dp,nvector,ndim,twotondim,ndoftondim
   use hydro_parameters, only: nvar
   use amr_commons, only: run_t,global_t,mesh_t
   implicit none
@@ -53,7 +53,7 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,dt)
   ! Using the Courant-Friedrich-Levy stability condition,               !
   ! this routine computes the maximum allowed time-step.                !
   !----------------------------------------------------------------------
-  integer::ivar,idim,ind,igrid
+  integer::ivar,idim,ind,igrid,idof
   real(dp)::dt_lev,dx,vol
   real(dp),dimension(1:nvar)::uu
   real(dp),dimension(1:ndim)::gg
@@ -78,18 +78,26 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,dt)
         if(.NOT. m%grid(igrid)%refined(ind))then
 
            ! Gather hydro variables
+#if NDOF>1
+           do idof=1,ndoftondim
+           do ivar=1,nvar
+              uu(ivar)=m%grid(igrid)%uold(idof,ind,ivar)
+           end do
+#else
            do ivar=1,nvar
               uu(ivar)=m%grid(igrid)%uold(ind,ivar)
            end do
-
+#endif
            ! Gather gravitational acceleration
            gg=0.0d0
 #ifdef GRAV
-           if(r%poisson)then
-              do idim=1,ndim
-                 gg(idim)=m%grid(igrid)%f(ind,idim)
-              end do
-           end if
+           do idim=1,ndim
+              gg(idim)=m%grid(igrid)%f(ind,idim)
+           end do
+#else
+           do idim=1,ndim
+              gg(idim)=r%constant_gravity(idim)
+           end do
 #endif
            ! Compute total mass
            mass=mass+uu(1)*vol
@@ -110,6 +118,9 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,dt)
            ! Compute CFL time-step
            call cmpdt(r,uu,gg,dx,dt_lev)
            dt=min(dt,dt_lev)
+#if NDOF>1
+           end do
+#endif
         endif
 
      end do

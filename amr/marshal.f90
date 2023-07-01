@@ -5,7 +5,7 @@ contains
 !###############################################################
 !###############################################################
 subroutine pack_fetch_refine(grid,msg_size,msg_array)
-  use amr_parameters, only: ndim,twotondim
+  use amr_parameters, only: ndim,twotondim,ndoftondim
   use hydro_parameters, only: nvar
   use amr_commons, only: oct
   use cache_commons, only: msg_large_realdp
@@ -13,9 +13,9 @@ subroutine pack_fetch_refine(grid,msg_size,msg_array)
   integer::msg_size
   integer,dimension(1:msg_size),optional::msg_array
 
-  integer::idim,ind,ivar
+  integer::idim,ind,ivar,idof
   type(msg_large_realdp)::msg
-
+  
   do ind=1,twotondim
      if(grid%refined(ind))then
         msg%int4(ind)=1
@@ -27,7 +27,13 @@ subroutine pack_fetch_refine(grid,msg_size,msg_array)
 #ifdef HYDRO
   do ivar=1,nvar
      do ind=1,twotondim
+#if NDOF>1
+        do idof=1,ndoftondim
+           msg%realdp_hydro(idof,ind,ivar)=grid%uold(idof,ind,ivar)
+        end do
+#else
         msg%realdp_hydro(ind,ivar)=grid%uold(ind,ivar)
+#endif
      end do
   end do
 #endif
@@ -52,7 +58,7 @@ end subroutine pack_fetch_refine
 !###############################################################
 !###############################################################
 subroutine unpack_fetch_refine(grid,msg_size,msg_array,hash_key)
-  use amr_parameters, only: ndim,twotondim
+  use amr_parameters, only: ndim,twotondim,ndoftondim
   use hydro_parameters, only: nvar
   use amr_commons, only: oct
   use cache_commons, only: msg_large_realdp
@@ -61,7 +67,7 @@ subroutine unpack_fetch_refine(grid,msg_size,msg_array,hash_key)
   integer,dimension(1:msg_size),optional::msg_array
   integer(kind=8),dimension(0:ndim)::hash_key
 
-  integer::idim,ind,ivar
+  integer::idim,ind,ivar,idof
   type(msg_large_realdp)::msg
 
   grid%lev=hash_key(0)
@@ -79,7 +85,13 @@ subroutine unpack_fetch_refine(grid,msg_size,msg_array,hash_key)
 #ifdef HYDRO
   do ivar=1,nvar
      do ind=1,twotondim
+#if NDOF>1
+        do idof=1,ndoftondim
+           grid%uold(idof,ind,ivar)=msg%realdp_hydro(idof,ind,ivar)
+        end do
+#else
         grid%uold(ind,ivar)=msg%realdp_hydro(ind,ivar)
+#endif
      end do
   end do
 #endif

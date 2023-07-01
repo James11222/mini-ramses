@@ -29,7 +29,7 @@ end subroutine r_input_hydro_condinit
 !#########################################################################
 !#########################################################################
 subroutine input_hydro_condinit(r,g,m,ilevel)
-  use amr_parameters, only: ndim,twotondim,dp,nvector
+  use amr_parameters, only: ndim,twotondim,dp,nvector,ndof,ndoftondim
   use hydro_parameters, only: nvar
   use amr_commons, only: run_t,global_t,mesh_t
   implicit none
@@ -39,18 +39,64 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
   integer::ilevel
   
   ! Local variables
-  integer::igrid,ngrid,ind,idim,nstride,i,ivar
+  integer::igrid,ngrid,ind,idim,nstride,i,j,k,ivar
+  integer,dimension(1:ndim)::iskip
   real(dp),dimension(1:nvector,1:ndim)::xx
   real(dp),dimension(1:nvector,1:nvar)::uu
   real(dp)::dx
-
+  
   if(m%noct(ilevel)==0)return
 
   !----------------------------------------------------
   ! Compute initial conditions from subroutine condinit
   !----------------------------------------------------
+
   ! Mesh size at level ilevel in code units
   dx=r%boxlen/2**ilevel
+
+#if NDOF>1
+  do igrid=m%head(ilevel),m%tail(ilevel)
+     do ind=1,twotondim
+#if NDIM>2
+        do k=1,ndof
+        iskip(3)=k
+#else
+        k=1
+#endif
+#if NDIM>1
+        do j=1,ndof
+        iskip(2)=j
+#else
+        j=1
+#endif
+        do i=1,ndof
+           iskip(1)=i
+           idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+           do idim=1,ndim
+              nstride=2**(idim-1)
+              xx(idof,idim)=(2*m%grid(igrid)%ckey(idim)+MOD((ind-1)/nstride,2)&
+                   & +(iskip(idim)-1+0.5)/dble(ndof))*dx-m%skip(idim)
+           end do
+        end do
+        end do
+        end do
+        ! Call initial condition routine
+        call condinit(r,g,xx,uu,dx,ndoftondim)
+        ! Scatter variables to main memory
+#ifdef HYDRO
+        do ivar=1,nvar
+           do idof=1,ndoftondim
+              m%grid(igrid)%uold(idof,ind,ivar)=uu(idof,ivar)
+           end do
+        end do
+#endif
+     end do
+     ! End loop over cells
+  end do
+  ! End loop over grids
+
+#else
+
   ! Loop over grids by vector sweeps
   do igrid=m%head(ilevel),m%tail(ilevel),nvector
      ngrid=MIN(nvector,m%tail(ilevel)-igrid+1)
@@ -78,6 +124,7 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
   end do
   ! End loop over grids
 
+#endif
 end subroutine input_hydro_condinit
 !################################################################
 !################################################################

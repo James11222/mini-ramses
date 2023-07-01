@@ -68,7 +68,7 @@ contains
   !################################################################
   !################################################################
   subroutine init_bound_refine(r,g,m,grid,grid_ref,ibound)
-    use amr_parameters, only: ndim, twotondim, dp, nvector
+    use amr_parameters, only: ndim, twotondim, dp, nvector, ndof, ndoftondim
     use hydro_parameters, only: nvar, nener
     use amr_commons, only: run_t, global_t, mesh_t, oct
     type(run_t)::r
@@ -103,7 +103,9 @@ contains
          &    5,6,7,8,5,6,7,8/),(/8,3/))
 
     integer::idim, ind, ivar
+    integer::i,j,k,idof,i1,j1,k1,idof1
     integer::type, dir, shift, nstride
+    integer,dimension(1:ndim)::iskip
     real(dp)::reverse, ek_bound
     real(dp),dimension(1:nvector,1:ndim)::xx
     real(dp),dimension(1:nvector,1:nvar)::uu
@@ -138,25 +140,54 @@ contains
     ! Reflexive BC
     if(type == 1)then
 
-       if(shift==+1)then
+       if(shift==+1.or.shift==-1)then
           do ivar=1,nvar
              reverse=1
              if(ivar==1+dir)reverse=-1
              do ind=1,twotondim
+#if NDOF>1
+#if NDIM>2
+                do k=1,ndof
+#else
+                k=1
+#endif
+                k1=k
+                if(dir==3)k1=ndof-k+1
+#if NDIM>1
+                do j=1,ndof
+#else
+                k=1
+#endif
+                j1=j
+                if(dir==2)j1=ndof-j+1
+                do i=1,ndof
+                   i1=i
+                   if(dir==1)i1=ndof-i+1
+                   idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+                   idof1=i1+(j1-1)*ndof+(k1-1)*ndof*ndof
+                   grid%uold(idof,ind,ivar)=grid_ref%uold(idof1,ind1_right(ind,dir),ivar)*reverse
+                end do
+#if NDIM>1
+                end do
+#endif
+#if NDIM>2
+                end do
+#endif
+#else
                 grid%uold(ind,ivar)=grid_ref%uold(ind1_right(ind,dir),ivar)*reverse
+#endif
              end do
           end do
        endif
-
-       if(shift==-1)then
-          do ivar=1,nvar
-             reverse=1
-             if(ivar==1+dir)reverse=-1
-             do ind=1,twotondim
-                grid%uold(ind,ivar)=grid_ref%uold(ind1_left(ind,dir),ivar)*reverse
-             end do
-          end do
-       endif
+!!$       if(shift==-1)then
+!!$          do ivar=1,nvar
+!!$             reverse=1
+!!$             if(ivar==1+dir)reverse=-1
+!!$             do ind=1,twotondim
+!!$                grid%uold(ind,ivar)=grid_ref%uold(ind1_left(ind,dir),ivar)*reverse
+!!$             end do
+!!$          end do
+!!$       endif
 
     endif
 
@@ -166,7 +197,37 @@ contains
        if(shift==+1)then
           do ivar=1,nvar
              do ind=1,twotondim
+#if NDOF>1
+#if NDIM>2
+                do k=1,ndof
+#else
+                k=1
+#endif
+                k1=k
+                if(dir==3)k1=1
+#if NDIM>1
+                do j=1,ndof
+#else
+                j=1
+#endif
+                j1=j
+                if(dir==2)j1=1
+                do i=1,ndof
+                   i1=i
+                   if(dir==1)i1=1
+                   idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+                   idof1=i1+(j1-1)*ndof+(k1-1)*ndof*ndof
+                   grid%uold(idof,ind,ivar)=grid_ref%uold(idof1,ind1_right(ind,dir),ivar)*reverse
+                end do
+#if NDIM>1
+                end do
+#endif
+#if NDIM>2
+                end do
+#endif
+#else
                 grid%uold(ind,ivar)=grid_ref%uold(ind2_right(ind,dir),ivar)
+#endif
              end do
           end do
        endif
@@ -174,7 +235,37 @@ contains
        if(shift==-1)then
           do ivar=1,nvar
              do ind=1,twotondim
+#if NDOF>1
+#if NDIM>2
+                do k=1,ndof
+#else
+                k=1
+#endif
+                k1=k
+                if(dir==3)k1=ndof
+#if NDIM>1
+                do j=1,ndof
+#else
+                j=1
+#endif
+                j1=j
+                if(dir==2)j1=ndof
+                do i=1,ndof
+                   i1=i
+                   if(dir==1)i1=ndof
+                   idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+                   idof1=i1+(j1-1)*ndof+(k1-1)*ndof*ndof
+                   grid%uold(idof,ind,ivar)=grid_ref%uold(idof1,ind1_right(ind,dir),ivar)*reverse
+                end do
+#if NDIM>1
+                end do
+#endif
+#if NDIM>2
+                end do
+#endif
+#else
                 grid%uold(ind,ivar)=grid_ref%uold(ind2_left(ind,dir),ivar)
+#endif
              end do
           end do
        endif
@@ -185,7 +276,33 @@ contains
     if(type == 3)then
 
        do ind=1,twotondim
-
+#if NDOF>1
+          do idof=1,ndoftondim
+             grid%uold(idof,ind,1)=r%d_bound(ibound)
+             grid%uold(idof,ind,2)=r%u_bound(ibound)
+             ek_bound=0.5d0*r%d_bound(ibound)*r%u_bound(ibound)**2
+#if NDIM>1
+             grid%uold(idof,ind,3)=r%v_bound(ibound)
+             ek_bound=ek_bound+0.5d0*r%d_bound(ibound)*r%v_bound(ibound)**2
+#endif
+#if NDIM>2
+             grid%uold(idof,ind,4)=r%w_bound(ibound)
+             ek_bound=ek_bound+0.5d0*r%d_bound(ibound)*r%w_bound(ibound)**2
+#endif
+#if NENER>0
+             do ivar=1,nener
+                grid%uold(idof,ind,ndim+2+ivar)=r%prad_bound(ibound,ivar)/(r%gamma_rad(ivar)-1.0d0)
+                ek_bound=ek_bound+r%prad_bound(ibound,ivar)/(r%gamma_rad(ivar)-1.0d0)
+             enddo
+#endif
+             grid%uold(idof,ind,ndim+2)=ek_bound+r%p_bound(ibound)/(r%gamma-1.0d0)
+#if NVAR>NDIM+2+NENER
+             do ivar=ndim+nener+3,nvar
+                grid%uold(idof,ind,ivar)=r%d_bound(ibound)*r%var_bound(ibound,ivar-ndim-2-nener)
+             end do
+#endif
+          end do
+#else
           grid%uold(ind,1)=r%d_bound(ibound)
           grid%uold(ind,2)=r%u_bound(ibound)
           ek_bound=0.5d0*r%d_bound(ibound)*r%u_bound(ibound)**2
@@ -209,8 +326,8 @@ contains
              grid%uold(ind,ivar)=r%d_bound(ibound)*r%var_bound(ibound,ivar-ndim-2-nener)
           end do
 #endif
+#endif
        end do
-
     endif
 
     ! Imposed BC from condinit
@@ -220,6 +337,38 @@ contains
        dx=r%boxlen/2**grid%lev
        
        do ind=1,twotondim
+#if NDOF>1
+#if NDIM>2
+          do k=1,ndof
+          iskip(3)=k
+#else
+          k=1
+#endif
+#if NDIM>1
+          do j=1,ndof
+          iskip(2)=j
+#else
+          j=1
+#endif
+          do i=1,ndof
+             iskip(1)=i
+             idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+             do idim=1,ndim
+                nstride=2**(idim-1)
+                xx(idof,idim)=(2*grid%ckey(idim)+MOD((ind-1)/nstride,2)+(iskip(idim)-1+0.5)/dble(ndof))*dx-m%skip(idim)
+             end do
+          end do
+          end do
+          end do
+          ! Call initial condition routine
+          call condinit(r,g,xx,uu,dx,ndoftondim)
+          ! Scatter variables to main memory
+          do ivar=1,nvar
+             do idof=1,ndoftondim
+                grid%uold(idof,ind,ivar)=uu(idof,ivar)
+             end do
+          end do
+#else
           do idim=1,ndim
              nstride=2**(idim-1)
              xx(1,idim)=(2*grid%ckey(idim)+MOD((ind-1)/nstride,2)+0.5)*dx-m%skip(idim)
@@ -230,6 +379,7 @@ contains
           do ivar=1,nvar
              grid%uold(ind,ivar)=uu(1,ivar)
           end do
+#endif
        end do
 
     endif
@@ -241,6 +391,38 @@ contains
        dx=r%boxlen/2**grid%lev
        
        do ind=1,twotondim
+#if NDOF>1
+#if NDIM>2
+          do k=1,ndof
+          iskip(3)=k
+#else
+          k=1
+#endif
+#if NDIM>1
+          do j=1,ndof
+          iskip(2)=j
+#else
+          j=1
+#endif
+          do i=1,ndof
+             iskip(1)=i
+             idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+             do idim=1,ndim
+                nstride=2**(idim-1)
+                xx(idof,idim)=(2*grid%ckey(idim)+MOD((ind-1)/nstride,2)+(iskip(idim)-1+0.5)/dble(ndof))*dx-m%skip(idim)
+             end do
+          end do
+          end do
+          end do
+          ! Call initial condition routine
+          call boundana(r,g,xx,uu,dx,ibound,ndoftondim)
+          ! Scatter variables to main memory
+          do ivar=1,nvar
+             do idof=1,ndoftondim
+                grid%uold(idof,ind,ivar)=uu(idof,ivar)
+             end do
+          end do
+#else
           do idim=1,ndim
              nstride=2**(idim-1)
              xx(1,idim)=(2*grid%ckey(idim)+MOD((ind-1)/nstride,2)+0.5)*dx-m%skip(idim)
@@ -251,6 +433,7 @@ contains
           do ivar=1,nvar
              grid%uold(ind,ivar)=uu(1,ivar)
           end do
+#endif
        end do
 
     endif

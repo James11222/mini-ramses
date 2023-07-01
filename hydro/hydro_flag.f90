@@ -86,6 +86,159 @@ subroutine hydro_flag(s,ilevel)
            endif
         end do
 
+#if NDOF>1
+        ! First dimension
+        idim=1; j=1; k=1
+#if NDIM>2
+        do k=1,ndof
+#endif
+#if NDIM>1
+        do j=1,ndof
+#endif
+        do i=1,ndof
+           if(i==1)then
+              il=ndof
+              ir=2
+              idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+              idofl=il+(j-1)*ndof+(k-1)*ndof*ndof
+              idofr=ir+(j-1)*ndof+(k-1)*ndof*ndof
+              icellg=icelln(2*idim-1)
+              do ivar=1,nvar
+                 uug(ivar)=gridn(2*idim-1)%p%uold(idofl,icellg,ivar)
+                 uum(ivar)=m%grid(igrid)%uold(idof,ind,ivar)
+                 uud(ivar)=m%grid(igrid)%uold(idofr,ind,ivar)
+              end do
+           else if(i==ndof)then
+              il=ndof-1
+              ir=1
+              idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+              idofl=il+(j-1)*ndof+(k-1)*ndof*ndof
+              idofr=ir+(j-1)*ndof+(k-1)*ndof*ndof
+              icelld=icelln(2*idim)
+              do ivar=1,nvar
+                 uug(ivar)=m%grid(igrid)%uold(idofl,ind,ivar)
+                 uum(ivar)=m%grid(igrid)%uold(idof,ind,ivar)
+                 uud(ivar)=uud(ivar)=gridn(2*idim)%p%uold(idofr,icelld,ivar)
+              end do
+           else
+              il=i-1
+              ir=i+1
+              idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+              idofl=il+(j-1)*ndof+(k-1)*ndof*ndof
+              idofr=ir+(j-1)*ndof+(k-1)*ndof*ndof
+              do ivar=1,nvar
+                 uug(ivar)=m%grid(igrid)%uold(idofl,ind,ivar)
+                 uum(ivar)=m%grid(igrid)%uold(idof,ind,ivar)
+                 uud(ivar)=m%grid(igrid)%uold(idofr,ind,ivar)
+              end do
+           endif
+           call hydro_refine(r,uug,uum,uud,ok)
+        end do
+#if NDIM>1
+        end do
+#endif
+#if NDIM>2
+        end do
+#endif
+#if NDIM>1
+        ! Second dimension
+        idim=2; k=1
+#if NDIM>2
+        do k=1,ndof
+#endif
+        do j=1,ndof
+        do i=1,ndof
+           if(j==1)then
+              jl=ndof
+              jr=2
+              idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+              idofl=i+(jl-1)*ndof+(k-1)*ndof*ndof
+              idofr=i+(jr-1)*ndof+(k-1)*ndof*ndof
+              icellg=icelln(2*idim-1)
+              do ivar=1,nvar
+                 uug(ivar)=gridn(2*idim-1)%p%uold(idofl,icellg,ivar)
+                 uum(ivar)=m%grid(igrid)%uold(idof,ind,ivar)
+                 uud(ivar)=m%grid(igrid)%uold(idofr,ind,ivar)
+              end do
+           else if(j==ndof)then
+              jl=ndof-1
+              jr=1
+              idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+              idofl=i+(jl-1)*ndof+(k-1)*ndof*ndof
+              idofr=i+(jr-1)*ndof+(k-1)*ndof*ndof
+              icelld=icelln(2*idim)
+              do ivar=1,nvar
+                 uug(ivar)=m%grid(igrid)%uold(idofl,ind,ivar)
+                 uum(ivar)=m%grid(igrid)%uold(idof,ind,ivar)
+                 uud(ivar)=gridn(2*idim)%p%uold(idofr,icelld,ivar)
+              end do
+           else
+              jl=j-1
+              jr=j+1
+              idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+              idofl=i+(jl-1)*ndof+(k-1)*ndof*ndof
+              idofr=i+(jr-1)*ndof+(k-1)*ndof*ndof
+              do ivar=1,nvar
+                 uug(ivar)=m%grid(igrid)%uold(idofl,ind,ivar)
+                 uum(ivar)=m%grid(igrid)%uold(idof,ind,ivar)
+                 uud(ivar)=m%grid(igrid)%uold(idofr,ind,ivar)
+              end do
+           endif
+           call hydro_refine(r,uug,uum,uud,ok)
+        end do
+        end do
+#if NDIM>2
+        end do
+#endif
+#endif
+#if NDIM>2
+        ! Third dimension
+        idim=3
+        do k=1,ndof
+        do j=1,ndof
+        do i=1,ndof
+           if(k==1)then
+              kl=ndof
+              kr=2
+              idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+              idofl=i+(j-1)*ndof+(kl-1)*ndof*ndof
+              idofr=i+(j-1)*ndof+(kr-1)*ndof*ndof
+              icellg=icelln(2*idim-1)
+              do ivar=1,nvar
+                 uug(ivar)=gridn(2*idim-1)%p%uold(idofl,icellg,ivar)
+                 uum(ivar)=m%grid(igrid)%uold(idof,ind,ivar)
+                 uud(ivar)=m%grid(igrid)%uold(idofr,ind,ivar)
+              end do
+           else if(k==ndof)then
+              kl=ndof-1
+              kr=1
+              idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+              idofl=i+(j-1)*ndof+(kl-1)*ndof*ndof
+              idofr=i+(j-1)*ndof+(kr-1)*ndof*ndof
+              icelld=icelln(2*idim)
+              do ivar=1,nvar
+                 uug(ivar)=m%grid(igrid)%uold(idofl,ind,ivar)
+                 uum(ivar)=m%grid(igrid)%uold(idof,ind,ivar)
+                 uud(ivar)=gridn(2*idim)%p%uold(idofr,icelld,ivar)
+              end do
+           else
+              kl=k-1
+              kr=k+1
+              idof=i+(j-1)*ndof+(k-1)*ndof*ndof
+              idofl=i+(j-1)*ndof+(kl-1)*ndof*ndof
+              idofr=i+(j-1)*ndof+(kr-1)*ndof*ndof
+              do ivar=1,nvar
+                 uug(ivar)=m%grid(igrid)%uold(idofl,ind,ivar)
+                 uum(ivar)=m%grid(igrid)%uold(idof,ind,ivar)
+                 uud(ivar)=m%grid(igrid)%uold(idofr,ind,ivar)
+              end do
+           endif
+           call hydro_refine(r,uug,uum,uud,ok)
+        end do
+        end do
+        end do
+#endif
+#else
         ! Loop over dimensions
         do idim=1,ndim
            ! Gather hydro variables
@@ -98,6 +251,7 @@ subroutine hydro_flag(s,ilevel)
            end do
            call hydro_refine(r,uug,uum,uud,ok)
         end do
+#endif
         
         do i_nbor=1,twondim
            call unlock_cache(s,gridn(i_nbor)%p)

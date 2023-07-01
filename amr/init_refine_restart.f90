@@ -227,7 +227,7 @@ subroutine init_refine_restart(s,ilevel,ncpu_file,levelmin_file,nlevelmax_file,n
   ! the initial AMR grid.
   !--------------------------------------------------------------
   use mdl_module, only: mdl_abort
-  use amr_parameters, only: dp,nhilbert,ndim,twotondim,nvector
+  use amr_parameters, only: dp,nhilbert,ndim,twotondim,nvector,ndoftondim
   use hydro_parameters, only: nvar
   use ramses_commons, only: ramses_t
   use hash
@@ -259,7 +259,11 @@ subroutine init_refine_restart(s,ilevel,ncpu_file,levelmin_file,nlevelmax_file,n
 
   integer,dimension(1:ndim)::ckey
   logical,dimension(1:twotondim)::refined
+#if NDOF>1
+  real(dp),dimension(1:ndoftondim,1:twotondim,1:nvar)::uold
+#else
   real(dp),dimension(1:twotondim,1:nvar)::uold
+#endif
   real(dp),dimension(1:twotondim,1:3)::f
   real(dp),dimension(1:twotondim)::phi,rho
 
@@ -349,7 +353,7 @@ subroutine init_refine_restart(s,ilevel,ncpu_file,levelmin_file,nlevelmax_file,n
      if(r%hydro)then
         file_hydro='backup_'//TRIM(nchar)//'/hydro.'//TRIM(ncharcpu)
         open(unit=11,file=file_hydro,access="stream",action="read",form='unformatted')
-        iskip_hydro=17+4*(nlevelmax_file-levelmin_file+1)+(8*twotondim*nvar)*nskip_file(icpu)
+        iskip_hydro=17+4*(nlevelmax_file-levelmin_file+1)+(8*twotondim*nvar*ndoftondim)*nskip_file(icpu)
      endif
 
      ! Prepare reading the GRAV file
@@ -370,7 +374,7 @@ subroutine init_refine_restart(s,ilevel,ncpu_file,levelmin_file,nlevelmax_file,n
 
         ! Read values from HYDRO files
         if(r%hydro)then
-           ipos=iskip_hydro+(8*twotondim*nvar)*(i-1)
+           ipos=iskip_hydro+(8*twotondim*nvar*ndoftondim)*(i-1)
            read(11,POS=ipos)uold
         endif
 
