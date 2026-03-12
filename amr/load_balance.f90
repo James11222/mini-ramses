@@ -945,6 +945,28 @@ subroutine balance_part(s,p,ilevel)
         if(myid==1.and.r%verbose)write(*,'(" balance_part: counting particles per oct, level ",I2)')ilev
 
         ! Count particles per oct
+        ! allocate(npart_per_oct(m%head(ilev):m%tail(ilev)))
+        ! npart_per_oct=0
+
+        ! ioct=m%head(ilev)
+        ! do i=p%headp(ilev),p%tailp(ilev)
+        !    ipart=p%sortp(i)
+
+        !    ! Compute parent oct Cartesian key
+        !    ix_oct(1:ndim)=int((p%xp(ipart,1:ndim)+m%skip(1:ndim))/(2*dx_loc))
+
+        !    ! Advance oct pointer until it matches this particle
+        !    do while(ioct.LT.m%tail(ilev))
+        !       if(ALL(m%grid(ioct)%ckey(1:ndim).EQ.ix_oct(1:ndim)))exit
+        !       ioct=ioct+1
+        !    end do
+
+        !    ! Only count if oct matches (particle may belong to another CPU)
+        !    if(ALL(m%grid(ioct)%ckey(1:ndim).EQ.ix_oct(1:ndim)))then
+        !       npart_per_oct(ioct)=npart_per_oct(ioct)+1
+        !    endif
+        ! end do
+
         allocate(npart_per_oct(m%head(ilev):m%tail(ilev)))
         npart_per_oct=0
 
@@ -952,17 +974,20 @@ subroutine balance_part(s,p,ilevel)
         do i=p%headp(ilev),p%tailp(ilev)
            ipart=p%sortp(i)
 
-           ! Compute parent oct Cartesian key
-           ix_oct(1:ndim)=int((p%xp(ipart,1:ndim)+m%skip(1:ndim))/(2*dx_loc))
+           ! Compute parent oct Hilbert key (at oct level = ilev-1)
+           ix_ref(1:ndim)=int((p%xp(ipart,1:ndim)+m%skip(1:ndim))/(2*dx_loc))
+           hk_ref(1:nhilbert)=hilbert_key(ix_ref,ilev-1)
 
-           ! Advance oct pointer until it matches this particle
+           ! Advance oct pointer until its Hilbert key matches or passes
            do while(ioct.LT.m%tail(ilev))
-              if(ALL(m%grid(ioct)%ckey(1:ndim).EQ.ix_oct(1:ndim)))exit
+              if(.NOT.gt_keys(hk_ref(1:nhilbert), &
+                   m%grid(ioct)%hkey(1:nhilbert)))exit
               ioct=ioct+1
            end do
 
-           ! Only count if oct matches (particle may belong to another CPU)
-           if(ALL(m%grid(ioct)%ckey(1:ndim).EQ.ix_oct(1:ndim)))then
+           ! Only count if Hilbert keys match exactly
+           if(eq_keys(m%grid(ioct)%hkey(1:nhilbert), &
+                hk_ref(1:nhilbert)))then
               npart_per_oct(ioct)=npart_per_oct(ioct)+1
            endif
         end do
