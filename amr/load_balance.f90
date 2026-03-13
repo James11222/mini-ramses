@@ -1003,6 +1003,14 @@ subroutine balance_part(s,p,ilevel)
 
         if(myid==1.and.r%verbose)write(*,'(" balance_part: MPI reduction done, level ",I2)')ilev
 
+        ! print the bound_key_target for debugging
+        if(myid==1.and.r%verbose)then
+           write(*,'(" balance_part: target boundaries for level ",I2)')ilev
+           do icpu=0,ncpu
+              write(*,'(1X,I3,": ",17(I16.16,1X))')icpu,bound_key_target(1:nhilbert,icpu)
+           end do
+        end if
+
         ! Store new domain decomposition
         domain_part(ilev)%b(1:nhilbert,0:ncpu)=bound_key_target(1:nhilbert,0:ncpu)
 
