@@ -864,7 +864,7 @@ subroutine balance_part(s,p,ilevel)
   integer(i8b),dimension(:),allocatable::l_recv_buf,l_send_buf
   integer,dimension(:),allocatable::i_recv_buf,i_send_buf
 
-  integer,dimension(:),allocatable::npart_per_oct,npart_oct_cum
+!   integer,dimension(:),allocatable::npart_per_oct,npart_oct_cum
   integer::npart_before,npart_global_cum
   type(domain_t),allocatable,dimension(:)::domain_part
   integer(kind=8),allocatable,dimension(:,:)::bound_key_target
@@ -944,69 +944,12 @@ subroutine balance_part(s,p,ilevel)
 
         if(myid==1.and.r%verbose)write(*,'(" balance_part: counting particles per oct, level ",I2)')ilev
 
-        ! Count particles per oct
-        ! allocate(npart_per_oct(m%head(ilev):m%tail(ilev)))
-        ! npart_per_oct=0
-
-        ! ioct=m%head(ilev)
-        ! do i=p%headp(ilev),p%tailp(ilev)
-        !    ipart=p%sortp(i)
-
-        !    ! Compute parent oct Cartesian key
-        !    ix_oct(1:ndim)=int((p%xp(ipart,1:ndim)+m%skip(1:ndim))/(2*dx_loc))
-
-        !    ! Advance oct pointer until it matches this particle
-        !    do while(ioct.LT.m%tail(ilev))
-        !       if(ALL(m%grid(ioct)%ckey(1:ndim).EQ.ix_oct(1:ndim)))exit
-        !       ioct=ioct+1
-        !    end do
-
-        !    ! Only count if oct matches (particle may belong to another CPU)
-        !    if(ALL(m%grid(ioct)%ckey(1:ndim).EQ.ix_oct(1:ndim)))then
-        !       npart_per_oct(ioct)=npart_per_oct(ioct)+1
-        !    endif
-        ! end do
-
-        allocate(npart_per_oct(m%head(ilev):m%tail(ilev)))
-        npart_per_oct=0
-
-        ioct=m%head(ilev)
-        do i=p%headp(ilev),p%tailp(ilev)
-           ipart=p%sortp(i)
-
-           ! Compute parent oct Hilbert key (at oct level = ilev-1)
-           ix_ref(1:ndim)=int((p%xp(ipart,1:ndim)+m%skip(1:ndim))/(2*dx_loc))
-           hk_ref(1:nhilbert)=hilbert_key(ix_ref,ilev-1)
-
-           ! Advance oct pointer until its Hilbert key matches or passes
-           do while(ioct.LT.m%tail(ilev))
-              if(.NOT.gt_keys(hk_ref(1:nhilbert), &
-                   m%grid(ioct)%hkey(1:nhilbert)))exit
-              ioct=ioct+1
-           end do
-
-           ! Only count if Hilbert keys match exactly
-           if(eq_keys(m%grid(ioct)%hkey(1:nhilbert), &
-                hk_ref(1:nhilbert)))then
-              npart_per_oct(ioct)=npart_per_oct(ioct)+1
-           endif
-        end do
-
-        ! Cumulative particle sum over local octs
-        allocate(npart_oct_cum(m%head(ilev):m%tail(ilev)))
-        npart_oct_cum(m%head(ilev))=npart_per_oct(m%head(ilev))
-        do ioct=m%head(ilev)+1,m%tail(ilev)
-           npart_oct_cum(ioct)=npart_oct_cum(ioct-1)+npart_per_oct(ioct)
-        end do
-
-        ! Global offset for this CPU
+        ! Compute total particles before this CPU
         if(myid.GT.1)then
            npart_before=npart_cum(myid-1)
         else
            npart_before=0
-        end if
-
-        if(myid==1.and.r%verbose)write(*,'(" balance_part: finding boundaries, level ",I2)')ilev
+        endif
 
         ! Initialize target boundaries to zero
         bound_key_target(1:nhilbert,0:ncpu)=0
@@ -1019,15 +962,22 @@ subroutine balance_part(s,p,ilevel)
            istart=istart+1
         end do
 
-        ! Walk through local octs to find boundary crossings
-        do ioct=m%head(ilev),m%tail(ilev)
+        if(myid==1.and.r%verbose)write(*,'(" balance_part: finding boundaries, level ",I2)')ilev
+
+        ! Walk sorted particles directly to find CPU boundaries
+        npart_global_cum=npart_before
+        do i=p%headp(ilev),p%tailp(ilev)
            if(istart.GT.ncpu-1)exit
-           npart_global_cum=npart_before+npart_oct_cum(ioct)
+           ipart=p%sortp(i)
+           npart_global_cum=npart_global_cum+1
 
            do while(istart.LE.ncpu-1)
               xcum_target=dble(istart)*xpart_target
               if(dble(npart_global_cum).GE.xcum_target)then
-                 bound_key_target(1:nhilbert,istart)= m%grid(ioct)%hkey(1:nhilbert)+one_key
+                 ! Compute parent oct Hilbert key for boundary placement
+                 ix_ref(1:ndim)=int((p%xp(ipart,1:ndim)+m%skip(1:ndim))/(2*dx_loc))
+                 hk_ref(1:nhilbert)=hilbert_key(ix_ref,ilev-1)
+                 bound_key_target(1:nhilbert,istart)=hk_ref(1:nhilbert)+one_key
                  istart=istart+1
               else
                  exit
@@ -1035,30 +985,119 @@ subroutine balance_part(s,p,ilevel)
            end do
         end do
 
-        ! Global reduction: merge boundaries from all CPUs
-        call MPI_ALLREDUCE(MPI_IN_PLACE,bound_key_target,nhilbert*(ncpu+1),MPI_INTEGER8,MPI_SUM,MPI_COMM_WORLD,info)
+        if(myid==1.and.r%verbose)write(*,'(" balance_part: MPI reduction, level ",I2)')ilev
 
-        if(myid==1.and.r%verbose)write(*,'(" balance_part: MPI reduction done, level ",I2)')ilev
+        ! Global reduction -- each CPU sets only its local boundaries
+        call MPI_ALLREDUCE(MPI_IN_PLACE,bound_key_target,nhilbert*(ncpu+1), &
+             MPI_INTEGER8,MPI_SUM,MPI_COMM_WORLD,info)
 
-        ! Fix boundary 0 = start of Hilbert key space
+        ! Fix endpoints and enforce monotonicity
         bound_key_target(1:nhilbert,0)=0
-        ! Enforce monotonicity
         do icpu=1,ncpu
-           if(gt_keys(bound_key_target(1:nhilbert,icpu-1), bound_key_target(1:nhilbert,icpu)))then
+           if(gt_keys(bound_key_target(1:nhilbert,icpu-1), &
+                bound_key_target(1:nhilbert,icpu)))then
               bound_key_target(1:nhilbert,icpu)=bound_key_target(1:nhilbert,icpu-1)
            endif
         end do
-        ! Fix boundary ncpu = end of Hilbert key space
         bound_key_target(1:nhilbert,ncpu)=m%hkey_max(1:nhilbert,ilev)
 
-        !---------------------------------------------------------
-        ! Store new Hilbert tick marks after convergence
-        !---------------------------------------------------------
+        if(myid==1.and.r%verbose)write(*,'(" balance_part: MPI reduction done, level ",I2)')ilev
+
+        ! Store new domain decomposition
         domain_part(ilev)%b(1:nhilbert,0:ncpu)=bound_key_target(1:nhilbert,0:ncpu)
 
-        ! Deallocate per-level arrays
-        deallocate(npart_per_oct)
-        deallocate(npart_oct_cum)
+      !   allocate(npart_per_oct(m%head(ilev):m%tail(ilev)))
+      !   npart_per_oct=0
+
+      !   ioct=m%head(ilev)
+      !   do i=p%headp(ilev),p%tailp(ilev)
+      !      ipart=p%sortp(i)
+
+      !      ! Compute parent oct Hilbert key (at oct level = ilev-1)
+      !      ix_ref(1:ndim)=int((p%xp(ipart,1:ndim)+m%skip(1:ndim))/(2*dx_loc))
+      !      hk_ref(1:nhilbert)=hilbert_key(ix_ref,ilev-1)
+
+      !      ! Advance oct pointer until its Hilbert key matches or passes
+      !      do while(ioct.LT.m%tail(ilev))
+      !         if(.NOT.gt_keys(hk_ref(1:nhilbert), &
+      !              m%grid(ioct)%hkey(1:nhilbert)))exit
+      !         ioct=ioct+1
+      !      end do
+
+      !      ! Only count if Hilbert keys match exactly
+      !      if(eq_keys(m%grid(ioct)%hkey(1:nhilbert), &
+      !           hk_ref(1:nhilbert)))then
+      !         npart_per_oct(ioct)=npart_per_oct(ioct)+1
+      !      endif
+      !   end do
+
+      !   ! Cumulative particle sum over local octs
+      !   allocate(npart_oct_cum(m%head(ilev):m%tail(ilev)))
+      !   npart_oct_cum(m%head(ilev))=npart_per_oct(m%head(ilev))
+      !   do ioct=m%head(ilev)+1,m%tail(ilev)
+      !      npart_oct_cum(ioct)=npart_oct_cum(ioct-1)+npart_per_oct(ioct)
+      !   end do
+
+      !   ! Global offset for this CPU
+      !   if(myid.GT.1)then
+      !      npart_before=npart_cum(myid-1)
+      !   else
+      !      npart_before=0
+      !   end if
+
+      !   if(myid==1.and.r%verbose)write(*,'(" balance_part: finding boundaries, level ",I2)')ilev
+
+      !   ! Initialize target boundaries to zero
+      !   bound_key_target(1:nhilbert,0:ncpu)=0
+
+      !   ! Skip boundaries that fall before our local particle range
+      !   istart=1
+      !   do while(istart.LE.ncpu-1)
+      !      xcum_target=dble(istart)*xpart_target
+      !      if(xcum_target.GT.dble(npart_before))exit
+      !      istart=istart+1
+      !   end do
+
+      !   ! Walk through local octs to find boundary crossings
+      !   do ioct=m%head(ilev),m%tail(ilev)
+      !      if(istart.GT.ncpu-1)exit
+      !      npart_global_cum=npart_before+npart_oct_cum(ioct)
+
+      !      do while(istart.LE.ncpu-1)
+      !         xcum_target=dble(istart)*xpart_target
+      !         if(dble(npart_global_cum).GE.xcum_target)then
+      !            bound_key_target(1:nhilbert,istart)= m%grid(ioct)%hkey(1:nhilbert)+one_key
+      !            istart=istart+1
+      !         else
+      !            exit
+      !         end if
+      !      end do
+      !   end do
+
+      !   ! Global reduction: merge boundaries from all CPUs
+      !   call MPI_ALLREDUCE(MPI_IN_PLACE,bound_key_target,nhilbert*(ncpu+1),MPI_INTEGER8,MPI_SUM,MPI_COMM_WORLD,info)
+
+      !   if(myid==1.and.r%verbose)write(*,'(" balance_part: MPI reduction done, level ",I2)')ilev
+
+      !   ! Fix boundary 0 = start of Hilbert key space
+      !   bound_key_target(1:nhilbert,0)=0
+      !   ! Enforce monotonicity
+      !   do icpu=1,ncpu
+      !      if(gt_keys(bound_key_target(1:nhilbert,icpu-1), bound_key_target(1:nhilbert,icpu)))then
+      !         bound_key_target(1:nhilbert,icpu)=bound_key_target(1:nhilbert,icpu-1)
+      !      endif
+      !   end do
+      !   ! Fix boundary ncpu = end of Hilbert key space
+      !   bound_key_target(1:nhilbert,ncpu)=m%hkey_max(1:nhilbert,ilev)
+
+      !   !---------------------------------------------------------
+      !   ! Store new Hilbert tick marks after convergence
+      !   !---------------------------------------------------------
+      !   domain_part(ilev)%b(1:nhilbert,0:ncpu)=bound_key_target(1:nhilbert,0:ncpu)
+
+      !   ! Deallocate per-level arrays
+      !   deallocate(npart_per_oct)
+      !   deallocate(npart_oct_cum)
 
      end do
      ! End loop over levels
