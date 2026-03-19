@@ -833,6 +833,7 @@ subroutine balance_part(s,p,ilevel)
   use domain_m, only: domain_t
   use rho_fine_module, only: sort_hilbert
   use hilbert
+  use nbors_utils
   use mpi
   implicit none
   type(ramses_t)::s
@@ -864,12 +865,9 @@ subroutine balance_part(s,p,ilevel)
   integer(i8b),dimension(:),allocatable::l_recv_buf,l_send_buf
   integer,dimension(:),allocatable::i_recv_buf,i_send_buf
 
-  integer,allocatable,dimension(:)::npart_per_oct_tot
-  integer, allocatable,dimension(1:s%g%ncpu)::npart_in_octs
-  integer::icell,igrid
-  integer,allocatable,dimension(:)::npart_per_oct
-  integer::dimension(:),allocatable::
-  integer::npart_before,npart_global_cum
+  integer,allocatable,dimension(:)::npart_per_oct, npart_per_oct_tot, npart_oct_cum
+  integer,dimension(1:s%g%ncpu)::npart_in_octs
+  integer::npart_before,npart_global_cum,icell,igrid,npart_in_octs_per_cpu
   type(domain_t),allocatable,dimension(:)::domain_part
   integer(kind=8),allocatable,dimension(:,:)::bound_key_target
   integer::npart_lev,npart_lev_tot
@@ -987,6 +985,7 @@ subroutine balance_part(s,p,ilevel)
         end if
 
         ! cumulative sum of particles in local octs
+        allocate(npart_oct_cum(m%head(ilev):m%tail(ilev)))
         npart_oct_cum(m%head(ilev))=npart_per_oct(m%head(ilev))
         do ioct=m%head(ilev)+1,m%tail(ilev)
            npart_oct_cum(ioct)=npart_oct_cum(ioct-1)+npart_per_oct(ioct)
@@ -1026,7 +1025,6 @@ subroutine balance_part(s,p,ilevel)
         ! Deallocate per-level arrays
         deallocate(npart_per_oct)
         deallocate(npart_oct_cum)
-        deallocate(npart_in_octs)
 
      end do
      ! End loop over levels
