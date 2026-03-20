@@ -939,8 +939,7 @@ subroutine balance_part(s,p,ilevel)
   integer,dimension(:),allocatable::i_recv_buf,i_send_buf
 
   integer,allocatable,dimension(:)::npart_per_oct, npart_per_oct_tot, npart_oct_cum
-  integer,dimension(1:s%g%ncpu)::npart_in_octs
-  integer::npart_before,npart_global_cum,icell,igrid,npart_in_octs_per_cpu
+  integer::npart_before,npart_global_cum,icell,igrid
   type(domain_t),allocatable,dimension(:)::domain_part
   integer(kind=8),allocatable,dimension(:,:)::bound_key_target
   integer::npart_lev,npart_lev_tot
@@ -953,6 +952,7 @@ subroutine balance_part(s,p,ilevel)
   real(dp)::mp_tmp,zp_tmp,tp_tmp
   integer::levelp_tmp
   integer(i8b)::idp_tmp
+
   type(msg_int4)::dummy_int4
   integer(kind=8),dimension(0:ndim)::hash_nbor
 
@@ -1042,58 +1042,57 @@ subroutine balance_part(s,p,ilevel)
 
         call close_cache(mdl)
 
-      !   ! add up all particles per oct across cpus [PROBABLY WRONG, DON'T THINK YOU CAN DO THIS...]
-      !   npart_per_oct_tot=0
-      !   call MPI_ALLREDUCE(npart_per_oct(m%head(ilev):m%tail(ilev)),npart_per_oct_tot(m%head(ilev):m%tail(ilev)),m%noct(ilev), &
-      !                      MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,info)
+        allocate(npart_per_oct(1:m%noct_tot(ilev)))
+        allocate(npart_per_oct_tot(1:m%noct_tot(ilev)))
+        ! make sure all CPUs have the same number of particles
+        npart_per_oct=0
+        do igrid=m%head(ilev),m%tail(ilev)
+           npart_per_oct(igrid)=m%flag2(1,igrid)
+        end do
 
-      !   npart_per_oct(m%head(ilev):m%tail(ilev))=npart_per_oct_tot(m%head(ilev):m%tail(ilev))
+        npart_per_oct_tot=0
+        call MPI_ALLREDUCE(npart_per_oct,npart_per_oct_tot,m%noct_tot(ilev), MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,info)
+        npart_per_oct=npart_per_oct_tot
 
-      !   ! compute local sum of particles in octs
-      !   npart_in_octs_per_cpu=SUM(npart_per_oct(m%head(ilev):m%tail(ilev)))
-        
-      !   ! store local sums in array across cpus
-      !   call MPI_ALLGATHER(npart_in_octs_per_cpu,1,MPI_INTEGER,npart_in_octs,1,MPI_INTEGER,MPI_COMM_WORLD,info)
+        ! compute number of particles before the local oct range
+        if (myid==1)then
+            npart_before=0
+        else 
+            npart_before=SUM(npart_per_oct(1:myid-1))
+        end if
 
-      !   ! compute number of particles before our local oct range
-      !   if (myid==1)then
-      !       npart_before=0
-      !   else 
-      !       npart_before=SUM(npart_in_octs(1:myid-1))
-      !   end if
+        ! cumulative sum of particles in local octs
+        allocate(npart_oct_cum(m%head(ilev):m%tail(ilev)))
+        npart_oct_cum(m%head(ilev))=npart_per_oct(m%head(ilev))
+        do igrid=m%head(ilev)+1,m%tail(ilev)
+           npart_oct_cum(igrid)=npart_oct_cum(igrid-1)+npart_per_oct(igrid)
+        end do
 
-      !   ! cumulative sum of particles in local octs
-      !   allocate(npart_oct_cum(m%head(ilev):m%tail(ilev)))
-      !   npart_oct_cum(m%head(ilev))=npart_per_oct(m%head(ilev))
-      !   do ioct=m%head(ilev)+1,m%tail(ilev)
-      !      npart_oct_cum(ioct)=npart_oct_cum(ioct-1)+npart_per_oct(ioct)
-      !   end do
+        ! Initialize target boundaries to zero
+        bound_key_target(1:nhilbert,0:ncpu)=0
 
-      !   ! Initialize target boundaries to zero
-      !   bound_key_target(1:nhilbert,0:ncpu)=0
-
-      !   ! Skip boundaries that fall before our local particle range
-      !   istart=1
-      !   do while(istart<=ncpu-1)
-      !      xcum_target=dble(istart)*xpart_target
-      !      if(xcum_target>dble(npart_before))exit
-      !      istart=istart+1
-      !   end do
+        ! Skip boundaries that fall before our local particle range
+        istart=1
+        do while(istart<=ncpu-1)
+           xcum_target=dble(istart)*xpart_target
+           if(xcum_target>dble(npart_before))exit
+           istart=istart+1
+        end do
          
-      !   ! Walk through local octs to find boundary crossings
-      !   do ioct=m%head(ilev),m%tail(ilev)
-      !      if(istart>ncpu-1)exit
-      !      npart_global_cum=npart_before+npart_oct_cum(ioct)
-      !      do while(istart<=ncpu-1)
-      !         xcum_target=dble(istart)*xpart_target
-      !         if(dble(npart_global_cum)>=xcum_target)then
-      !            bound_key_target(1:nhilbert,istart)=m%grid(ioct)%hkey(1:nhilbert)+one_key
-      !            istart=istart+1
-      !         else
-      !            exit
-      !         end if
-      !      end do
-      !   end do
+        ! Walk through local octs to find boundary crossings
+        do igrid=m%head(ilev),m%tail(ilev)
+           if(istart>ncpu-1)exit
+           npart_global_cum=npart_before+npart_oct_cum(igrid)
+           do while(istart<=ncpu-1)
+              xcum_target=dble(istart)*xpart_target
+              if(dble(npart_global_cum)>=xcum_target)then
+                 bound_key_target(1:nhilbert,istart)=m%grid(igrid)%hkey(1:nhilbert)+one_key
+                 istart=istart+1
+              else
+                 exit
+              end if
+           end do
+        end do
 
         !---------------------------------------------------------
         ! Store new Hilbert tick marks after convergence
@@ -1102,6 +1101,7 @@ subroutine balance_part(s,p,ilevel)
 
         ! Deallocate per-level arrays
         deallocate(npart_per_oct)
+        deallocate(npart_per_oct_tot)
         deallocate(npart_oct_cum)
 
      end do
