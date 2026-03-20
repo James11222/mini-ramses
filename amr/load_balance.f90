@@ -820,10 +820,81 @@ recursive subroutine r_balance_part(pst,ilevel,input_size,output_array,output_si
   endif
 
 end subroutine r_balance_part
-!#########################################################################
-!#########################################################################
-!#########################################################################
-!#########################################################################
+!################################################################
+!################################################################
+!################################################################
+!################################################################
+subroutine init_flush_flag2(mesh,igrid,hash_key)
+  use amr_parameters, only: ndim,twotondim
+  use amr_commons, only: mesh_t
+  type(mesh_t)::mesh
+  integer::igrid
+  integer(kind=8),dimension(0:ndim)::hash_key
+
+  integer::ind
+
+  mesh%grid(igrid)%lev=hash_key(0)
+  mesh%grid(igrid)%ckey(1:ndim)=hash_key(1:ndim)
+
+  do ind=1,twotondim
+     mesh%flag2(ind,igrid)=0
+  end do
+
+end subroutine init_flush_flag2
+!################################################################
+!################################################################
+!################################################################
+!################################################################
+subroutine pack_flush_flag2(mesh,igrid,msg_size,msg_array)
+  use amr_parameters, only: twotondim
+  use amr_commons, only: mesh_t
+  use cache_commons, only: msg_int4
+  type(mesh_t)::mesh
+  integer::igrid
+  integer::msg_size
+  integer,dimension(1:msg_size),optional::msg_array
+
+  integer::ind
+  type(msg_int4)::msg
+
+  do ind=1,twotondim
+     msg%int4(ind)=mesh%flag2(ind,igrid)
+  end do
+
+  msg_array=transfer(msg,msg_array)
+
+end subroutine pack_flush_flag2
+!################################################################
+!################################################################
+!################################################################
+!################################################################
+subroutine unpack_flush_flag2(mesh,igrid,msg_size,msg_array,hash_key)
+  use amr_parameters, only: ndim, twotondim
+  use amr_commons, only: mesh_t
+  use cache_commons, only: msg_int4
+  type(mesh_t)::mesh
+  integer::igrid
+  integer::msg_size
+  integer,dimension(1:msg_size),optional::msg_array
+  integer(kind=8),dimension(0:ndim)::hash_key
+
+  integer::ind
+  type(msg_int4)::msg
+
+  mesh%grid(igrid)%lev=hash_key(0)
+  mesh%grid(igrid)%ckey(1:ndim)=hash_key(1:ndim)
+  msg=transfer(msg_array,msg)
+  
+  do ind=1,twotondim
+     mesh%flag2(ind,igrid)=mesh%flag2(ind,igrid)+msg%int4(ind)
+  end do
+
+end subroutine unpack_flush_flag2
+!################################################################
+!################################################################
+!################################################################
+!################################################################
+
 #ifndef WITHOUTMPI
 subroutine balance_part(s,p,ilevel)
   use amr_parameters, only: nhilbert, ndim, i8b, dp
@@ -834,6 +905,8 @@ subroutine balance_part(s,p,ilevel)
   use rho_fine_module, only: sort_hilbert
   use hilbert
   use nbors_utils
+  use cache
+  use cache_commons
   use mpi
   implicit none
   type(ramses_t)::s
@@ -880,6 +953,8 @@ subroutine balance_part(s,p,ilevel)
   real(dp)::mp_tmp,zp_tmp,tp_tmp
   integer::levelp_tmp
   integer(i8b)::idp_tmp
+  type(msg_int4)::dummy_int4
+  integer(kind=8),dimension(0:ndim)::hash_nbor
 
   associate(r=>s%r,g=>s%g,m=>s%m,mdl=>s%mdl)
 
@@ -945,77 +1020,80 @@ subroutine balance_part(s,p,ilevel)
         call sort_hilbert(r,g,m,p,p%headp(ilev),p%tailp(ilev),ix,0,1,ilev-1)
 
         if(myid==1.and.r%verbose)write(*,'(" balance_part: counting particles per oct, level ",I2)')ilev
-
-        allocate(npart_per_oct(m%head(ilev):m%tail(ilev))) !might need to make this a mesh variable?
-        npart_per_oct=0
+      
+        ! open the cache
+        hash_nbor(0)=ilev+1
+        call open_cache(mdl, m, pack_size=storage_size(dummy_int4)/32, &
+                        init=init_flush_flag2, flush=pack_flush_flag2, combine=unpack_flush_flag2)
 
         ! Loop over particles in Hilbert order to count number of particles per oct
         do i=p%headp(ilev),p%tailp(ilev)
            ipart=p%sortp(i)
 
            ! Compute Hilbert key of particle parent grid
-           ix_ref(1:ndim)=int((p%xp(ipart,1:ndim)+m%skip(1:ndim))/(2*dx_loc)) ! equivalent to ckey I think
-         !   hk_ref(1:nhilbert)=hilbert_key(ix_ref,ilev-1) ! no longer needed since we can use the ckey to get the igrid of the parent oct
-
+           hash_nbor(1:ndim)=int((p%xp(ipart,1:ndim)+m%skip(1:ndim))/(dx_loc))
+      
            ! Get parent cell using write-only cache to get the igrid of the parent oct
-           call get_parent_cell(s,ix_ref,igrid,icell,flush_cache=.true.,fetch_cache=.false.)
+           call get_parent_cell(s,hash_nbor,igrid,icell,flush_cache=.true.,fetch_cache=.false.)
            if(igrid>0)then
-              npart_per_oct(igrid)=npart_per_oct(igrid)+1  
+              m%flag2(1,igrid)=m%flag2(1,igrid)+1 ! use flag2 to count number of particles in oct  
            end if
         end do
 
-        ! add up all particles per oct across cpus [PROBABLY WRONG, DON'T THINK YOU CAN DO THIS...]
-        npart_per_oct_tot=0
-        call MPI_ALLREDUCE(npart_per_oct(m%head(ilev):m%tail(ilev)),npart_per_oct_tot(m%head(ilev):m%tail(ilev)),m%noct(ilev), &
-                           MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,info)
+        call close_cache(mdl)
 
-        npart_per_oct(m%head(ilev):m%tail(ilev))=npart_per_oct_tot(m%head(ilev):m%tail(ilev))
+      !   ! add up all particles per oct across cpus [PROBABLY WRONG, DON'T THINK YOU CAN DO THIS...]
+      !   npart_per_oct_tot=0
+      !   call MPI_ALLREDUCE(npart_per_oct(m%head(ilev):m%tail(ilev)),npart_per_oct_tot(m%head(ilev):m%tail(ilev)),m%noct(ilev), &
+      !                      MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,info)
 
-        ! compute local sum of particles in octs
-        npart_in_octs_per_cpu=SUM(npart_per_oct(m%head(ilev):m%tail(ilev)))
+      !   npart_per_oct(m%head(ilev):m%tail(ilev))=npart_per_oct_tot(m%head(ilev):m%tail(ilev))
+
+      !   ! compute local sum of particles in octs
+      !   npart_in_octs_per_cpu=SUM(npart_per_oct(m%head(ilev):m%tail(ilev)))
         
-        ! store local sums in array across cpus
-        call MPI_ALLGATHER(npart_in_octs_per_cpu,1,MPI_INTEGER,npart_in_octs,1,MPI_INTEGER,MPI_COMM_WORLD,info)
+      !   ! store local sums in array across cpus
+      !   call MPI_ALLGATHER(npart_in_octs_per_cpu,1,MPI_INTEGER,npart_in_octs,1,MPI_INTEGER,MPI_COMM_WORLD,info)
 
-        ! compute number of particles before our local oct range
-        if (myid==1)then
-            npart_before=0
-        else 
-            npart_before=SUM(npart_in_octs(1:myid-1))
-        end if
+      !   ! compute number of particles before our local oct range
+      !   if (myid==1)then
+      !       npart_before=0
+      !   else 
+      !       npart_before=SUM(npart_in_octs(1:myid-1))
+      !   end if
 
-        ! cumulative sum of particles in local octs
-        allocate(npart_oct_cum(m%head(ilev):m%tail(ilev)))
-        npart_oct_cum(m%head(ilev))=npart_per_oct(m%head(ilev))
-        do ioct=m%head(ilev)+1,m%tail(ilev)
-           npart_oct_cum(ioct)=npart_oct_cum(ioct-1)+npart_per_oct(ioct)
-        end do
+      !   ! cumulative sum of particles in local octs
+      !   allocate(npart_oct_cum(m%head(ilev):m%tail(ilev)))
+      !   npart_oct_cum(m%head(ilev))=npart_per_oct(m%head(ilev))
+      !   do ioct=m%head(ilev)+1,m%tail(ilev)
+      !      npart_oct_cum(ioct)=npart_oct_cum(ioct-1)+npart_per_oct(ioct)
+      !   end do
 
-        ! Initialize target boundaries to zero
-        bound_key_target(1:nhilbert,0:ncpu)=0
+      !   ! Initialize target boundaries to zero
+      !   bound_key_target(1:nhilbert,0:ncpu)=0
 
-        ! Skip boundaries that fall before our local particle range
-        istart=1
-        do while(istart<=ncpu-1)
-           xcum_target=dble(istart)*xpart_target
-           if(xcum_target>dble(npart_before))exit
-           istart=istart+1
-        end do
+      !   ! Skip boundaries that fall before our local particle range
+      !   istart=1
+      !   do while(istart<=ncpu-1)
+      !      xcum_target=dble(istart)*xpart_target
+      !      if(xcum_target>dble(npart_before))exit
+      !      istart=istart+1
+      !   end do
          
-        ! Walk through local octs to find boundary crossings
-        do ioct=m%head(ilev),m%tail(ilev)
-           if(istart>ncpu-1)exit
-           npart_global_cum=npart_before+npart_oct_cum(ioct)
-           do while(istart<=ncpu-1)
-              xcum_target=dble(istart)*xpart_target
-              if(dble(npart_global_cum)>=xcum_target)then
-                 bound_key_target(1:nhilbert,istart)=m%grid(ioct)%hkey(1:nhilbert)+one_key
-                 istart=istart+1
-              else
-                 exit
-              end if
-           end do
-        end do
+      !   ! Walk through local octs to find boundary crossings
+      !   do ioct=m%head(ilev),m%tail(ilev)
+      !      if(istart>ncpu-1)exit
+      !      npart_global_cum=npart_before+npart_oct_cum(ioct)
+      !      do while(istart<=ncpu-1)
+      !         xcum_target=dble(istart)*xpart_target
+      !         if(dble(npart_global_cum)>=xcum_target)then
+      !            bound_key_target(1:nhilbert,istart)=m%grid(ioct)%hkey(1:nhilbert)+one_key
+      !            istart=istart+1
+      !         else
+      !            exit
+      !         end if
+      !      end do
+      !   end do
 
         !---------------------------------------------------------
         ! Store new Hilbert tick marks after convergence
