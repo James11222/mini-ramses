@@ -1051,7 +1051,7 @@ subroutine balance_part(s,p,ilevel)
         end do
 
         npart_per_oct_tot=0
-        call MPI_ALLREDUCE(npart_per_oct,npart_per_oct_tot,m%noct_tot(ilev), MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,info)
+        call MPI_ALLREDUCE(npart_per_oct,npart_per_oct_tot,int(m%noct_tot(ilev)),MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,info)
         npart_per_oct=npart_per_oct_tot
 
         ! compute number of particles before the local oct range
