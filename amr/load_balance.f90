@@ -1094,6 +1094,9 @@ subroutine balance_part(s,p,ilevel)
            end do
         end do
 
+        ! Make sure all CPUs have the same target boundaries
+         call MPI_ALLREDUCE(MPI_IN_PLACE,bound_key_target,nhilbert*ncpu,MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,info)
+
         ! print the bound_key_target for debugging
         if(myid==1.and.r%verbose)then
            write(*,'(" balance_part: target boundaries for level ",I2)')ilev
