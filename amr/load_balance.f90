@@ -1094,6 +1094,14 @@ subroutine balance_part(s,p,ilevel)
            end do
         end do
 
+        ! print the bound_key_target for debugging
+        if(myid==1.and.r%verbose)then
+           write(*,'(" balance_part: target boundaries for level ",I2)')ilev
+           do icpu=0,ncpu
+              write(*,'(1X,I3,": ",17(I16.16,1X))')icpu,bound_key_target(1:nhilbert,icpu)
+           end do
+        end if
+
         !---------------------------------------------------------
         ! Store new Hilbert tick marks after convergence
         !---------------------------------------------------------
