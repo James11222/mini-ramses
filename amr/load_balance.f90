@@ -1058,7 +1058,7 @@ subroutine balance_part(s,p,ilevel)
         if (myid==1)then
             npart_before=0
         else 
-            npart_before=SUM(npart_per_oct(1:myid-1))
+            npart_before=SUM(npart_per_oct(1:m%head(ilev)-1))
         end if
 
         ! cumulative sum of particles in local octs
@@ -1095,7 +1095,7 @@ subroutine balance_part(s,p,ilevel)
         end do
 
         ! Make sure all CPUs have the same target boundaries
-         call MPI_ALLREDUCE(MPI_IN_PLACE,bound_key_target,nhilbert*ncpu,MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,info)
+         call MPI_ALLREDUCE(MPI_IN_PLACE,bound_key_target,nhilbert*(ncpu+1),MPI_INTEGER8,MPI_MAX,MPI_COMM_WORLD,info)
 
         ! print the bound_key_target for debugging
         if(myid==1.and.r%verbose)then
